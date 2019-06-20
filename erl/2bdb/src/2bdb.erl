@@ -1,4 +1,4 @@
--module(2bdb).
+-module('2bdb').
 
 %% API exports
 -export([]).

@@ -11,6 +11,8 @@
 -export([ start_link/1
         , try_write_trans/3
         , import_trans/3
+        , import_meta/2
+        , import_schema_trans/2
         ]).
 
 %% gen_statem callbacks
@@ -210,7 +212,6 @@ handle_event({call, From}, {set_repl_params, Params}, _State, Data0) ->
     Data = Data0#data{ window_size     = WS
                      , lock_expiration = LI
                      },
-
     {keep_state, Data, [{reply, From, ok}]};
 %% Handle schema transactions:
 handle_event({call, From}, {import_schema_trans, Tx}, _State, Data) ->
@@ -298,7 +299,7 @@ do_write_trans(Data, From, Tx) ->
     #data{ seqno_tab    = SeqNoTab
          , callback_tab = CallbackTab
          , offset       = Offset
-         } = Data
+         } = Data,
     #try_write_trans{ txid     = Txid
                     , ts_begin = TsBegin
                     , reads    = Reads
@@ -309,11 +310,11 @@ do_write_trans(Data, From, Tx) ->
                 || {Key, Val} <- Writes],
     %% Produce transaction to the tlog (asynchronously, because we are
     %% very optimistic!):
-    produce(#tx{ id         = Txid
-               , partitions = []   %% TODO: Chop it up
-               , reads      = ReadOps
-               , write      = WriteOps
-               }),
+    produce(Data, #tx{ id         = Txid
+                     , partitions = []   %% TODO: Chop it up
+                     , reads      = ReadOps
+                     , writes     = WriteOps
+                     }),
     %% Write transaction reference to the callback buffer:
     ets:insert( CallbackTab
               , #callback_ref{ txid             = Txid
@@ -346,10 +347,10 @@ handle_import_transaction(Data0, TrueOffset, Tx) ->
                      , num_replayed = NumReplayed + 1
                      },
     if Valid ->
-            do_import_transaction(WriteOps),
-            maybe_complete_transaction(Data, ok);
+            do_import_transaction(Data, WriteOps),
+            maybe_complete_transaction(Data, TxId, ok);
        true ->
-            maybe_complete_transaction(Data, retry)
+            maybe_complete_transaction(Data, TxId, retry)
     end,
     Data.
 
@@ -374,6 +375,7 @@ get_seqno(Data, KeyHash) ->
 
 -spec do_import_transaction(data(), write_ops()) -> ok.
 do_import_transaction(Data, WriteOps) ->
+    #data{storage = Storage} = Data,
     Storage:put([{Key, Val} || {Key, _, Val} <- WriteOps]),
     bump_seqnos(Data, WriteOps).
 
@@ -404,7 +406,7 @@ validate_seqnos(Data, SeqNos) ->
              ExpectedSeqNo -> ok;
              TrueSeqNo     -> throw(mismatch)
          end
-         || {KH, ExpectedSeqNo} <- SeqNos],
+         || {KeyHash, ExpectedSeqNo} <- SeqNos],
         true
     catch
         mismatch -> false
