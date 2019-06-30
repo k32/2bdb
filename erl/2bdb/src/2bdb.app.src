@@ -1,9 +1,17 @@
 {application, '2bdb',
- [{description, "An OTP library"},
+ [{description, "An OTP application"},
   {vsn, "0.1.0"},
   {registered, []},
-  {applications, [kernel, stdlib, brod, hut]},
-  {env, []},
+  {mod, {'2bdb_app', []}},
+  {applications,
+   [ kernel
+   , stdlib
+   , brod
+   , snabbkaffe
+   , hut
+   , rocksdb
+   ]},
+  {env,[]},
   {modules, []},
 
   {maintainers, []},
