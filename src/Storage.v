@@ -30,7 +30,7 @@ Module Type Interface.
 
   Parameter new : forall {K V : Type}, Storage K V.
 
-  Parameter put : forall {K V : Type}, K -> V -> Storage K V -> Storage K V.
+  Parameter put : forall {K V : Typ-e}, K -> V -> Storage K V -> Storage K V.
 
   Parameter get : forall {K V : Type}, K -> Storage K V -> option V.
 
@@ -430,5 +430,20 @@ Module Versioned (I : Interface).
   Definition new {K V} :=
     @I.new K V.
 End Versioned.
+
+Module ListStorage <: Interface.
+  Definition Storage K V := list (K * V).
+
+  Definition new {K V} : Storage K V := [].
+
+  Fixpoint delete {K V} (k : K) s : Storage K V :=
+    match s with
+    | [] => []
+    | (k', v) => if eq_dec
+    end.
+
+  Definition put {K V} (k : K) (v : V) s : Storage K V :=
+    (k, v) :: (delete K s).
+End ListStorage.
 
 End Storage.
