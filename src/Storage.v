@@ -8,7 +8,6 @@ Import Sumbool.
 
 Set Implicit Arguments.
 
-
 Ltac symm_not :=
   let H := fresh
   in unfold not;
@@ -20,58 +19,67 @@ Module Storage.
 
 Definition TabName := String.string.
 
+(** Weaker equality operator comparing contents of the storage, rather
+than state of the storage backend itself: *)
 Reserved Notation "s1 =s= s2" (at level 50).
+
+Definition eq_decP T := forall (a b : T), {a = b} + {a <> b}.
+
+(** Type of values with decidable comparison operator *)
+Record Keq_dec : Type :=
+  { KT : Type;
+    eq_dec : eq_decP KT;
+  }.
 
 Module Type Interface.
   (* We assume that all operations listed here are atomic and it's up
   to the storage backend to ensure this property *)
 
-  Parameter Storage : Type -> Type -> Type.
+  Parameter t : Keq_dec -> Type -> Type.
 
-  Parameter new : forall {K V : Type}, Storage K V.
+  Parameter new : forall {K V}, t K V.
 
-  Parameter put : forall {K V : Typ-e}, K -> V -> Storage K V -> Storage K V.
+  Parameter put : forall {K V}, K.(KT) -> V -> t K V -> t K V.
 
-  Parameter get : forall {K V : Type}, K -> Storage K V -> option V.
+  Parameter get : forall {K V}, K.(KT) -> t K V -> option V.
 
-  Parameter keys : forall {K V : Type}, Storage K V -> list K.
+  Parameter keys : forall {K V}, t K V -> list K.(KT).
 
-  Parameter delete : forall {K V : Type}, K -> Storage K V -> Storage K V.
+  Parameter delete : forall {K V}, K.(KT) -> t K V -> t K V.
 
-  Axiom new_empty : forall {K V : Type} k,
-      get k (new : Storage K V) = None.
+  Axiom new_empty : forall {K V} k,
+      get k (new : t K V) = None.
 
-  Axiom keep : forall {K V : Type} (s : Storage K V) (k : K) (v : V),
+  Axiom keep : forall {K V} (s : t K V) (k : K.(KT)) (v : V),
       get k (put k v s) = Some v.
 
-  Axiom distinct : forall {K V : Type} (s : Storage K V) (k1 : K) (k2 : K) (v2 : V),
+  Axiom distinct : forall {K V} (s : t K V) (k1 : K.(KT)) (k2 : K.(KT)) (v2 : V),
       k1 <> k2 ->
       get k1 s = get k1 (put k2 v2 s).
 
-  Axiom delete_keep : forall {K V : Type} (s : Storage K V) k,
+  Axiom delete_keep : forall {K V} (s : t K V) k,
       get k (delete k s) = None.
 
-  Axiom delete_distinct : forall {K V : Type} (s : Storage K V) (k1 : K) (k2 : K),
+  Axiom delete_distinct : forall {K V} (s : t K V) (k1 : KT K) (k2 : KT K),
       k1 <> k2 ->
       get k1 s = get k1 (delete k2 s).
 
-  Axiom keys_some : forall {K V : Type} (s : Storage K V) k,
+  Axiom keys_some : forall {K V} (s : t K V) k,
       In k (keys s) -> exists v, get k s = Some v.
 
-  Axiom keys_none : forall {K V : Type} (s : Storage K V) k,
+  Axiom keys_none : forall {K V} (s : t K V) k,
       ~In k (keys s) -> get k s = None.
-
 End Interface.
 
 Module Equality (I : Interface).
   Import I.
 
-  Inductive s_eq {K V : Type} (s1 : Storage K V) (s2 : Storage K V) :=
+  Inductive s_eq {K V} (s1 : t K V) (s2 : t K V) :=
   | s_eq_ : (forall k, get k s1 = get k s2) -> s_eq s1 s2.
 
   Notation "s1 =s= s2" := (s_eq s1 s2) (at level 50).
 
-  Lemma s_eq_self : forall {K V} (s : Storage K V), s =s= s.
+  Lemma s_eq_self : forall {K V} (s : t K V), s =s= s.
   Proof.
     intros.
     assert (H: forall k, get k s = get k s).
@@ -94,8 +102,8 @@ Module Equality (I : Interface).
       easy.
   Qed.
 
-  Lemma put_eq_eq : forall {K V} (s1 s2 : Storage K V) k v,
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
+  Lemma put_eq_eq : forall {K V} (s1 s2 : t K V) k v,
+      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
       s1 =s= s2 ->
       put k v s1 =s= put k v s2.
   Proof.
@@ -108,8 +116,8 @@ Module Equality (I : Interface).
       destruct Heq as [Heq]. apply Heq.
   Qed.
 
-  Lemma put_same : forall {K V} (s : Storage K V) k v,
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
+  Lemma put_same : forall {K V} (s : t K V) k v,
+      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
       get k s = Some v ->
       s =s= put k v s.
   Proof.
@@ -121,8 +129,8 @@ Module Equality (I : Interface).
     - rewrite <-(@distinct _ _ _ x k v H). reflexivity.
   Qed.
 
-  Lemma put_distict_comm : forall {K V} (s : Storage K V) k1 k2 v1 v2,
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
+  Lemma put_distict_comm : forall {K V} (s : t K V) k1 k2 v1 v2,
+      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
       k1 <> k2 ->
       put k2 v2 (put k1 v1 s) =s= put k1 v1 (put k2 v2 s).
   Proof.
@@ -150,11 +158,11 @@ Module WriteLog (I : Interface).
   Import IE.
 
   Inductive Wlog_en {K V} :=
-  | wl_w : K -> V -> Wlog_en
-  | wl_d : K -> Wlog_en.
+  | wl_w : KT K -> V -> Wlog_en
+  | wl_d : KT K -> Wlog_en.
 
-  Definition Wlog_en_apply {K V} (s : Storage K V) (l : @Wlog_en K V) :
-    Storage K V :=
+  Definition Wlog_en_apply {K V} (s : t K V) (l : @Wlog_en K V) :
+    t K V :=
     match l with
     | wl_w k v => put k v s
     | wl_d k => delete k s
@@ -162,10 +170,10 @@ Module WriteLog (I : Interface).
 
   Definition Wlog {K V} := list (@Wlog_en K V).
 
-  Definition Wlog_apply {K V} (l : @Wlog K V) (s : Storage K V) :=
+  Definition Wlog_apply {K V} (l : @Wlog K V) (s : t K V) :=
     fold_left Wlog_en_apply l s.
 
-  Definition Wlog_has_key {K V} (k : K) (l : @Wlog K V) : Prop :=
+  Definition Wlog_has_key {K V} (k : KT K) (l : @Wlog K V) : Prop :=
     In k (map (fun x => match x with
                      | wl_w k _ => k
                      | wl_d k => k
@@ -180,7 +188,7 @@ Module WriteLog (I : Interface).
   Qed.
 
   Lemma Wlog_has_key_dec : forall {K V} k (l : @Wlog K V),
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
+      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
       decidable (Wlog_has_key k l).
   Proof.
     intros K V k l Keq_dec.
@@ -272,8 +280,8 @@ Module WriteLog (I : Interface).
   Hint Extern 4 => rewrite delete_keep.
   Hint Resolve s_eq_self.
 
-  Lemma Wlog_apply_same : forall {K V} (l : @Wlog K V) (s1 s2 : Storage K V),
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
+  Lemma Wlog_apply_same : forall {K V} (l : @Wlog K V) (s1 s2 : t K V),
+      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
       s1 =s= s2 ->
       Wlog_apply l s1 =s= Wlog_apply l s2.
   Proof.
@@ -302,7 +310,7 @@ Module WriteLog (I : Interface).
   Qed.
 
   Lemma Wlog_ignore_cons : forall {K V} (l : @Wlog K V) s k1 k2 v,
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
+      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
       k1 <> k2 ->
       get k1 (Wlog_apply l (put k2 v s)) = get k1 (Wlog_apply l s).
   Proof.
@@ -324,7 +332,7 @@ Module WriteLog (I : Interface).
   Qed.
 
   Lemma Wlog_ignore_cons_del : forall {K V} (l : @Wlog K V) s k1 k2,
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
+      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
       k1 <> k2 ->
       get k1 (Wlog_apply l (delete k2 s)) = get k1 (Wlog_apply l s).
   Proof.
@@ -362,22 +370,21 @@ Module WriteLog (I : Interface).
 
   Theorem Wlog_significant_entries :
     forall {K V} (l l' : @Wlog K V) s,
-      (forall k1 k2 : K, {k1 = k2} + {k1 <> k2}) ->
       Wlog_nodup l l' ->
       Wlog_apply l s =s= Wlog_apply l' s.
   Proof.
-    intros K V l l' s Keq_dec H.
+    intros [K Keq_dec] V l l' s H.
     induction H; subst; auto;
       unfold_s_eq as k';
       unfold_s_eq in IHWlog_nodup;
       apply (Wlog_nodup_has_key k') in H1;
       simpl;
-      destruct (Keq_dec k k'); subst;
-        (* [k = k'] *)
-        try (rewrite <-Wlog_ignore with (l := t) by auto;
-             rewrite <-Wlog_ignore with (l := l') by firstorder;
-             auto).
-        (* [k <> k'] *)
+      destruct (Keq_dec k k') as [Heq|Hneq]; subst;
+      (* [k = k'] *)
+      try (rewrite <-Wlog_ignore with (l := t0) by auto;
+           rewrite <-Wlog_ignore with (l := l') by firstorder;
+           auto).
+      (* [k <> k'] *)
     - repeat rewrite Wlog_ignore_cons with (k2 := k) (v0 := v) by auto.
       auto.
     - repeat rewrite Wlog_ignore_cons_del with (k2 := k) by auto.
@@ -395,15 +402,15 @@ Module Versioned (I : Interface).
                             data : maybe_dead d;
                           }.
 
-  Definition VS K V := I.Storage K (versioned V).
+  Definition VS K V := I.t K (versioned V).
 
-  Definition put {K V} (k : K) (v : V) (s : VS K V) : VS K V :=
+  Definition put {K V} (k : KT K) (v : V) (s : VS K V) : VS K V :=
     match I.get k s with
     | None => I.put k (mkVer 1 (Alive v)) s
     | Some v0 => I.put k (mkVer (S (version v0)) (Alive v)) s
     end.
 
-  Definition get {K V} (k : K) (s : VS K V) : option V :=
+  Definition get {K V} (k : KT K) (s : VS K V) : option V :=
     match I.get k s with
     | None => None
     | Some v => match data v with
@@ -412,7 +419,7 @@ Module Versioned (I : Interface).
                end
     end.
 
-  Definition get_v {K V} (k : K) (s : VS K V) : (nat * option V) :=
+  Definition get_v {K V} (k : KT K) (s : VS K V) : (nat * option V) :=
     match I.get k s with
     | None => (0, None)
     | Some v => match data v with
@@ -421,7 +428,7 @@ Module Versioned (I : Interface).
                end
     end.
 
-  Definition delete {K V} (k : K) (n : nat) (s : VS K V) : VS K V :=
+  Definition delete {K V} (k : KT K) (n : nat) (s : VS K V) : VS K V :=
     match I.get k s with
     | None => s
     | Some v0 => I.put k (mkVer (S (version v0)) (Dead V n)) s
@@ -432,18 +439,70 @@ Module Versioned (I : Interface).
 End Versioned.
 
 Module ListStorage <: Interface.
-  Definition Storage K V := list (K * V).
+  Definition t K V := list (KT K * V).
 
-  Definition new {K V} : Storage K V := [].
+  Definition new {K V} : t K V := [].
 
-  Fixpoint delete {K V} (k : K) s : Storage K V :=
+  Fixpoint delete {K V} (k : KT K) s : t K V :=
     match s with
     | [] => []
-    | (k', v) => if eq_dec
+    | (k', v) :: t =>
+      if K.(eq_dec) k k' then t
+      else (k', v) :: delete k t
     end.
 
-  Definition put {K V} (k : K) (v : V) s : Storage K V :=
-    (k, v) :: (delete K s).
+  Definition put {K V} (k : KT K) (v : V) s : t K V :=
+    (k, v) :: (delete k s).
+
+  Fixpoint get {K V} (k : KT K) (s : t K V) : option V :=
+    match s with
+    | [] => None
+    | (k', v) :: t =>
+      if K.(eq_dec) k' k then Some v else get k t
+    end.
+
+  Fixpoint keys {K V} (s : t K V) : list (KT K) :=
+    match s with
+    | [] => []
+    | (k, _) :: t => k :: keys t
+    end.
+
+  Theorem new_empty : forall {K V} k,
+      get k (new : t K V) = None.
+  Proof.
+    easy.
+  Qed.
+
+  Theorem keep : forall {K V} (s : t K V) (k : K.(KT)) (v : V),
+      get k (put k v s) = Some v.
+  Proof.
+    intros.
+    induction s as [|k' v' t IH].
+    - simpl. destruct (eq_dec K k k); easy.
+    - simpl. destruct (eq_dec K k k); easy.
+  Qed.
+
+  Theorem distinct : forall {K V} (s : t K V) (k1 : K.(KT)) (k2 : K.(KT)) (v2 : V),
+      k1 <> k2 ->
+      get k1 s = get k1 (put k2 v2 s).
+  Admitted.
+
+  Theorem delete_keep : forall {K V} (s : t K V) k,
+      get k (delete k s) = None.
+  Admitted.
+
+  Theorem delete_distinct : forall {K V} (s : t K V) (k1 : KT K) (k2 : KT K),
+      k1 <> k2 ->
+      get k1 s = get k1 (delete k2 s).
+  Admitted.
+
+  Theorem keys_some : forall {K V} (s : t K V) k,
+      In k (keys s) -> exists v, get k s = Some v.
+  Admitted.
+
+  Theorem keys_none : forall {K V} (s : t K V) k,
+      ~In k (keys s) -> get k s = None.
+  Admitted.
 End ListStorage.
 
 End Storage.
