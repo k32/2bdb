@@ -1,3 +1,5 @@
+(*** Storage interface *)
+(** This module defines an abstract interface towards storage *)
 Require Import String.
 Require Import List.
 Require Import Coq.Program.Basics.
@@ -149,7 +151,6 @@ Module Equality (I : Interface).
                || rewrite <-(@distinct _ _ _ k _ _ Hnk2)).
         reflexivity.
   Qed.
-
 End Equality.
 
 Module WriteLog (I : Interface).
@@ -497,12 +498,48 @@ Module ListStorage <: Interface.
   Admitted.
 
   Theorem keys_some : forall {K V} (s : t K V) k,
-      In k (keys s) -> exists v, get k s = Some v.
+      In k (keys s) -> (* {v:V | get k s = Some v}. *) exists v, get k s = Some v.
   Admitted.
 
   Theorem keys_none : forall {K V} (s : t K V) k,
       ~In k (keys s) -> get k s = None.
   Admitted.
 End ListStorage.
+
+Module Properties (I : Interface).
+  Import I.
+
+  (** Total version of get *)
+  Definition getT {K V} k (s : t K V) (H : In k (keys s)) : V.
+  Proof.
+    remember (get k s) as v.
+    destruct v.
+    - destruct Heqv. apply v.
+    - exfalso. (* This is how one does exceptions in Coq :joy_cat: *)
+      apply keys_some in H.
+      rewrite <- Heqv in H.
+      destruct H.
+      inversion H.
+  Qed.
+
+  (** Atomically apply a function to all elements of the storage *)
+  Definition a_map {K V} (f : V -> V) (s : t K V) : t K V.
+  Proof.
+
+    refine (fold_left (fun acc k => put k _ acc) (keys s) new).
+    remember (get k s) as v.
+    destruct v as [v|].
+    - destruct Heqv. apply v.
+    - assert (Hin : In k (keys s)).
+      Focus 2.
+      apply keys_some in Hin.
+      symmetry in Heqv. rewrite Heqv in Hin.
+
+
+    assert (H := keys_some s k).
+    assert (In k (keys s)). Focus 2.
+    apply H in H0.
+
+
 
 End Storage.

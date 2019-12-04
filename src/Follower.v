@@ -14,25 +14,26 @@ Module Vec := Coq.Vectors.Vector.
 
 Definition Offset := nat.
 
-Variables Key Value : Set.
+Variable Key : Storage.Keq_dec.
+Variable Value : Set.
 
 (** Transaction log entry *)
 Record write_tx :=
   mkWriteTx
     { local_tlogn : Offset;
-      reads : list (Key * Offset);
-      writes : list (Key * Offset);
-      payload : list (Key * Value);
+      reads : list (Storage.KT Key * Offset);
+      writes : list (Storage.KT Key * Offset);
+      payload : list (Storage.KT Key * Value);
     }.
 
-Inductive Tx : Set :=
+Inductive Tx : Type :=
 | TxW : write_tx -> Tx.
 
 Definition Tlog := list Tx.
 
 Definition Seqno : Set := Offset * Offset.
 
-Definition Seqnos := S.Storage Key Seqno.
+Definition Seqnos := S.t Key Seqno.
 
 (** State of the follower process *)
 Record State :=
@@ -45,14 +46,14 @@ Record State :=
 Definition initial_state tlogn ws :=
   mkState ws (tlogn - ws) S.new.
 
-Definition get_seqno (k : Key) (s : State) : Offset :=
+Definition get_seqno (k : Storage.KT Key) (s : State) : Offset :=
   match S.get k (seqnos s) with
   | Some (v, _) => v
   | None        => 0
   end.
 
 (* TODO *)
-Definition next_seqno (k : Key) (s : State) :=
+Definition next_seqno (k : Storage.KT Key) (s : State) :=
   (S (get_seqno k s), my_tlogn s).
 
 Definition validate_reads (tx : write_tx) (s : State) : bool :=
@@ -149,31 +150,33 @@ Import Follower'.
 Module Fin := Coq.Vectors.Fin.
 Module Vec := Coq.Vectors.Vector.
 
-Inductive ReachableState {ws : nat} {offset : Offset} : State -> Prop :=
+Inductive ReachableState {window_size : nat} {offset : Offset} : State -> Prop :=
 | InitState :
-    ReachableState (mkState ws offset S.new)
+    ReachableState (mkState window_size offset S.new)
 | NextState : forall (tx : Tx) seqnos,
-    let s := mkState ws offset seqnos in
+    let s := mkState window_size offset seqnos in
     ReachableState s ->
     ReachableState (next_state s (S offset) tx).
 
-Definition replay_initial_state_erasalP :=
+Definition replay_erases_initial_stateP :=
   forall (tlog : Tlog) (o0 : Offset),
     let ws := List.length tlog in
     forall s1 s2
       (Hs1 : @ReachableState ws o0 s1)
       (Hs2 : @ReachableState ws o0 s2),
       replay' o0 tlog s1 = replay' o0 tlog s2.
-End FollowerSpec.
-
-QuickChick replay_initial_state_erisalP.
 
 Global Opaque collect_garbage validate_reads validate_writes validate_seqnos
        leb fold_left andb update_seqnos Nat.sub forallb.
 
+Lemma garbage_collect_works :
+  forall (window_size : nat) (offset : Offset) (s : Seqno),
+    ReachableState window_size offset s ->
 
+
+Lemma replay_erases_initial_state : replay_erases_initial_stateP.
 Proof.
-  intros. subst ws.
+  unfold replay_erases_initial_stateP. intros.
   induction tlog as [|tx tlog IH].
   { destruct Hs1; destruct Hs2; simpl; auto; destruct tx as [txw].
     - unfold next_state.v
