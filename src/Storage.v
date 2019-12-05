@@ -1,5 +1,5 @@
 (*** Storage interface *)
-(** This module defines an abstract interface towards storage *)
+(** This module defines a "black box" storage engine *)
 Require Import String.
 Require Import List.
 Require Import Coq.Program.Basics.
