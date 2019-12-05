@@ -543,6 +543,10 @@ Module Properties (I : Interface).
         let v0 := getT k s Hk
         in put k (f v0) acc
     in foldl' (keys s) g new.
+
+  Definition forallS {K V} (p : V -> Prop) (s : t K V) : Prop :=
+    let f k Hin acc := p (getT k s Hin) /\ acc
+    in foldl' (keys s) f True.
 End Properties.
 
 End Storage.

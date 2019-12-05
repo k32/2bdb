@@ -5,7 +5,6 @@ Require Import Storage.
 Require Import Arith.
 Require Import Omega.
 Require Bool.
-From QuickChick Require Import QuickChick.
 
 Module Follower (S : Storage.Interface).
 (* TODO: redefine everything using NZCyclic axioms *)
