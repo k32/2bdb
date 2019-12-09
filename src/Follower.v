@@ -148,6 +148,10 @@ Module Follower' := Follower(S).
 Import Follower'.
 Module Fin := Coq.Vectors.Fin.
 Module Vec := Coq.Vectors.Vector.
+Module SP := Storage.Properties(S).
+Import SP.
+Module SE := Storage.Equality(S).
+Import SE.
 
 Inductive ReachableState {window_size : nat} {offset : Offset} : State -> Prop :=
 | InitState :
@@ -157,27 +161,51 @@ Inductive ReachableState {window_size : nat} {offset : Offset} : State -> Prop :
     ReachableState s ->
     ReachableState (next_state s (S offset) tx).
 
+Definition s_eq (s1 s2 : State) :=
+  match s1, s2 with
+  | (mkState ws1 o1 s1), (mkState ws2 o2 s2) => ws1 = ws2 /\ o1 = o2 /\ s1 =s= s2
+  end.
+
+Notation "a =S= b" := (s_eq a b) (at level 50).
+
 Definition replay_erases_initial_stateP :=
   forall (tlog : Tlog) (o0 : Offset),
     let ws := List.length tlog in
-    forall s1 s2
-      (Hs1 : @ReachableState ws o0 s1)
-      (Hs2 : @ReachableState ws o0 s2),
-      replay' o0 tlog s1 = replay' o0 tlog s2.
+    forall s1 s2,
+      replay' o0 tlog (mkState ws o0 (collect_garbage ws o0 s1)) =S=
+      replay' o0 tlog (mkState ws o0 (collect_garbage ws o0 s2)).
 
 Global Opaque collect_garbage validate_reads validate_writes validate_seqnos
        leb fold_left andb update_seqnos Nat.sub forallb.
 
-Lemma garbage_collect_works :
-  forall (window_size : nat) (offset : Offset) (s : Seqno),
-    ReachableState window_size offset s ->
+Definition garbage_collect_works :=
+  forall ws offset seqnos,
+    let s' := collect_garbage ws offset seqnos in
+    forallS s' (fun k Hin => match getT k s' Hin with
+                          | (_, v) => offset - v < ws
+                          end).
 
-
-Lemma replay_erases_initial_state : replay_erases_initial_stateP.
+Lemma replay_erases_initial_state :
+  garbage_collect_works -> replay_erases_initial_stateP.
 Proof.
-  unfold replay_erases_initial_stateP. intros.
+  unfold replay_erases_initial_stateP. intros Hgc tlog o s1 s2.
   induction tlog as [|tx tlog IH].
-  { destruct Hs1; destruct Hs2; simpl; auto; destruct tx as [txw].
+  { simpl.
+    repeat split; auto.
+    intros k.
+    specialize (Hgc 0 o s1) as Hs1.
+    specialize (Hgc 0 o s2) as Hs2.
+    simpl in *.
+    remember (S.get k  as sg.
+    destruct S.get; destruct S.get.
+    -
+    specialize (Hgc 0 o s1) as Hs1.
+    specialize (Hgc 0 o s2) as Hs2.
+
+
+    unfold garbage_collect_works in Hgc.
+
+    destruct Hs1; destruct Hs2; simpl; auto; destruct tx as [txw].
     - unfold next_state.v
       cbv.
       remember (S o0 - (local_tlogn txw) <? 0) as ss.

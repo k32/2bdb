@@ -156,7 +156,7 @@ End Equality.
 Module WriteLog (I : Interface).
   Import I.
   Module IE := Equality I.
-  Import IE.
+  Export IE.
 
   Inductive Wlog_en {K V} :=
   | wl_w : KT K -> V -> Wlog_en
@@ -524,7 +524,7 @@ Module Properties (I : Interface).
                | [] => fun _ => acc0
                | a :: t => fun Hl => foldl' t _ (f a _ acc0)
                end) (eq_refl l)).
-    - (* Create a copy of f typed so it works with t: *)
+    - (* Create a copy of [f] typed so it works with [t]: *)
       intros a' Ha't acc'.
       apply (in_cons a a' t) in Ha't.
       rewrite <- Hl in Ha't.
@@ -544,9 +544,11 @@ Module Properties (I : Interface).
         in put k (f v0) acc
     in foldl' (keys s) g new.
 
-  Definition forallS {K V} (p : V -> Prop) (s : t K V) : Prop :=
-    let f k Hin acc := p (getT k s Hin) /\ acc
+  Definition forallS {K V} (s : t K V) (prop : forall (k : KT K), In k (keys s) -> Prop) : Prop :=
+    let f k Hin acc := prop k Hin /\ acc
     in foldl' (keys s) f True.
+
+  Definition get'
 End Properties.
 
 End Storage.
