@@ -192,13 +192,18 @@ Proof.
   induction tlog as [|tx tlog IH].
   { simpl.
     repeat split; auto.
+    assert (Hempty : forall k s, S.get k (collect_garbage 0 o s) = None).
+    { intros.
+      unfold collect_garbage.
+    }
     intros k.
     specialize (Hgc 0 o s1) as Hs1.
     specialize (Hgc 0 o s2) as Hs2.
     simpl in *.
-    remember (S.get k  as sg.
-    destruct S.get; destruct S.get.
-    -
+    remember (S.get k s1) as v1.
+    remember (S.get k s2) as v2.
+    destruct v1; destruct v2.
+
     specialize (Hgc 0 o s1) as Hs1.
     specialize (Hgc 0 o s2) as Hs2.
 

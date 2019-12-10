@@ -67,10 +67,7 @@ Module Type Interface.
       get k1 s = get k1 (delete k2 s).
 
   Axiom keys_some : forall {K V} (s : t K V) k,
-      In k (keys s) -> exists v, get k s = Some v.
-
-  Axiom keys_none : forall {K V} (s : t K V) k,
-      ~In k (keys s) -> get k s = None.
+      In k (keys s) <-> exists v, get k s = Some v.
 End Interface.
 
 Module Equality (I : Interface).
@@ -493,11 +490,7 @@ Module ListStorage <: Interface.
   Admitted.
 
   Theorem keys_some : forall {K V} (s : t K V) k,
-      In k (keys s) -> (* {v:V | get k s = Some v}. *) exists v, get k s = Some v.
-  Admitted.
-
-  Theorem keys_none : forall {K V} (s : t K V) k,
-      ~In k (keys s) -> get k s = None.
+      In k (keys s) <-> exists v, get k s = Some v.
   Admitted.
 End ListStorage.
 
@@ -548,7 +541,23 @@ Module Properties (I : Interface).
     let f k Hin acc := prop k Hin /\ acc
     in foldl' (keys s) f True.
 
-  Definition get'
+  Theorem keys_none : forall {K V} (s : t K V) k,
+      ~In k (keys s) -> get k s = None.
+  Proof.
+    intros.
+    specialize (keys_some s k) as [Hs Hs_rev].
+    destruct (get k s).
+    - exfalso. apply H. apply Hs_rev. exists v. reflexivity.
+    - reflexivity.
+  Qed.
+
+  Theorem keys_some' : forall {K V} (s : t K V) k v,
+      Some v = get k s -> In k (keys s).
+  Proof.
+    intros.
+    apply keys_some. exists v. easy.
+  Qed.
+
 End Properties.
 
 End Storage.
