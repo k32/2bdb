@@ -6,31 +6,27 @@ Require Import Arith.
 Require Import Omega.
 Require Bool.
 
-Module Follower (S : Storage.Interface).
-(* TODO: redefine everything using NZCyclic axioms *)
-Module Fin := Coq.Vectors.Fin.
-Module Vec := Coq.Vectors.Vector.
+Module Unbounded (S : Storage.Interface).
 
 Definition Offset := nat.
 
 Variable Key : Storage.Keq_dec.
 Variable Value : Set.
+Variable TxPayload : Set.
 
 (** Transaction log entry *)
-Record write_tx :=
-  mkWriteTx
-    { local_tlogn : Offset;
+Record Tx :=
+  mkTx
+    { last_imported_offset : Offset;
       reads : list (Storage.KT Key * Offset);
       writes : list (Storage.KT Key * Offset);
-      payload : list (Storage.KT Key * Value);
+      commit : bool;
+      payload : TxPayload;
     }.
-
-Inductive Tx : Type :=
-| TxW : write_tx -> Tx.
 
 Definition Tlog := list Tx.
 
-Definition Seqno : Set := Offset * Offset.
+Definition Seqno : Set := Offset.
 
 Definition Seqnos := S.t Key Seqno.
 
@@ -42,116 +38,107 @@ Record State :=
       seqnos : Seqnos;
     }.
 
-Definition initial_state tlogn ws :=
-  mkState ws (tlogn - ws) S.new.
-
 Definition get_seqno (k : Storage.KT Key) (s : State) : Offset :=
   match S.get k (seqnos s) with
-  | Some (v, _) => v
-  | None        => 0
+  | Some v => v
+  | None   => 0
   end.
 
-(* TODO *)
-Definition next_seqno (k : Storage.KT Key) (s : State) :=
-  (S (get_seqno k s), my_tlogn s).
-
-Definition validate_reads (tx : write_tx) (s : State) : bool :=
+Definition validate_seqnos (tx : Tx) (s : State) : bool :=
   let f x := match x with
              | (k, v) => Nat.eqb v (get_seqno k s)
              end in
   match tx with
-  | {| reads := r |} => forallb f r
+  | {| reads := r; writes := w |} => forallb f r && forallb f w
   end.
 
-Definition validate_writes (tx : write_tx) (s : State) : bool :=
-  let f x := match x with
-             | (k, v) =>
-               let (nsn, _) := next_seqno k s in
-               Nat.eqb v nsn
-             end in
-  match tx with
-  | {| writes := w |} => forallb f w
+Definition check_tx (s : State) (offset : Offset) (tx : Tx) : bool :=
+  match s with
+  | {| sync_window_size := ws; seqnos := seqnos |} =>
+    (offset - (last_imported_offset tx) <? ws) && validate_seqnos tx s
   end.
 
-Definition validate_seqnos (tx : write_tx) (s : State) : bool :=
-  andb (validate_reads tx s) (validate_writes tx s).
-
-(** Find cached seqnos that are too old *)
-Definition collect_garbage (ws : nat) (offset : Offset) (seqnos : Seqnos) : Seqnos :=
-  let f k := match S.get k seqnos with
-             | Some (_, o) => leb ws (offset - o)
-             | None        => false
-             end in
-  let old_keys := filter f (S.keys seqnos) in
-  fold_left (fun acc k => S.delete k acc) old_keys seqnos.
-
-(** Merge seqnos from a valid transaction to the list *)
-Definition update_seqnos (tx : write_tx) (offset : Offset) (seqnos : Seqnos) : Seqnos :=
+Definition update_seqnos (tx : Tx) (offset : Offset) (seqnos : Seqnos) : Seqnos :=
   let ww := writes tx in
-  let tlogn := local_tlogn tx in
   let f acc x := match x with
-                 | (k, v) => S.put k (v, tlogn) acc
+                 | (k, v) => S.put k offset acc
                  end in
   fold_left f ww seqnos.
 
-Definition check_tx (s : State) (offset : Offset) (tx : Tx) : bool * State :=
-  match s with
-  | {| sync_window_size := ws; seqnos := seqnos |} =>
-    let seqnos' := collect_garbage ws offset seqnos in
-    let s' := mkState ws offset seqnos' in
-    match tx with
-    | TxW txw =>
-      match offset - (local_tlogn txw) <? ws with
-      | false =>
-        (* Node that produced the transaction is way out of date, drop
-        this transaction immediately *)
-        (false, s')
-      | true =>
-        (* First sanity check passed, let's proceed to more expensive checks *)
-        match validate_seqnos txw s' with
-        | false =>
-          (* Seqnos don't add up. Drop transaction *)
-          (false, s')
-        | true =>
-          (* Hurray, this transaction is valid! *)
-          let seqnos'' := update_seqnos txw offset seqnos' in
-          (true, mkState ws offset seqnos'')
-        end
-      end
-    end
+Definition consume_tx (S : State) (offset : Offset) (tx : Tx) : bool * State :=
+  match S with
+  | {| sync_window_size := ws; seqnos := s |} =>
+    if check_tx S offset tx then
+      (true, mkState ws offset (update_seqnos tx offset s))
+    else
+      (false, S)
   end.
 
-Definition next_state (s : State) (offset : Offset) (tx : Tx) :=
-  match check_tx s offset tx with
-  | (_, s') => s'
+(* Fixpoint replay' offset (tlog : Tlog) (s : State) : State := *)
+(*   match tlog with *)
+(*   | tx :: tail => *)
+(*     match check_tx s offset tx with *)
+(*     | (_, s') => replay' (S offset) tail s' *)
+(*     end *)
+(*   | [] => s *)
+(*   end. *)
+
+(* Definition replay (tlog : Tlog) (s : State) : State := *)
+(*   let start := my_tlogn s in *)
+(*   let tlog' := skipn start tlog in *)
+(*   replay' start tlog' s. *)
+
+End Unbounded.
+
+Module UnboundedSpec (S : Storage.Interface).
+
+Module L := Unbounded(S). Import L.
+Module SP := Storage.Properties(S). Import SP.
+Module SE := Storage.Equality(S). Import SE.
+
+Definition tx_keys (tx : Tx) : list (Storage.KT L.Key) :=
+  match tx with
+  | {| reads := rr; writes := ww |} =>
+    map (fun x => match x with (x, _) => x end) (rr ++ ww)
   end.
 
-Fixpoint replay' offset (tlog : Tlog) (s : State) : State :=
-  match tlog with
-  | tx :: tail =>
-    match check_tx s offset tx with
-    | (_, s') => replay' (S offset) tail s'
-    end
-  | [] => s
-  end.
+Lemma consume_one_read_tx_p : forall ws o1 o2 hwm s1 s2 k tx_o tx_p,
+    let S1 := mkState ws o1 s1 in
+    let S2 := mkState ws o2 s2 in
+    let tx := mkTx tx_o [(k, tx_o)] [] true tx_p in
+    get_seqno k S1 = get_seqno k S2 ->
+    let (res1, S1') := consume_tx S1 hwm tx in
+    let (res2, S2') := consume_tx S2 hwm tx in
+    res1 = res2 /\
+    get_seqno k S1' = get_seqno k S2'.
+Proof.
+  intros.
+  simpl.
+  rewrite H.
+  destruct (hwm - tx_o <? ws).
+  - destruct (tx_o =? get_seqno k S2); simpl; split; auto.
+  - simpl. auto.
+Qed.
 
-Definition replay (tlog : Tlog) (s : State) : State :=
-  let start := my_tlogn s in
-  let tlog' := skipn start tlog in
-  replay' start tlog' s.
-
-End Follower.
-
-Module FollowerSpec (S : Storage.Interface).
-
-Module Follower' := Follower(S).
-Import Follower'.
-Module Fin := Coq.Vectors.Fin.
-Module Vec := Coq.Vectors.Vector.
-Module SP := Storage.Properties(S).
-Import SP.
-Module SE := Storage.Equality(S).
-Import SE.
+Lemma consume_one_write_tx_p : forall ws o1 o2 hwm s1 s2 k tx_o tx_p,
+    let S1 := mkState ws o1 s1 in
+    let S2 := mkState ws o2 s2 in
+    let tx := mkTx tx_o [] [(k, tx_o)] true tx_p in
+    get_seqno k S1 = get_seqno k S2 ->
+    let (res1, S1') := consume_tx S1 hwm tx in
+    let (res2, S2') := consume_tx S2 hwm tx in
+    res1 = res2 /\
+    get_seqno k S1' = get_seqno k S2'.
+Proof.
+  intros.
+  simpl.
+  rewrite H.
+  destruct (hwm - tx_o <? ws).
+  - destruct (tx_o =? get_seqno k S2); simpl; split; auto.
+    unfold update_seqnos, get_seqno. simpl.
+    repeat rewrite S.keep. reflexivity.
+  - simpl. auto.
+Qed.
 
 Inductive ReachableState {window_size : nat} {offset : Offset} : State -> Prop :=
 | InitState :
@@ -175,9 +162,6 @@ Definition replay_erases_initial_stateP :=
       replay' o0 tlog (mkState ws o0 (collect_garbage ws o0 s1)) =S=
       replay' o0 tlog (mkState ws o0 (collect_garbage ws o0 s2)).
 
-Global Opaque collect_garbage validate_reads validate_writes validate_seqnos
-       leb fold_left andb update_seqnos Nat.sub forallb.
-
 Definition garbage_collect_works :=
   forall ws offset seqnos,
     let s' := collect_garbage ws offset seqnos in
@@ -189,14 +173,38 @@ Lemma replay_erases_initial_state :
   garbage_collect_works -> replay_erases_initial_stateP.
 Proof.
   unfold replay_erases_initial_stateP. intros Hgc tlog o s1 s2.
-  induction tlog as [|tx tlog IH].
+  set (S1 := {| sync_window_size := length tlog; my_tlogn := o; seqnos := collect_garbage (length tlog) o s1 |}).
+  set (S2 := {| sync_window_size := length tlog; my_tlogn := o; seqnos := collect_garbage (length tlog) o s2 |}).
+  replace tlog with (rev (rev tlog)) by apply rev_involutive.
+  remember (rev tlog) as tlogr.
+  induction tlogr as [|tx tlogr IH].
   { simpl.
     repeat split; auto.
+    rewrite <-rev_length. rewrite <- Heqtlogr. simpl.
     assert (Hempty : forall k s, S.get k (collect_garbage 0 o s) = None).
     { intros.
       unfold collect_garbage.
+      admit.
     }
     intros k.
+    repeat rewrite Hempty. reflexivity.
+  }
+  { simpl.
+
+    set (l := length tlog) in *.
+    replace (length (tx :: tlog)) with (S l) in * by reflexivity.
+    set (s1' := collect_garbage l o s1) in *.
+    set (s2' := collect_garbage l o s2) in *.
+    set (s1'' := collect_garbage (S l) o s1) in *.
+    set (s2'' := collect_garbage (S l) o s2) in *.
+    simpl.
+    destruct tx.
+    - (* Write transaction *)
+      destruct (o - local_tlogn w <? S l) in *.
+      + give_up.
+      +
+  }
+
     specialize (Hgc 0 o s1) as Hs1.
     specialize (Hgc 0 o s2) as Hs2.
     simpl in *.
