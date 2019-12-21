@@ -5,6 +5,7 @@ Require Import Storage.
 Require Import Arith.
 Require Import Omega.
 Require Bool.
+Require Import FoldIn.
 
 Module Unbounded (S : Storage.Interface).
 
@@ -30,7 +31,7 @@ Definition Seqno : Set := Offset.
 
 Definition Seqnos := S.t Key Seqno.
 
-(** State of the follower process *)
+(** State of the locker process *)
 Record State :=
   mkState
     { sync_window_size : nat;
@@ -102,43 +103,113 @@ Definition tx_keys (tx : Tx) : list (Storage.KT L.Key) :=
     map (fun x => match x with (x, _) => x end) (rr ++ ww)
   end.
 
-Lemma consume_one_read_tx_p : forall ws o1 o2 hwm s1 s2 k tx_o tx_p,
-    let S1 := mkState ws o1 s1 in
-    let S2 := mkState ws o2 s2 in
-    let tx := mkTx tx_o [(k, tx_o)] [] true tx_p in
-    get_seqno k S1 = get_seqno k S2 ->
-    let (res1, S1') := consume_tx S1 hwm tx in
-    let (res2, S2') := consume_tx S2 hwm tx in
-    res1 = res2 /\
-    get_seqno k S1' = get_seqno k S2'.
+(** Prove that importing a valid transaction advances offset of the
+last imported transaction *)
+Lemma consume_valid_tx_offset_advance : forall hwm S tx,
+    let (valid, S') := consume_tx S hwm tx in
+    valid = true ->
+    my_tlogn S' = hwm.
 Proof.
   intros.
-  simpl.
-  rewrite H.
-  destruct (hwm - tx_o <? ws).
-  - destruct (tx_o =? get_seqno k S2); simpl; split; auto.
-  - simpl. auto.
+  unfold consume_tx.
+  destruct (check_tx S hwm tx); destruct S; intros H; easy.
 Qed.
 
-Lemma consume_one_write_tx_p : forall ws o1 o2 hwm s1 s2 k tx_o tx_p,
-    let S1 := mkState ws o1 s1 in
-    let S2 := mkState ws o2 s2 in
-    let tx := mkTx tx_o [] [(k, tx_o)] true tx_p in
-    get_seqno k S1 = get_seqno k S2 ->
-    let (res1, S1') := consume_tx S1 hwm tx in
-    let (res2, S2') := consume_tx S2 hwm tx in
-    res1 = res2 /\
-    get_seqno k S1' = get_seqno k S2'.
+Definition subset_s_eq l S1 S2 : Prop :=
+  forall k sn, In (k, sn) l ->
+          get_seqno k S1 = sn /\ get_seqno k S2 = sn.
+
+Lemma subset_s_eq_refl : forall l S1 S2, subset_s_eq l S1 S2 <-> subset_s_eq l S2 S1.
 Proof.
   intros.
-  simpl.
-  rewrite H.
-  destruct (hwm - tx_o <? ws).
-  - destruct (tx_o =? get_seqno k S2); simpl; split; auto.
-    unfold update_seqnos, get_seqno. simpl.
-    repeat rewrite S.keep. reflexivity.
-  - simpl. auto.
+  unfold subset_s_eq. split; intros; apply and_comm; auto.
 Qed.
+
+Lemma subset_s_eq_forallb : forall ws o1 o2 s1 s2 l,
+    let S1 := mkState ws o1 s1 in
+    let S2 := mkState ws o2 s2 in
+    subset_s_eq l S1 S2 ->
+    forallb
+      (fun x : Storage.KT L.Key * nat => let (k, v) := x in v =? get_seqno k S1) l =
+    forallb
+      (fun x : Storage.KT L.Key * nat => let (k, v) := x in v =? get_seqno k S2) l.
+Proof.
+  intros.
+  repeat rewrite forallb_forallb'.
+  subst S1. subst S2.
+  generalize dependent H.
+  induction l as [|[k o] l IHl0].
+  - easy.
+  - intros H.
+    (* First, let's prove premise for the induction hypothesis: *)
+    assert (IHl : subset_s_eq l {| sync_window_size := ws; my_tlogn := o1; seqnos := s1 |}
+                                {| sync_window_size := ws; my_tlogn := o2; seqnos := s2 |}).
+    { unfold subset_s_eq in *.
+      intros.
+      apply H. apply in_cons. assumption.
+    }
+    apply IHl0 in IHl.
+    (* Now let's get rid of the head term: *)
+    unfold forallb' in *.
+    unfold subset_s_eq in H.
+    simpl in *.
+    repeat rewrite Bool.andb_true_r.
+    specialize (H k o) as [H1 H2].
+    { left. reflexivity. }
+    rewrite H1, H2.
+    repeat rewrite <-beq_nat_refl.
+    (* ...and prove the property for the tail: *)
+    apply IHl.
+Qed.
+
+Lemma check_tx_subset_eq_p : forall hwm S1 S2 tx,
+    sync_window_size S1 = sync_window_size S2 ->
+    subset_s_eq (reads tx) S1 S2 ->
+    subset_s_eq (writes tx) S1 S2 ->
+    check_tx S1 hwm tx = check_tx S2 hwm tx.
+Proof.
+  intros hwm S1 S2 tx Hws Hrl Hwl.
+  unfold check_tx.
+  (* Prove a trivial case when transaction is out of replication
+  window: *)
+  destruct S1 as [ws o1 s1]. destruct S2 as [ws2 o2 s2].
+  destruct tx as [tx_o rl wl tx_commit tx_p].
+  simpl in *. rewrite <-Hws in *.
+  destruct (hwm - tx_o <? ws); try easy.
+  (* ...Now check seqnos: *)
+  repeat rewrite Bool.andb_true_l.
+  rewrite subset_s_eq_forallb with (o2 := o2) (s2 := s2) (l := rl) by assumption.
+  rewrite subset_s_eq_forallb with (o2 := o2) (s2 := s2) (l := wl) by assumption.
+  reflexivity.
+Qed.
+
+Lemma consume_tx_subset_eq_p : forall hwm S1 S2 tx,
+    sync_window_size S1 = sync_window_size S2 ->
+    subset_s_eq (reads tx) S1 S2 ->
+    subset_s_eq (writes tx) S1 S2 ->
+    let (res1, S1') := consume_tx S1 hwm tx in
+    let (res2, S2') := consume_tx S2 hwm tx in
+    res1 = res2 /\ subset_s_eq (reads tx) S1' S2' /\ subset_s_eq (writes tx) S1' S2'.
+Proof.
+  intros hwm S1 S2 tx Hws Hrl Hwl.
+  unfold consume_tx.
+  specialize (check_tx_subset_eq_p hwm S1 S2 tx) as Hcheck.
+  rewrite Hcheck.
+  destruct (check_tx S2 hwm tx);
+    destruct S1 as [ws1 o1 s1];
+    destruct S2 as [ws2 o2 s2];
+    destruct tx as [tx_o rl wl tx_commit tx_p];
+    simpl in *;
+    rewrite Hws in *;
+    split; split; try easy.
+  - unfold update_seqnos. simpl in *.
+  -
+  - split; try easy.
+    split.
+  - simpl.
+    destruct S1 as [ws ]
+
+
 
 Inductive ReachableState {window_size : nat} {offset : Offset} : State -> Prop :=
 | InitState :

@@ -496,6 +496,7 @@ End ListStorage.
 
 Module Properties (I : Interface).
   Import I.
+  Require Import FoldIn.
 
   (** Total version of get *)
   Definition getT {K V} k (s : t K V) (H : In k (keys s)) : V.
@@ -509,27 +510,6 @@ Module Properties (I : Interface).
       inversion H.
   Defined.
 
-  (** Version of list foldr that preserves evidence that key passed
-  into the function is a member of the input list *)
-  Definition foldl' {A B} : forall (l : list A), (forall (a : A), In a l -> B -> B) -> B -> B.
-    refine (fix foldl' l f acc0 :=
-              (match l as l0 return (l = l0 -> B) with
-               | [] => fun _ => acc0
-               | a :: t => fun Hl => foldl' t _ (f a _ acc0)
-               end) (eq_refl l)).
-    - (* Create a copy of [f] typed so it works with [t]: *)
-      intros a' Ha't acc'.
-      apply (in_cons a a' t) in Ha't.
-      rewrite <- Hl in Ha't.
-      apply (f a' Ha't acc').
-    - (* Prove that a is in l: *)
-      rewrite Hl.
-      apply in_eq.
-  Defined.
-
-  Example foldl'_exhibits_sane_behavior : (foldl' [1; 2; 3] (fun a _ acc => a + acc) 10) = 16.
-  Proof. auto. Qed.
-
   (** Atomically apply a function to all elements of the storage *)
   Definition a_map {K V} (f : V -> V) (s : t K V) : t K V :=
     let g k Hk acc :=
@@ -540,6 +520,7 @@ Module Properties (I : Interface).
   Definition forallS {K V} (s : t K V) (prop : forall (k : KT K), In k (keys s) -> Prop) : Prop :=
     let f k Hin acc := prop k Hin /\ acc
     in foldl' (keys s) f True.
+
 
   Theorem keys_none : forall {K V} (s : t K V) k,
       ~In k (keys s) -> get k s = None.
