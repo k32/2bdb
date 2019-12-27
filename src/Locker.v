@@ -162,6 +162,8 @@ Proof.
     apply IHl.
 Qed.
 
+(** Prove that only the subset of keys affected by the transaction
+affects the result of lock check *)
 Lemma check_tx_subset_eq_p : forall hwm S1 S2 tx,
     sync_window_size S1 = sync_window_size S2 ->
     subset_s_eq (reads tx) S1 S2 ->

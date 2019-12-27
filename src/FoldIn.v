@@ -25,7 +25,7 @@ Definition foldl' {A B} : forall (l : list A), (forall (a : A), In a l -> B -> B
 Defined.
 
 (** Proof of equivalence of [fold_left] with [foldl']. It can be used
-to replace one another for easier reasoning *)
+to replace one with another for easier reasoning *)
 Theorem fold_left_foldl' : forall {A B} (l : list A) (f : B -> A -> B) (a : B),
     fold_left f l a = foldl' l (fun elem HIn acc => f acc elem) a.
 Proof.

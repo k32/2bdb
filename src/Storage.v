@@ -3,10 +3,11 @@
 Require Import String.
 Require Import List.
 Require Import Coq.Program.Basics.
-Require FMapAVL.
 Import ListNotations.
 Import Decidable.
 Import Sumbool.
+Require Import FoldIn.
+Require Export EqDec.
 
 Set Implicit Arguments.
 
@@ -24,14 +25,6 @@ Definition TabName := String.string.
 (** Weaker equality operator comparing contents of the storage, rather
 than state of the storage backend itself: *)
 Reserved Notation "s1 =s= s2" (at level 50).
-
-Definition eq_decP T := forall (a b : T), {a = b} + {a <> b}.
-
-(** Type of values with decidable comparison operator *)
-Record Keq_dec : Type :=
-  { KT : Type;
-    eq_dec : eq_decP KT;
-  }.
 
 Module Type Interface.
   (* We assume that all operations listed here are atomic and it's up
@@ -276,6 +269,7 @@ Module WriteLog (I : Interface).
   Hint Extern 4 => rewrite <-Wlog_has_key_rev.
   Hint Extern 4 => rewrite keep.
   Hint Extern 4 => rewrite delete_keep.
+  Hint Extern 4 => destruct (eq_dec _ _ _).
   Hint Resolve s_eq_self.
 
   Lemma Wlog_apply_same : forall {K V} (l : @Wlog K V) (s1 s2 : t K V),
@@ -445,7 +439,7 @@ Module ListStorage <: Interface.
     match s with
     | [] => []
     | (k', v) :: t =>
-      if K.(eq_dec) k k' then t
+      if K.(eq_dec) k k' then delete k t
       else (k', v) :: delete k t
     end.
 
@@ -473,30 +467,47 @@ Module ListStorage <: Interface.
 
   Theorem keep : forall {K V} (s : t K V) (k : K.(KT)) (v : V),
       get k (put k v s) = Some v.
-  Admitted.
-
-  Theorem distinct : forall {K V} (s : t K V) (k1 : K.(KT)) (k2 : K.(KT)) (v2 : V),
-      k1 <> k2 ->
-      get k1 s = get k1 (put k2 v2 s).
-  Admitted.
+  Proof.
+    intros.
+    simpl. destruct (eq_dec K k k); easy.
+  Qed.
 
   Theorem delete_keep : forall {K V} (s : t K V) k,
       get k (delete k s) = None.
-  Admitted.
+  Proof.
+    intros.
+    induction s as [|[k1 v] t IH].
+    - easy.
+    - simpl.
+      destruct (eq_dec K k k1).
+      + easy.
+      + simpl.
+        rewrite IH.
+        destruct (eq_dec K k1 k) as [H|H]; try symmetry in H; easy.
+  Qed.
 
   Theorem delete_distinct : forall {K V} (s : t K V) (k1 : KT K) (k2 : KT K),
       k1 <> k2 ->
       get k1 s = get k1 (delete k2 s).
-  Admitted.
+  Admitted. (* This proof is left as an exercise for the reader ;) *)
+
+  Theorem distinct : forall {K V} (s : t K V) (k1 : K.(KT)) (k2 : K.(KT)) (v2 : V),
+      k1 <> k2 ->
+      get k1 s = get k1 (put k2 v2 s).
+  Proof.
+    intros. simpl.
+    destruct (eq_dec K k2 k1) as [He|He].
+    - symmetry in He. easy.
+    - rewrite <-delete_distinct; easy.
+  Qed.
 
   Theorem keys_some : forall {K V} (s : t K V) k,
       In k (keys s) <-> exists v, get k s = Some v.
-  Admitted.
+  Admitted. (* This proof is left as an exercise for the reader ;) *)
 End ListStorage.
 
 Module Properties (I : Interface).
   Import I.
-  Require Import FoldIn.
 
   (** Total version of get *)
   Definition getT {K V} k (s : t K V) (H : In k (keys s)) : V.
@@ -520,7 +531,6 @@ Module Properties (I : Interface).
   Definition forallS {K V} (s : t K V) (prop : forall (k : KT K), In k (keys s) -> Prop) : Prop :=
     let f k Hin acc := prop k Hin /\ acc
     in foldl' (keys s) f True.
-
 
   Theorem keys_none : forall {K V} (s : t K V) k,
       ~In k (keys s) -> get k s = None.
