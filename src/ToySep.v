@@ -116,6 +116,42 @@ Module IOHandler.
   Definition exit {T : t} : @Actor T := a_dead.
 End IOHandler.
 
+Module Mutable.
+  Import IOHandler.
+
+  Variable T : Set.
+
+  Inductive req_t :=
+  | get : req_t
+  | put : T -> req_t.
+
+  Local Definition ret_t (req : req_t) : Set :=
+    match req with
+    | get => T
+    | _   => True
+    end.
+
+  Local Definition eval_f (s0 : T) (aid : AID) (req : req_t) : @HandlerRet req_t T req ret_t :=
+    match req with
+    | get   => r_return _ s0 s0
+    | put x => r_return _ I x
+    end.
+
+  Inductive example_eval (s0 : T) (aid : AID) (req : req_t) : @HandlerRet req_t T req ret_t -> Prop :=
+  | example_eval1 : example_eval s0 aid req (eval_f s0 aid req).
+
+  Inductive example_initial_state : T -> Prop :=
+  | example_initial_state1 : forall (x : T), example_initial_state x.
+
+  Definition t :=
+    {|
+      h_state := T;
+      h_req := req_t;
+      h_initial_state := example_initial_state;
+      h_eval := example_eval;
+    |}.
+End Mutable.
+
 Module ExampleModelDefn.
   Import IOHandler.
   Local Definition state : Set := nat * bool.

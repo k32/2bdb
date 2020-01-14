@@ -117,11 +117,13 @@ Proof.
   destruct (check_tx S hwm tx); destruct S; intros H; easy.
 Qed.
 
+(** Key subset equality property: "for each key in [l] the value is
+the same in [S1] and [S2]": *)
 Definition subset_s_eq l S1 S2 : Prop :=
   forall k sn, In (k, sn) l ->
           get_seqno k S1 = sn /\ get_seqno k S2 = sn.
 
-Lemma subset_s_eq_refl : forall l S1 S2, subset_s_eq l S1 S2 <-> subset_s_eq l S2 S1.
+Lemma subset_s_eq_comm : forall l S1 S2, subset_s_eq l S1 S2 <-> subset_s_eq l S2 S1.
 Proof.
   intros.
   unfold subset_s_eq. split; intros; apply and_comm; auto.
