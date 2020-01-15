@@ -1,4 +1,4 @@
-(** This module contains toy implementation of separation logic *)
+(** This module contains a minimalistic implementation of separation logic *)
 Require Coq.Vectors.Fin.
 Require Coq.Vectors.Vector.
 Module Fin := Coq.Vectors.Fin.
@@ -11,7 +11,7 @@ Module IOHandler.
 
   Inductive HandlerRet {req_t state_t : Type} (req : req_t) {rep_t : req_t -> Set} : Type :=
   | r_return : forall (reply : rep_t req)
-                 (state : state_t)
+                 (state' : state_t)
                , HandlerRet req
   | r_stall : HandlerRet req.
 
@@ -39,7 +39,12 @@ Module IOHandler.
 
     Hint Transparent compose_state.
 
-    Definition compose_ret_t h1 h2 req :=
+    Definition compose_initial_state h1 h2 state :=
+      h1.(h_initial_state) (fst state) /\ h2.(h_initial_state) (snd state).
+
+    Hint Transparent compose_initial_state.
+
+    Definition compose_ret_t (h1 h2 : t) (req : compose_req h1 h2) : Set :=
       match req with
       | inl l => h1.(h_ret) l
       | inr r => h2.(h_ret) r
@@ -47,45 +52,50 @@ Module IOHandler.
 
     Hint Transparent compose_ret_t.
 
-    Definition compose_initial_state h1 h2 state :=
-      h1.(h_initial_state) (fst state) /\ h2.(h_initial_state) (snd state).
-
-    Hint Transparent compose_initial_state.
-
-    Definition ComposeHandlerRet h1 h2 req := @HandlerRet (compose_req h1 h2)
-                                                          (compose_state h1 h2)
-                                                          req
-                                                          (compose_ret_t h1 h2).
-
-    Hint Transparent ComposeHandlerRet.
+    Definition ComposeHandlerRet h1 h2 req :=
+      @HandlerRet (compose_req h1 h2)
+                  (compose_state h1 h2)
+                  req
+                  (compose_ret_t h1 h2).
 
     Definition compose_eval h1 h2
                (state : compose_state h1 h2)
                (aid : AID)
                req
                (ret : ComposeHandlerRet h1 h2 req) : Prop.
-    Admitted.
-      (* let (s1, s2) := state in *)
-      (* match req with *)
-      (* | inl req => h1.(h_eval) s1 aid req ret *)
-      (* | inr req => h2.(h_eval) s2 aid req ret *)
-      (* end. *)
+      refine (
+          (let (s1, s2) := state in
+           match req as req' return (req = req' -> Prop) with
+           | inl req' => fun H => h1.(h_eval) s1 aid req' _
+           | inr req' => fun H => h2.(h_eval) s2 aid req' _
+           end) (eq_refl req));
+        subst;
+        destruct ret;
+        try simpl in reply;
+        constructor; assumption.
+    Defined.
 
-    Definition compose (h1 h2 : t) :=
-      {| h_state := compose_state h1 h2;
-         h_req   := compose_req h1 h2;
-         h_ret   := fun req => compose_ret_t h1 h2 req;
-         h_initial_state := fun state => compose_initial_state h1 h2 state;
-         h_eval  := fun state aid io result => compose_eval h1 h2 state aid io result
+    Definition compose (h1 h2 : t) : t :=
+      {| h_state         := compose_state h1 h2;
+         h_req           := compose_req h1 h2;
+         h_ret           := compose_ret_t h1 h2;
+         h_initial_state := compose_initial_state h1 h2;
+         h_eval          := compose_eval h1 h2;
       |}.
   End Composition.
 
   Variable H : t.
 
+  (* TODO: Emulate async requests via list (for TCP) or bag (for UDP)
+  of outgoing messages in the actor's state *)
+
   CoInductive Actor {T : t} : Type :=
-  | a_waiting : forall (pending_io : T.(h_req))
-                  (continuation : T.(h_ret) pending_io -> Actor)
-                , Actor
+  | a_sync1 : forall (pending_io : T.(h_req))
+                (continuation : T.(h_ret) pending_io -> Actor)
+              , Actor
+  | a_sync2 : forall (pending_io : T.(h_req))
+                (continuation : T.(h_ret) pending_io -> Actor)
+              , Actor
   | a_dead : Actor.
 
   Definition Actors := Vec.t (@Actor H) N_actors.
@@ -119,101 +129,96 @@ End IOHandler.
 Module Mutable.
   Import IOHandler.
 
-  Variable T : Set.
-
-  Inductive req_t :=
+  Inductive req_t {T : Set} :=
   | get : req_t
   | put : T -> req_t.
 
-  Local Definition ret_t (req : req_t) : Set :=
+  Local Definition ret_t {T : Set}  (req : @req_t T) : Set :=
     match req with
     | get => T
     | _   => True
     end.
 
-  Local Definition eval_f (s0 : T) (aid : AID) (req : req_t) : @HandlerRet req_t T req ret_t :=
+  Local Definition eval_f {T : Set} (s0 : T) (aid : AID) (req : req_t) : @HandlerRet req_t T req ret_t :=
     match req with
     | get   => r_return _ s0 s0
     | put x => r_return _ I x
     end.
 
-  Inductive example_eval (s0 : T) (aid : AID) (req : req_t) : @HandlerRet req_t T req ret_t -> Prop :=
-  | example_eval1 : example_eval s0 aid req (eval_f s0 aid req).
-
-  Inductive example_initial_state : T -> Prop :=
+  Inductive example_initial_state {T : Set} : T -> Prop :=
   | example_initial_state1 : forall (x : T), example_initial_state x.
 
-  Definition t :=
+  Definition t T :=
     {|
       h_state := T;
       h_req := req_t;
       h_initial_state := example_initial_state;
-      h_eval := example_eval;
+      h_eval := fun s0 aid req ret => ret = eval_f s0 aid req;
     |}.
 End Mutable.
 
+Module Mutex.
+  Import IOHandler.
+
+  Inductive req_t :=
+  | grab    : req_t
+  | release : req_t.
+
+  Local Definition ret_t (_ : req_t) : Set := True.
+
+  Local Definition state_t := option AID.
+
+  Local Definition eval_f (s0 : state_t) (aid : AID) (req : req_t) : @HandlerRet req_t state_t req ret_t :=
+    match req, s0 with
+    | grab, None   => r_return _ I (Some aid)
+    | grab, Some _ => r_stall _
+    | release, _   => r_return _ I None
+    end.
+
+  Definition t :=
+    {|
+      h_state := state_t;
+      h_req := req_t;
+      h_initial_state := fun s0 => s0 = None;
+      h_eval := fun s0 aid req ret => ret = eval_f s0 aid req;
+    |}.
+End Mutex.
+
 Module ExampleModelDefn.
   Import IOHandler.
-  Local Definition state : Set := nat * bool.
+  Local Definition handler := compose (Mutable.t nat) Mutex.t.
 
-  Inductive io :=
-  | get : io
-  | put : nat -> io
-  | lock : io
-  | unlock : io
-  .
-
-  Local Definition ret_t (io : io) : Set :=
-    match io with
-    | get => nat
-    | _ => True
-    end.
-
-  Local Definition eval_f (s0 : state) (aid : AID) (req : io) : @HandlerRet io state req ret_t :=
-    match req, s0 with
-    | get, (x, _)      => r_return _ x s0
-    | put N, (_, l)    => r_return _ I (N, l)
-    | lock, (x, false) => r_return _ I (x, true)
-    | lock, (x, true)  => r_stall  _
-    | unlock, (x, _)   => r_return _ I (x, false)
-    end.
-
-  Inductive example_eval (s0 : state) (aid : AID) (req : io) : @HandlerRet io state req ret_t -> Prop :=
-  | example_eval1 : example_eval s0 aid req (eval_f s0 aid req).
-
-  Inductive example_initial_state : state -> Prop :=
-  | example_initial_state1 : example_initial_state (0, false).
-
-  Local Definition exampleHandler : IOHandler.t :=
-    {|
-      h_state := state;
-      h_req := io;
-      h_ret := ret_t;
-      h_initial_state := example_initial_state;
-      h_eval := example_eval;
-    |}.
-
-  Notation "'do' V '<-' I ; C" := (@a_waiting exampleHandler (I) (fun V => C))
+  Notation "'sync' V '<-' I ; C" := (@a_sync1 handler (I) (fun V => C))
                                     (at level 100, C at next level, V ident, right associativity).
+
+  Local Definition put (val : nat) : h_req handler :=
+    inl (Mutable.put val).
+
+  Local Definition get : h_req handler :=
+    inl (Mutable.get).
+
+  Local Definition grab : h_req handler :=
+    inr (Mutex.grab).
+
+  Local Definition release : h_req handler :=
+    inr (Mutex.release).
 
   (* Just a demonstration that we can define programs that loop
   indefinitely, as long as they do IO: *)
-  Local CoFixpoint infinite_loop (aid : AID) : @Actor exampleHandler :=
-    @a_waiting exampleHandler (put 1) (fun ret => infinite_loop aid).
+  Local CoFixpoint infinite_loop (aid : AID) : @Actor handler :=
+    @a_sync1 handler (put 1) (fun ret => infinite_loop aid).
 
   (* Data race example: *)
-  Local Definition counter_race (_ : AID) : @Actor exampleHandler :=
-    do v <- get;
-    do _ <- put (v + 1);
-    exit.  Notation "'do' I; C" := (do _ <- I ; C)
-                            (at level 100, C at next level, right associativity).
-
-  (* Fixed example: *)
-  Local Definition counter_correct (_ : AID) : @Actor exampleHandler :=
-    do _ <- lock;
-    do v <- get;
-    do _ <- put (v + 1);
-    do _ <- unlock;
+  Local Definition counter_race (_ : AID) : @Actor handler :=
+    sync v <- get;
+    sync _ <- put (v + 1);
     exit.
 
+  (* Fixed example: *)
+  Local Definition counter_correct (_ : AID) : @Actor handler :=
+    sync _ <- grab;
+    sync v <- get;
+    sync _ <- put (v + 1);
+    sync _ <- release;
+    exit.
 End ExampleModelDefn.
