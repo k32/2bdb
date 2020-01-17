@@ -7,10 +7,14 @@ Require Import Omega.
 Module Fin := Coq.Vectors.Fin.
 Module Vec := Coq.Vectors.Vector.
 
+From QuickChick Require Import QuickChick.
+
 Module IOHandler.
   Variable N_actors : nat.
 
   Definition AID : Set := Fin.t N_actors.
+
+  Notation "'Nondeterministic'" := Prop.
 
   Inductive HandlerRet {req_t state_t : Type} (req : req_t) {rep_t : req_t -> Set} : Type :=
   | r_return : forall (reply : rep_t req)
@@ -23,14 +27,12 @@ Module IOHandler.
       h_state : Set;
       h_req : Set;
       h_ret : h_req -> Set;
-      (* Nondeterministic: *)
-      h_initial_state : h_state -> Prop;
-      (* Nondeterministic: *)
+      h_initial_state : h_state -> Nondeterministic;
       h_eval : forall (state : h_state)
                  (aid : AID)
                  (req : h_req)
                  (ret : @HandlerRet h_req h_state req h_ret)
-               , Prop;
+               , Nondeterministic;
     }.
 
   Section Composition.
@@ -92,11 +94,12 @@ Module IOHandler.
   of outgoing messages in the actor's state *)
 
   CoInductive Actor {T : t} : Type :=
-  | a_sync1 : forall (pending_io : T.(h_req))
-                (continuation : T.(h_ret) pending_io -> Actor)
+  | a_sync1 : forall (pending_req : T.(h_req))
+                (continuation : T.(h_ret) pending_req -> Actor)
               , Actor
-  | a_sync2 : forall (pending_io : T.(h_req))
-                (continuation : T.(h_ret) pending_io -> Actor)
+  | a_sync2 : forall (req : T.(h_req))
+                (pending_rep : T.(h_ret) req)
+                (continuation : T.(h_ret) req -> Actor)
               , Actor
   | a_dead : Actor.
 
@@ -126,17 +129,43 @@ Module IOHandler.
   Definition initial_actors (prog : AID -> @Actor H) : Actors :=
     Vec.map prog (seq_vec N_actors).
 
-  Inductive model_step prog : ModelState -> Prop :=
+
+  (* TODO: Update trace! *)
+  Definition eval_model {H : t} (aid : AID) (ms : @ModelState H) (ms' : ModelState) : Nondeterministic :=
+    match ms with
+      {| m_actors := aa; m_state := s; m_trace := t; |} =>
+      match Vec.nth aa aid with
+      | a_dead =>
+        ms = ms'
+
+      | a_sync1 req cont =>
+        forall (ret : @HandlerRet H.(h_req) H.(h_state) req H.(h_ret)),
+          H.(h_eval) s aid req ret ->
+          match ret with
+          | r_stall _         => ms = ms'
+          | r_return _ rep s' => let a' := a_sync2 req rep cont in
+                                let aa' := Vec.replace aa aid a' in
+                                ms' = mkState H aa' s' t
+          end
+
+      | a_sync2 req ret cont =>
+          let a' := cont ret in
+          ms' = mkState H (Vec.replace aa aid a') s t
+      end
+    end.
+
+  (** Define all schedulings of the system *)
+  Inductive Schedulings prog : ModelState -> Prop :=
   | model_init : forall s0,
       H.(h_initial_state) s0 ->
-      model_step prog {| m_actors := initial_actors prog;
-                         m_state  := s0;
-                         m_trace  := []
-                      |}
-
-  | step1 : forall (aid : AID) (ms0 : ModelState),
-      model_step prog ms0 ->
-      model_step prog ms0.
+      Schedulings prog {| m_actors := initial_actors prog;
+                          m_state  := s0;
+                          m_trace  := [];
+                       |}
+  | model_step : forall (aid : AID) (ms : ModelState),
+      forall ms', Schedulings prog ms ->
+             eval_model aid ms ms' ->
+             Schedulings prog ms'.
 
   Definition exit {T : t} : @Actor T := a_dead.
 End IOHandler.
@@ -236,4 +265,5 @@ Module ExampleModelDefn.
     sync _ <- put (v + 1);
     sync _ <- release;
     exit.
+
 End ExampleModelDefn.
