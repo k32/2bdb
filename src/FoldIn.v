@@ -3,8 +3,14 @@
 sort of [In k (keys s)] hypothesis. This module defines versions of
 common list processing functions that provide this hypothesis *)
 
-Require Import List.
-Import ListNotations.
+From Coq Require
+     Omega
+     Vector
+     List.
+
+Import List ListNotations Omega.
+Module Vec := Vector.
+Module Fin := Fin.
 
 (** Version of list foldr that preserves evidence that key passed
 into the function is a member of the input list *)
@@ -68,3 +74,12 @@ Proof.
           reflexivity.
       }
 Qed.
+
+Definition seq_vec : forall (N : nat), Vec.t (Fin.t N) N.
+intros N.
+induction N.
+- apply Vec.nil.
+- assert (aid : N < S N) by omega.
+  apply Fin.of_nat_lt in aid.
+  apply (Vec.cons _ aid N (Vec.map Fin.FS IHN)).
+Defined.
