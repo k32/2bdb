@@ -1,6 +1,9 @@
 (** This module contains a minimalistic implementation of separation logic *)
 Require Coq.Vectors.Fin.
 Require Coq.Vectors.Vector.
+Require Import Coq.Lists.List.
+Import List.ListNotations.
+Require Import Omega.
 Module Fin := Coq.Vectors.Fin.
 Module Vec := Coq.Vectors.Vector.
 
@@ -84,7 +87,6 @@ Module IOHandler.
       |}.
   End Composition.
 
-  Variable H : t.
 
   (* TODO: Emulate async requests via list (for TCP) or bag (for UDP)
   of outgoing messages in the actor's state *)
@@ -98,30 +100,43 @@ Module IOHandler.
               , Actor
   | a_dead : Actor.
 
-  Definition Actors := Vec.t (@Actor H) N_actors.
+  Definition Actors {H : t} := Vec.t (@Actor H) N_actors.
 
-  Definition Trace := list H.(h_req).
+  Definition Trace {H : t} := list H.(h_req).
 
-  Record ModelState (T : t) : Type :=
+  Record ModelState {H : t} : Type :=
     mkState
       {
-        m_actors : Actors;
-        m_state  : T.(h_state);
-        m_trace  : Trace;
+        m_actors : @Actors H;
+        m_state  : H.(h_state);
+        m_trace  : @Trace H;
       }.
 
-  (* Local Definition init_actors : Actors. *)
-  (*   refine (fix go i := *)
-  (*             match i with *)
-  (*             | 0 => Vec.nil *)
-  (*             | Fin.S i' => Vec.cons (start_actor i) (go i') *)
-  (*             end). *)
+  Local Definition seq_vec : forall (N : nat), Vec.t (Fin.t N) N.
+  intros N.
+  induction N.
+  - apply Vec.nil.
+  - assert (aid : N < S N) by omega.
+    apply Fin.of_nat_lt in aid.
+    apply (Vec.cons _ aid N (Vec.map Fin.FS IHN)).
+  Defined.
 
+  Variable H : t.
 
+  Definition initial_actors (prog : AID -> @Actor H) : Actors :=
+    Vec.map prog (seq_vec N_actors).
 
-  (* Inductive model_step (s : ModelState) : ModelState -> Prop := *)
-  (* | mod_init : forall s0, H.(h_initial_state) s0 -> *)
-  (*                   mkState init_actors s0 []. *)
+  Inductive model_step prog : ModelState -> Prop :=
+  | model_init : forall s0,
+      H.(h_initial_state) s0 ->
+      model_step prog {| m_actors := initial_actors prog;
+                         m_state  := s0;
+                         m_trace  := []
+                      |}
+
+  | step1 : forall (aid : AID) (ms0 : ModelState),
+      model_step prog ms0 ->
+      model_step prog ms0.
 
   Definition exit {T : t} : @Actor T := a_dead.
 End IOHandler.
