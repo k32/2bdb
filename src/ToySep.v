@@ -225,14 +225,13 @@ Module Mutex.
   End defs.
 End Mutex.
 
-
 Module ExampleModelDefn.
   Definition AID : Set := nat.
 
   Local Definition handler := compose (Mutable.t AID nat) (Mutex.t AID).
 
-  Notation "'sync' V '<-' I ; C" := (@a_sync1 AID handler (I) (fun V => C))
-                                    (at level 100, C at next level, V ident, right associativity).
+  Notation "'do' V '<-' I ; C" := (@a_sync1 AID handler (I) (fun V => C))
+                                  (at level 100, C at next level, V ident, right associativity).
 
   Local Definition put (val : nat) : handler.(h_req) :=
     inl (Mutable.put val).
@@ -253,16 +252,16 @@ Module ExampleModelDefn.
 
   (* Data race example: *)
   Local Definition counter_race (_ : AID) : Actor :=
-    sync v <- get;
-    sync _ <- put (v + 1);
+    do v <- get;
+    do _ <- put (v + 1);
     exit.
 
   (* Fixed example: *)
   Local Definition counter_correct (_ : AID) : Actor :=
-    sync _ <- grab;
-    sync v <- get;
-    sync _ <- put (v + 1);
-    sync _ <- release;
+    do _ <- grab;
+    do v <- get;
+    do _ <- put (v + 1);
+    do _ <- release;
     exit.
 
 End ExampleModelDefn.
