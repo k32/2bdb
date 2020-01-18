@@ -1,15 +1,18 @@
 (** This module contains a minimalistic implementation of separation logic *)
 From Coq Require Import
      List
-     Omega.
+     Omega
+     Structures.OrdersEx.
 
 From Containers Require Import
+     OrderedType
+     OrderedTypeEx
      Maps.
-
-Import List.ListNotations.
 
 From QuickChick Require Import
      QuickChick.
+
+Import ListNotations.
 
 Section IOHandler.
   Variable AID : Set.
@@ -85,18 +88,18 @@ Section IOHandler.
     end.
 
   (** Define all schedulings of the system *)
-  Inductive Schedulings {H : t} initial_actors : ModelState -> Prop :=
+  Inductive Scheduling {H : t} initial_actors : ModelState -> Prop :=
   | model_init : forall s0,
       H.(h_initial_state) s0 ->
-      Schedulings initial_actors {| m_actors := initial_actors;
-                                    m_state  := s0;
-                                    m_trace  := nil;
-                                 |}
+      Scheduling initial_actors {| m_actors := initial_actors;
+                                   m_state  := s0;
+                                   m_trace  := nil;
+                                |}
 
-  | sync_step : forall (aid : AID) (ms : ModelState),
-      forall ms', Schedulings initial_actors ms ->
-             eval_sync aid ms ms' ->
-             Schedulings initial_actors ms'.
+  | model_step : forall (aid : AID) (ms : ModelState),
+      forall ms', eval_sync aid ms ms' ->
+             Scheduling initial_actors ms ->
+             Scheduling initial_actors ms'.
 
   Definition exit {T : t} : @Actor T := a_dead.
 
@@ -161,7 +164,16 @@ Arguments h_initial_state {_}.
 Arguments h_eval {_}.
 Arguments Actor {_} {_}.
 Arguments a_sync1 {_} {_}.
+Arguments a_sync2 {_} {_}.
+Arguments a_dead {_} {_}.
 Arguments exit {_} {_}.
+Arguments ModelState {_} {_}.
+Arguments m_actors {_} {_} {_}.
+Arguments m_state {_} {_} {_}.
+Arguments m_trace {_} {_} {_}.
+Arguments Scheduling {_} {_}.
+Arguments model_init {_} {_} {_} {_}.
+Arguments model_step {_} {_} {_} {_}.
 
 Module Mutable.
   Inductive req_t {T : Set} :=
@@ -169,7 +181,7 @@ Module Mutable.
   | put : T -> req_t.
 
   Section defs.
-  Variables AID T : Set.
+  Variables (AID T : Set) (initial_state : T -> Prop).
 
   Local Definition ret_t (req : @req_t T) : Set :=
     match req with
@@ -183,14 +195,11 @@ Module Mutable.
     | put x => r_return _ I x
     end.
 
-  Inductive example_initial_state : T -> Prop :=
-  | example_initial_state1 : forall (x : T), example_initial_state x.
-
   Definition t : (t AID) :=
     {|
       h_state := T;
       h_req := req_t;
-      h_initial_state := example_initial_state;
+      h_initial_state := initial_state;
       h_eval := fun s0 aid req ret => ret = eval_f s0 aid req;
     |}.
   End defs.
@@ -228,7 +237,7 @@ End Mutex.
 Module ExampleModelDefn.
   Definition AID : Set := nat.
 
-  Local Definition handler := compose (Mutable.t AID nat) (Mutex.t AID).
+  Local Definition handler := compose (Mutable.t AID nat (fun a => a = 0)) (Mutex.t AID).
 
   Notation "'do' V '<-' I ; C" := (@a_sync1 AID handler (I) (fun V => C))
                                   (at level 100, C at next level, V ident, right associativity).
@@ -248,7 +257,7 @@ Module ExampleModelDefn.
   (* Just a demonstration that we can define programs that loop
   indefinitely, as long as they do IO: *)
   Local CoFixpoint infinite_loop (aid : AID) : Actor :=
-    a_sync1 (put 1) (fun ret => infinite_loop aid).
+    a_sync1 (put 0) (fun ret => infinite_loop aid).
 
   (* Data race example: *)
   Local Definition counter_race (_ : AID) : Actor :=
@@ -261,7 +270,16 @@ Module ExampleModelDefn.
     do _ <- grab;
     do v <- get;
     do _ <- put (v + 1);
-    do _ <- release;
-    exit.
+    do _ <- release; exit.
+
+  Local Definition two_actors := add 0 (counter_race 0) (add 1 (counter_race 1) [] : Map [nat, Actor]).
+
+  Example race1 :=
+    exists (s : ModelState handler),
+      Scheduling handler two_actors s ->
+      find 0 (m_actors s) = Some a_dead ->
+      find 1 (m_actors s) = Some a_dead ->
+      fst (m_state s) = 1.
+
 
 End ExampleModelDefn.
