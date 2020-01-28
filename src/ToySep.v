@@ -2,6 +2,7 @@
 From Coq Require Import
      List
      Omega
+     Tactics
      Structures.OrdersEx.
 
 From Containers Require Import
@@ -13,6 +14,8 @@ From Containers Require Import
 
 From QuickChick Require Import
      QuickChick.
+
+Require Import FoldIn.
 
 Import ListNotations.
 
@@ -42,74 +45,126 @@ Section IOHandler.
                         Nondeterministic @HandlerRet h_req h_state req h_ret;
     }.
 
-  CoInductive Actor {T : t} : Type :=
-  | a_sync : forall (pending_req : T.(h_req))
-               (continuation : T.(h_ret) pending_req -> Actor)
-             , Actor
-  | a_dead : Actor.
+  Section Actor.
+    Variable H : t.
 
-  Definition Actors {H : t} := Map[AID, (@Actor H)].
+    CoInductive Actor : Type :=
+    | a_cont : forall (pending_req : H.(h_req))
+                 (continuation : H.(h_ret) pending_req -> option Actor)
+             , Actor.
 
-  Inductive TraceElem {H : t} :=
-  | trace_elem : forall (aid : AID) (req : H.(h_req)) (ret : H.(h_ret) req), TraceElem.
+    Definition Actors := Map[AID, Actor].
 
-  Definition Trace {H : t} := list (@TraceElem H).
+    Record TraceElem : Set :=
+      trace_elem { te_aid : AID;
+                   te_req : H.(h_req);
+                   te_ret : H.(h_ret) te_req;
+                 }.
 
-  Record ModelState {H : t} : Type :=
-    mkState
-      {
-        m_actors : @Actors H;
-        m_state  : H.(h_state);
-        m_trace  : @Trace H;
-      }.
+    Definition Trace := list TraceElem.
 
-  Definition enter_syscall {H} aid (req : h_req H) cont (ret : HandlerRet req (h_ret H)) ms :=
-    match ms with
-      {| m_state := s; m_actors := aa; m_trace := t |} =>
-      match ret with
-      | r_stall _ _         => ms
-      | r_return _ _ rep s' =>
-        let a' := cont rep in
-        let aa' := add aid a' aa in
-        mkState H aa' s' (trace_elem aid req rep :: t)
-      end
-    end.
+    Record ModelState : Type :=
+      mkState
+        {
+          m_actors : Actors;
+          m_state  : H.(h_state);
+          m_trace  : Trace;
+        }.
 
-  (* TODO: Reap zombie actors *)
-  Definition eval_sync {H : t} (aid : AID) (ms : ModelState) (ms' : ModelState) : Prop :=
-    match ms with
-      {| m_state := s; m_actors := aa; m_trace := t |} =>
-      match find aid aa with
-      | None =>
-        ms = ms'
-      | Some a_dead =>
-        ms = ms'
-      | Some (a_sync req cont) =>
-        forall ret : @HandlerRet H.(h_req) H.(h_state) req H.(h_ret),
-          H.(h_eval) s aid req ret ->
-          ms' = enter_syscall aid req cont ret ms
-      end
-    end.
+    Definition enter_syscall aid (req : h_req H) cont (ret : HandlerRet req (h_ret H)) ms :=
+      match ms with
+        {| m_state := s; m_actors := aa; m_trace := t |} =>
+        match ret with
+        | r_stall _ _         => ms
+        | r_return _ _ rep s' =>
+          let aa' := match cont rep with
+                     | Some a' => add aid a' aa
+                     | None    => remove aid aa
+                     end in
+          mkState aa' s' (trace_elem aid req rep :: t)
+        end
+      end.
 
-  (* Ltac forward1 ms aid ret := *)
+    Definition eval_sync (aid : AID) (ms : ModelState) (HIn : In aid (m_actors ms)) (ms' : ModelState) : Prop :=
+      match ms with
+        {| m_state := s |} =>
+        match find' aid (m_actors ms) HIn with
+        | a_cont req cont =>
+          forall ret : @HandlerRet H.(h_req) H.(h_state) req H.(h_ret),
+            H.(h_eval) s aid req ret ->
+            ms' = enter_syscall aid req cont ret ms
+        end
+      end.
 
-  (** Constructively define a property that certain model state is
-  reachable from a given deterministic program [initial_actors] and
-  nondeterministic handler state *)
-  Inductive ReachableState {H : t} {initial_actors : Actors} : ModelState -> Prop :=
-  | model_init : forall s0,
-      H.(h_initial_state) s0 ->
-      ReachableState {| m_actors := initial_actors;
-                        m_state  := s0;
-                        m_trace  := nil;
-                     |}
+    (* (** This type is a bit tricky... *) *)
+    (* Definition perform_io : forall (aid : AID) (ms : ModelState), *)
+    (*     let aa := m_actors ms in *)
+    (*     forall (HIn : In aid aa), *)
+    (*       match find' aid aa HIn with *)
+    (*       | a_cont req _ => forall (ret : @HandlerRet (h_req H) (h_state H) req (h_ret H)), *)
+    (*           ModelState *)
+    (*       end. *)
+    (*   intros aid ms aa HIn. *)
+    (*   refine (match find' aid aa HIn with *)
+    (*           | a_cont req cont => _ *)
+    (*           end). *)
+    (*   exact (fun rep => *)
+    (*            match rep with *)
+    (*            | r_stall _ _ => ms *)
+    (*            | r_return _ _ ret s' => *)
+    (*              let trace := trace_elem aid req ret :: m_trace ms in *)
+    (*              let aa' := match cont ret with *)
+    (*                         | Some a' => add aid a' aa *)
+    (*                         | None    => remove aid aa *)
+    (*                         end in *)
+    (*              mkState aa' s' trace *)
+    (*            end). *)
+    (* Defined. *)
 
-  | model_step : forall (aid : AID) (ms : ModelState),
-      forall ms', eval_sync aid ms ms' ->
-             ReachableState ms ->
-             ReachableState ms'.
+    (** Constructively define a property that certain model state is
+    reachable from a given deterministic program [initial_actors] and
+    nondeterministic handler state *)
+    Inductive ReachableState {initial_actors : Actors} : ModelState -> Prop :=
+    | model_init : forall s0,
+        H.(h_initial_state) s0 ->
+        ReachableState {| m_actors := initial_actors;
+                          m_state  := s0;
+                          m_trace  := nil;
+                       |}
 
-  Definition exit {T : t} : @Actor T := a_dead.
+    | model_step : forall (aid : AID) (ms ms' : ModelState) (HIn : In aid (m_actors ms)),
+        eval_sync aid ms HIn ms' ->
+        ReachableState ms ->
+        ReachableState ms'.
+
+    (** TODO: This property is hella ugly, use cumulative universes? *)
+    Definition valid_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) : Prop :=
+      match te, ms with
+      | trace_elem aid req ret, mkState aa s _ =>
+        In aid aa /\
+        (forall (HIn : In aid aa),
+            let HReq := match find' aid aa HIn with
+                        | a_cont req' _ => req = req'
+                        end in
+            let hret := r_return req (h_ret H) ret s' in
+            let Hs := h_eval H s aid req hret in
+            HReq /\ Hs)
+      end.
+
+    Definition apply_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state))
+               (Hte : valid_trace_elem ms te s') : ModelState.
+      destruct te as [aid req ret].
+      destruct ms as [aa s t].
+      unfold valid_trace_elem in Hte.
+      destruct Hte as [HIn Hte].
+      destruct (find' aid aa HIn) as [req0 cont].
+      rewrite HReq in cont.
+      apply (enter_syscall aid req cont (r_return req H.(h_ret) ret s') ms).
+    Defined.
+
+
+    Definition exit : option Actor := None.
+  End Actor.
 
   Section ComposeHandlers.
     Definition compose_state h1 h2 : Type :=
@@ -175,8 +230,7 @@ Arguments h_ret {_}.
 Arguments h_initial_state {_}.
 Arguments h_eval {_}.
 Arguments Actor {_} {_}.
-Arguments a_sync {_} {_}.
-Arguments a_dead {_} {_}.
+Arguments a_cont {_} {_}.
 Arguments exit {_} {_}.
 Arguments ModelState {_} {_}.
 Arguments m_actors {_} {_} {_}.
@@ -250,8 +304,11 @@ Module ExampleModelDefn.
 
   Local Definition handler := compose (Mutable.t AID nat (fun a => a = 0)) (Mutex.t AID).
 
-  Notation "'do' V '<-' I ; C" := (@a_sync AID handler (I) (fun V => C))
-                                  (at level 100, C at next level, V ident, right associativity).
+  Notation "'do' V '<-' I ; C" := (@a_cont AID handler (I) (fun V => Some C))
+                                    (at level 100, C at next level, V ident, right associativity).
+
+  Notation "'done' I" := (@a_cont AID handler (I) (fun _ => None))
+                           (at level 100, right associativity).
 
   Local Definition put (val : nat) : handler.(h_req) :=
     inl (Mutable.put val).
@@ -268,20 +325,20 @@ Module ExampleModelDefn.
   (* Just a demonstration how to define a programs that loops
   indefinitely, as long as it does IO: *)
   Local CoFixpoint infinite_loop (aid : AID) : Actor :=
-    a_sync (put 0) (fun ret => infinite_loop aid).
+    do _ <- put 0;
+    infinite_loop aid.
 
   (* Data race example: *)
   Local Definition counter_race (_ : AID) : Actor :=
     do v <- get;
-    do _ <- put (v + 1);
-    exit.
+    done put (v + 1).
 
   (* Fixed example: *)
   Local Definition counter_correct (_ : AID) : Actor :=
     do _ <- grab;
     do v <- get;
     do _ <- put (v + 1);
-    do _ <- release; exit.
+    done release.
 
   Local Definition two_actors := add 0 (counter_race 0) (add 1 (counter_race 1) (empty _) : Map [nat, Actor]).
 
