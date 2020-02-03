@@ -96,31 +96,6 @@ Section IOHandler.
         end
       end.
 
-    (* (** This type is a bit tricky... *) *)
-    (* Definition perform_io : forall (aid : AID) (ms : ModelState), *)
-    (*     let aa := m_actors ms in *)
-    (*     forall (HIn : In aid aa), *)
-    (*       match find' aid aa HIn with *)
-    (*       | a_cont req _ => forall (ret : @HandlerRet (h_req H) (h_state H) req (h_ret H)), *)
-    (*           ModelState *)
-    (*       end. *)
-    (*   intros aid ms aa HIn. *)
-    (*   refine (match find' aid aa HIn with *)
-    (*           | a_cont req cont => _ *)
-    (*           end). *)
-    (*   exact (fun rep => *)
-    (*            match rep with *)
-    (*            | r_stall _ _ => ms *)
-    (*            | r_return _ _ ret s' => *)
-    (*              let trace := trace_elem aid req ret :: m_trace ms in *)
-    (*              let aa' := match cont ret with *)
-    (*                         | Some a' => add aid a' aa *)
-    (*                         | None    => remove aid aa *)
-    (*                         end in *)
-    (*              mkState aa' s' trace *)
-    (*            end). *)
-    (* Defined. *)
-
     (** Constructively define a property that certain model state is
     reachable from a given deterministic program [initial_actors] and
     nondeterministic handler state *)
@@ -137,33 +112,41 @@ Section IOHandler.
         ReachableState ms ->
         ReachableState ms'.
 
-    (** TODO: This property is hella ugly, use cumulative universes? *)
-    Definition valid_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) : Prop :=
-      match te, ms with
-      | trace_elem aid req ret, mkState aa s _ =>
-        In aid aa /\
-        (forall (HIn : In aid aa),
-            let HReq := match find' aid aa HIn with
-                        | a_cont req' _ => req = req'
-                        end in
-            let hret := r_return req (h_ret H) ret s' in
-            let Hs := h_eval H s aid req hret in
-            HReq /\ Hs)
-      end.
+    Definition valid_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) :=
+       match te, ms with
+       | trace_elem aid req ret, mkState aa s _ =>
+         {HIn : In aid aa |
+          let HReq := match find' aid aa HIn with
+                      | a_cont req' _ => req = req'
+                      end in
+          let hret := r_return req (h_ret H) ret s' in
+          let Hs := h_eval H s aid req hret in
+          HReq /\ Hs}
+       end.
 
     Definition apply_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state))
                (Hte : valid_trace_elem ms te s') : ModelState.
       destruct te as [aid req ret].
       destruct ms as [aa s t].
-      unfold valid_trace_elem in Hte.
-      destruct Hte as [HIn Hte].
+      destruct Hte as [HIn [Hreq Hs]].
       destruct (find' aid aa HIn) as [req0 cont].
-      rewrite HReq in cont.
-      apply (enter_syscall aid req cont (r_return req H.(h_ret) ret s') ms).
+      refine (enter_syscall aid req0 cont _ (mkState aa s t)).
+      - rewrite <-Hreq.
+        apply (r_return _ _ ret s').
     Defined.
 
+    Lemma apply_trace_elem_reachable : forall {initial_actors} (ms : ModelState) (te : TraceElem) s',
+        @ReachableState initial_actors ms ->
+        forall Hte : valid_trace_elem ms te s',
+          @ReachableState initial_actors (apply_trace_elem ms te s' Hte).
+    Proof.
+      intros initial_actors ms te s' Hms Hte.
+      destruct te as [aid req ret].
+      destruct ms as [aa s t].
+      destruct Hte as [HIn [Hreq Heval]].
+      refine (model_step aid (mkState aa s t) _ HIn _ Hms).
+    Abort.
 
-    Definition exit : option Actor := None.
   End Actor.
 
   Section ComposeHandlers.
@@ -231,7 +214,6 @@ Arguments h_initial_state {_}.
 Arguments h_eval {_}.
 Arguments Actor {_} {_}.
 Arguments a_cont {_} {_}.
-Arguments exit {_} {_}.
 Arguments ModelState {_} {_}.
 Arguments m_actors {_} {_} {_}.
 Arguments m_state {_} {_} {_}.
