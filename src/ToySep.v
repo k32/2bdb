@@ -68,12 +68,11 @@ Section IOHandler.
         {
           m_actors : Actors;
           m_state  : H.(h_state);
-          m_trace  : Trace;
         }.
 
     Definition enter_syscall aid (req : h_req H) cont (ret : HandlerRet req (h_ret H)) ms :=
       match ms with
-        {| m_state := s; m_actors := aa; m_trace := t |} =>
+        {| m_state := s; m_actors := aa |} =>
         match ret with
         | r_stall _ _         => ms
         | r_return _ _ rep s' =>
@@ -81,7 +80,7 @@ Section IOHandler.
                      | Some a' => add aid a' aa
                      | None    => remove aid aa
                      end in
-          mkState aa' s' (trace_elem aid req rep :: t)
+          mkState aa' s'
         end
       end.
 
@@ -104,7 +103,6 @@ Section IOHandler.
         H.(h_initial_state) s0 ->
         ReachableState {| m_actors := initial_actors;
                           m_state  := s0;
-                          m_trace  := nil;
                        |}
 
     | model_step : forall (aid : AID) (ms ms' : ModelState) (HIn : In aid (m_actors ms)),
@@ -112,39 +110,53 @@ Section IOHandler.
         ReachableState ms ->
         ReachableState ms'.
 
-    Definition valid_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) :=
+    (** Note: The following definition is completely related to the
+    IOHandler and doesn't assume anything about the actors'
+    behavior. Therefore it can be used to define undesirable trace
+    sequences. *)
+    Definition valid_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) : Prop :=
+      match te, ms with
+      | trace_elem aid req ret, mkState _ s =>
+        let hret := r_return req (h_ret H) ret s' in
+        h_eval H s aid req hret
+      end.
+
+    (** The following definition very much depend on the actors'
+    behavior! It can be used together with actor invariants to prove
+    that undesirable traces are impossible under actor definition. *)
+    Definition valid_transition (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) :=
        match te, ms with
-       | trace_elem aid req ret, mkState aa s _ =>
+       | trace_elem aid req ret, mkState aa s =>
          {HIn : In aid aa |
           let HReq := match find' aid aa HIn with
                       | a_cont req' _ => req = req'
                       end in
-          let hret := r_return req (h_ret H) ret s' in
-          let Hs := h_eval H s aid req hret in
-          HReq /\ Hs}
+          HReq /\ valid_trace_elem ms te s'}
        end.
 
     Definition apply_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state))
-               (Hte : valid_trace_elem ms te s') : ModelState.
+               (Hte : valid_transition ms te s') : ModelState.
       destruct te as [aid req ret].
-      destruct ms as [aa s t].
+      destruct ms as [aa s].
       destruct Hte as [HIn [Hreq Hs]].
       destruct (find' aid aa HIn) as [req0 cont].
-      refine (enter_syscall aid req0 cont _ (mkState aa s t)).
+      refine (enter_syscall aid req0 cont _ (mkState aa s)).
       - rewrite <-Hreq.
         apply (r_return _ _ ret s').
     Defined.
 
     Lemma apply_trace_elem_reachable : forall {initial_actors} (ms : ModelState) (te : TraceElem) s',
         @ReachableState initial_actors ms ->
-        forall Hte : valid_trace_elem ms te s',
+        forall Hte : valid_transition ms te s',
           @ReachableState initial_actors (apply_trace_elem ms te s' Hte).
     Proof.
       intros initial_actors ms te s' Hms Hte.
       destruct te as [aid req ret].
-      destruct ms as [aa s t].
+      destruct ms as [aa s].
       destruct Hte as [HIn [Hreq Heval]].
-      refine (model_step aid (mkState aa s t) _ HIn _ Hms).
+      refine (model_step aid (mkState aa s) _ HIn _ Hms).
+      simpl.
+      destruct (find' aid aa HIn) as [req' cont].
     Abort.
 
   End Actor.
@@ -217,7 +229,6 @@ Arguments a_cont {_} {_}.
 Arguments ModelState {_} {_}.
 Arguments m_actors {_} {_} {_}.
 Arguments m_state {_} {_} {_}.
-Arguments m_trace {_} {_} {_}.
 Arguments ReachableState {_} {_}.
 Arguments model_init {_} {_} {_} {_}.
 Arguments model_step {_} {_} {_} {_}.
@@ -332,7 +343,6 @@ Module ExampleModelDefn.
   Proof.
     set (ms0 := {| m_actors := two_actors;
                    m_state  := (0, None);
-                   m_trace  := [];
                 |}).
     forward ms0
             [0 @ get <~ 0;
