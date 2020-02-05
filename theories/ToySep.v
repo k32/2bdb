@@ -31,7 +31,7 @@ Section IOHandler.
     , HandlerRet req rep_t
   | r_stall : HandlerRet req rep_t.
 
-  Notation "'Nondeterministic' a" := ((a) -> Prop) (at level 200).
+  Local Notation "'Nondeterministic' a" := ((a) -> Prop) (at level 200).
 
   Record t : Type :=
     {
@@ -84,13 +84,13 @@ Section IOHandler.
         end
       end.
 
-    Definition eval_sync (aid : AID) (ms : ModelState) (HIn : In aid (m_actors ms)) (ms' : ModelState) : Prop :=
+    Definition is_reachable (ms ms' : ModelState) (aid : AID) (HIn : In aid (m_actors ms)) : Prop :=
       match ms with
         {| m_state := s |} =>
         match find' aid (m_actors ms) HIn with
         | a_cont req cont =>
-          forall ret : @HandlerRet H.(h_req) H.(h_state) req H.(h_ret),
-            H.(h_eval) s aid req ret ->
+          exists ret : @HandlerRet H.(h_req) H.(h_state) req H.(h_ret),
+            H.(h_eval) s aid req ret /\
             ms' = enter_syscall aid req cont ret ms
         end
       end.
@@ -106,7 +106,7 @@ Section IOHandler.
                        |}
 
     | model_step : forall (aid : AID) (ms ms' : ModelState) (HIn : In aid (m_actors ms)),
-        eval_sync aid ms HIn ms' ->
+        is_reachable ms ms' aid HIn ->
         ReachableState ms ->
         ReachableState ms'.
 
@@ -120,6 +120,8 @@ Section IOHandler.
         let hret := r_return req (h_ret H) ret s' in
         h_eval H s aid req hret
       end.
+
+    Transparent valid_trace_elem.
 
     (** The following definition very much depend on the actors'
     behavior! It can be used together with actor invariants to prove
@@ -151,14 +153,18 @@ Section IOHandler.
           @ReachableState initial_actors (apply_trace_elem ms te s' Hte).
     Proof.
       intros initial_actors ms te s' Hms Hte.
+      unfold valid_transition in Hte.
+      unfold valid_trace_elem in Hte.
       destruct te as [aid req ret].
       destruct ms as [aa s].
       destruct Hte as [HIn [Hreq Heval]].
       refine (model_step aid (mkState aa s) _ HIn _ Hms).
       simpl.
       destruct (find' aid aa HIn) as [req' cont].
-    Abort.
-
+      destruct Hreq.
+      exists (r_return _ _ ret s').
+      easy.
+    Qed.
   End Actor.
 
   Section ComposeHandlers.
@@ -290,6 +296,8 @@ Module Mutex.
       h_eval := fun s0 aid req ret => ret = eval_f s0 aid req;
     |}.
   End defs.
+
+  Theorem no_double_grab : forall initial_actors s0
 End Mutex.
 
 Module ExampleModelDefn.
@@ -334,31 +342,6 @@ Module ExampleModelDefn.
     done release.
 
   Local Definition two_actors := add 0 (counter_race 0) (add 1 (counter_race 1) (empty _) : Map [nat, Actor]).
-
-  Example race1 :
-    exists (s : ModelState handler),
-      ReachableState handler two_actors s ->
-      find 0 (m_actors s) = Some a_dead /\ find 1 (m_actors s) = Some a_dead ->
-      fst (m_state s) = 1.
-  Proof.
-    set (ms0 := {| m_actors := two_actors;
-                   m_state  := (0, None);
-                |}).
-    forward ms0
-            [0 @ get <~ 0;
-             1 @ get <~ 0;
-             0 @ put 1 <~ True;
-             1 @ put 1 <~ True
-            ].
-
-
-               1:
-       (1, get, 0),
-      ]
-
-    intros s Hrs [Hf1 Hf2].
-    inversion H as [s0 Hs0|aid ms].
-    - destruct Hs0.
 
 
 End ExampleModelDefn.
