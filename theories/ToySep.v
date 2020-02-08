@@ -3,6 +3,7 @@ From Coq Require Import
      List
      Omega
      Tactics
+     Sets.Ensembles
      Structures.OrdersEx.
 
 From Containers Require Import
@@ -96,6 +97,8 @@ Section Actor.
            , Actor.
 
   Definition Actors := Map[AID, Actor].
+
+  Definition Exception  (_ : string) : option Actor := None.
 
   Record ModelState : Type :=
     mkState
@@ -239,7 +242,7 @@ Section ComposeHandlers.
     |}.
 End ComposeHandlers.
 
-Global Arguments h_state {_} {_}.
+Global Arguments h_state {_}.
 Global Arguments h_req {_}.
 Global Arguments h_ret {_}.
 Global Arguments h_initial_state {_}.
@@ -252,6 +255,21 @@ Global Arguments m_state {_} {_} {_}.
 Global Arguments ReachableState {_} {_}.
 Global Arguments model_init {_} {_} {_} {_}.
 Global Arguments PossibleTrace {_} {_}.
+
+Section TraceExtensiability.
+  Context {AID : Set} {H : @t AID}.
+
+  Definition bounded_by (prop : h_state H -> Prop) (te_pred : Ensemble TraceElem) :=
+    forall (te : TraceElem) (s s' : h_state H),
+      Complement _ te_pred te ->
+      valid_trace_elem te s s' ->
+      prop s ->
+      prop s'.
+
+  Lemma extend_trace0 : forall (prop : ModelState -> Prop) (te_pred : Ensemble TraceElem) ms te,
+      apply_trace_elem
+
+End TraceExtensiobility.
 
 Module Mutable.
   Inductive req_t {T : Set} :=
@@ -352,7 +370,7 @@ Module ExampleModelDefn.
   Local Definition release : h_req handler :=
     inr (Mutex.release).
 
-  (* Just a demonstration how to define a programs that loops
+  (* Just a demonstration how to define a program that loops
   indefinitely, as long as it does IO: *)
   Local CoFixpoint infinite_loop (aid : AID) : Actor :=
     do _ <- put 0;
