@@ -1,13 +1,17 @@
 (*** Storage interface *)
 (** This module defines a "black box" storage engine *)
-Require Import String.
-Require Import List.
-Require Import Coq.Program.Basics.
+From Coq Require Import
+     String
+     List
+     Program.Basics.
+
 Import ListNotations.
 Import Decidable.
 Import Sumbool.
-Require Import FoldIn.
-Require Export EqDec.
+
+From LibTx Require Import
+     FoldIn
+     EqDec.
 
 Set Implicit Arguments.
 
@@ -407,7 +411,7 @@ Module Versioned (I : Interface).
     | None => None
     | Some v => match data v with
                | Alive x => Some x
-               | Dead _ _ => None
+               | Dead _ => None
                end
     end.
 
@@ -416,7 +420,7 @@ Module Versioned (I : Interface).
     | None => (0, None)
     | Some v => match data v with
                | Alive x => (version v, Some x)
-               | Dead _ _ => (version v, None)
+               | Dead _ => (version v, None)
                end
     end.
 

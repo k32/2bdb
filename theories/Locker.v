@@ -1,13 +1,18 @@
-Require Import Coq.Lists.List Coq.Arith.Le.
-Require Coq.Vectors.Vector.
+From Coq Require Import
+     Lists.List
+     Arith.Le
+     Arith
+     Omega
+     Bool.
+
 Import ListNotations.
-Require Import Storage.
-Require Import Arith.
-Require Import Omega.
-Require Bool.
-Require Import FoldIn.
-Require Storage.
-Require EqDec.
+
+From LibTx Require Import
+     Storage
+     EqDec
+     FoldIn.
+
+Extraction Language Haskell.
 
 Module Unbounded (S : Storage.Interface).
 

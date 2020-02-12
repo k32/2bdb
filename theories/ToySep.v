@@ -6,6 +6,8 @@ From Coq Require Import
      Sets.Ensembles
      Structures.OrdersEx.
 
+Import ListNotations.
+
 From Containers Require Import
      OrderedType
      OrderedTypeEx
@@ -16,9 +18,8 @@ From Containers Require Import
 From QuickChick Require Import
      QuickChick.
 
-Require Import FoldIn.
-
-Import ListNotations.
+From LibTx Require Import
+     FoldIn.
 
 Reserved Notation "aid '@' req '<~' ret" (at level 30).
 
@@ -57,6 +58,11 @@ Section Trace.
                }.
 
   Definition Trace := list TraceElem.
+
+  Definition make_ret (te : TraceElem) (s' : h_state H) : HandlerRet (te_req te) (h_ret H) :=
+    match te with
+      trace_elem _ req ret => r_return req (h_ret H) ret s'
+    end.
 
   Definition valid_trace_elem (te : TraceElem) (s s' : H.(h_state)) : Prop :=
     match te with
@@ -98,7 +104,8 @@ Section Actor.
 
   Definition Actors := Map[AID, Actor].
 
-  Definition Exception  (_ : string) : option Actor := None.
+  Definition throw (_ : string) : option Actor :=
+    None.
 
   Record ModelState : Type :=
     mkState
@@ -107,7 +114,7 @@ Section Actor.
         m_state  : H.(h_state);
       }.
 
-  Definition enter_syscall aid (req : h_req H) cont (ret : HandlerRet req (h_ret H)) ms :=
+  Definition perform_io aid (req : h_req H) cont (ret : HandlerRet req (h_ret H)) ms :=
     match ms with
       {| m_state := s; m_actors := aa |} =>
       match ret with
@@ -128,7 +135,7 @@ Section Actor.
       | a_cont req cont =>
         exists ret : @HandlerRet H.(h_req) H.(h_state) req H.(h_ret),
           H.(h_eval) s aid req ret /\
-          ms' = enter_syscall aid req cont ret ms
+          ms' = perform_io aid req cont ret ms
       end
     end.
 
@@ -147,7 +154,7 @@ Section Actor.
       ReachableState ms ->
       ReachableState ms'.
 
-  Definition valid_transition (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) :=
+  Definition valid_transition_ (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) :=
      match te, ms with
      | trace_elem aid req ret, mkState aa s =>
        {HIn : In aid aa |
@@ -157,20 +164,23 @@ Section Actor.
         HReq /\ valid_trace_elem te (m_state ms) s'}
      end.
 
+  Definition valid_transition (ms ms' : ModelState) (te : TraceElem) :=
+    valid_transition_ ms te (m_state ms').
+
   Definition apply_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state))
-             (Hte : valid_transition ms te s') : ModelState.
+             (Hte : valid_transition_ ms te s') : ModelState.
     destruct te as [aid req ret].
     destruct ms as [aa s].
     destruct Hte as [HIn [Hreq Hs]].
     destruct (find' aid aa HIn) as [req0 cont].
-    refine (enter_syscall aid req0 cont _ (mkState aa s)).
+    refine (perform_io aid req0 cont _ (mkState aa s)).
     - rewrite <-Hreq.
       apply (r_return _ _ ret s').
   Defined.
 
   Lemma apply_trace_elem_reachable : forall {initial_actors} (ms : ModelState) (te : TraceElem) s',
       @ReachableState initial_actors ms ->
-      forall Hte : valid_transition ms te s',
+      forall Hte : valid_transition_ ms te s',
         @ReachableState initial_actors (apply_trace_elem ms te s' Hte).
   Proof.
     intros initial_actors ms te s' Hms Hte.
@@ -256,6 +266,35 @@ Global Arguments ReachableState {_} {_}.
 Global Arguments model_init {_} {_} {_} {_}.
 Global Arguments PossibleTrace {_} {_}.
 
+Section Hoare.
+  Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
+
+  Section defn.
+    Let S := @ModelState AID AID_ord H.
+    Let TE := @TraceElem AID H.
+    Let T := @Trace AID H.
+
+    Context {chain_rule : S -> S -> TE -> Prop}.
+
+    Inductive HoareTriple (pre post : S -> Prop) : T -> Type :=
+    | ht_nil : forall s, pre s ->
+                    post s ->
+                    HoareTriple pre post []
+
+    | ht_cons : forall (s : S) (te : TraceElem)
+                  (tail : T)
+                  (th : HoareTriple (fun s' => chain_rule s s' te) post tail),
+        pre s ->
+        HoareTriple pre post (te :: tail).
+  End defn.
+
+  Definition HoareTripleH :=
+    @HoareTriple valid_transition.
+
+  Definition HoareTripleM :=
+    @HoareTriple is_reachable.
+End Hoare.
+
 Section TraceExtensiability.
   Context {AID : Set} {H : @t AID}.
 
@@ -266,10 +305,10 @@ Section TraceExtensiability.
       prop s ->
       prop s'.
 
-  Lemma extend_trace0 : forall (prop : ModelState -> Prop) (te_pred : Ensemble TraceElem) ms te,
-      apply_trace_elem
+  (* Lemma extend_trace0 : forall (prop : ModelState -> Prop) (te_pred : Ensemble TraceElem) ms te, *)
+  (*     apply_trace_elem *)
 
-End TraceExtensiobility.
+End TraceExtensiability.
 
 Module Mutable.
   Inductive req_t {T : Set} :=
