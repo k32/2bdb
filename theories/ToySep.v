@@ -64,24 +64,12 @@ Section Trace.
       trace_elem _ req ret => r_return req (h_ret H) ret s'
     end.
 
-  Definition valid_trace_elem (te : TraceElem) (s s' : H.(h_state)) : Prop :=
+  Definition valid_trace_elem (s s' : H.(h_state)) (te : TraceElem) : Prop :=
     match te with
     | trace_elem aid req ret =>
       let hret := r_return req (h_ret H) ret s' in
       h_eval H s aid req hret
     end.
-
-  (** Property that tells if a certain sequence of side effects is
-  "physically possible". E.g. mutex can't be taken twice, messages
-  don't travel backwards in time, memory doesn't change all by
-  itself and so on: *)
-  Inductive PossibleTrace (state : H.(h_state)) : Trace -> Prop :=
-  | pt_nil : PossibleTrace state []
-
-  | pt_cons : forall (state' : H.(h_state)) (trace_elem : TraceElem) (trace_tail : Trace),
-        valid_trace_elem trace_elem state state' ->
-        PossibleTrace state' trace_tail ->
-        PossibleTrace state (trace_elem :: trace_tail).
 End Trace.
 
 Global Arguments TraceElem {_} {_}.
@@ -89,10 +77,40 @@ Global Arguments te_aid {_} {_}.
 Global Arguments te_req {_} {_}.
 Global Arguments te_ret {_} {_}.
 Global Arguments trace_elem {_} {_}.
-Global Arguments PossibleTrace {_} {_}.
-Global Arguments pt_nil {_} {_}.
-Global Arguments pt_cons {_} {_}.
 Global Arguments valid_trace_elem {_} {_}.
+
+Section Hoare.
+  Context {AID : Set} {H : @t AID}.
+
+  Section defn.
+    Let TE := @TraceElem AID H.
+    Let T := @Trace AID H.
+
+    Context {S : Type} {chain_rule : S -> S -> TE -> Prop}.
+
+    Inductive HoareTriple (pre post : S -> Prop) : T -> Prop :=
+    | ht_nil : forall s,
+        pre s ->
+        post s ->
+        HoareTriple pre post []
+    | ht_cons : forall (s : S) (te : TE)
+                  (tail : T)
+                  (th : HoareTriple (fun s' => chain_rule s s' te) post tail),
+        pre s ->
+        HoareTriple pre post (te :: tail).
+  End defn.
+
+  Section PossibleTrace.
+    Definition HoareTripleH :=
+      @HoareTriple (h_state H) valid_trace_elem.
+
+    (** Property that tells if a certain sequence of side effects is
+        "physically possible". E.g. mutex can't be taken twice, messages
+        don't travel backwards in time, memory doesn't change all by
+        itself and so on: *)
+    Definition PossibleTrace := HoareTripleH (fun _ => True) (fun _ => True).
+  End PossibleTrace.
+End Hoare.
 
 Section Actor.
   Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
@@ -128,43 +146,17 @@ Section Actor.
       end
     end.
 
-  Definition is_reachable (ms ms' : ModelState) (aid : AID) (HIn : In aid (m_actors ms)) : Prop :=
-    match ms with
-      {| m_state := s |} =>
-      match find' aid (m_actors ms) HIn with
-      | a_cont req cont =>
-        exists ret : @HandlerRet H.(h_req) H.(h_state) req H.(h_ret),
-          H.(h_eval) s aid req ret /\
-          ms' = perform_io aid req cont ret ms
-      end
-    end.
-
-  (** Constructively define a property that certain model state is
-  reachable from a given deterministic program [initial_actors] and
-  nondeterministic handler state *)
-  Inductive ReachableState {initial_actors : Actors} : ModelState -> Prop :=
-  | model_init : forall s0,
-      H.(h_initial_state) s0 ->
-      ReachableState {| m_actors := initial_actors;
-                        m_state  := s0;
-                     |}
-
-  | model_step : forall (aid : AID) (ms ms' : ModelState) (HIn : In aid (m_actors ms)),
-      is_reachable ms ms' aid HIn ->
-      ReachableState ms ->
-      ReachableState ms'.
-
-  Definition valid_transition_ (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) :=
+  Definition valid_transition_ (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) : Prop :=
      match te, ms with
      | trace_elem aid req ret, mkState aa s =>
        {HIn : In aid aa |
         let HReq := match find' aid aa HIn with
                     | a_cont req' _ => req = req'
                     end in
-        HReq /\ valid_trace_elem te (m_state ms) s'}
+        HReq /\ valid_trace_elem (m_state ms) s' te}
      end.
 
-  Definition valid_transition (ms ms' : ModelState) (te : TraceElem) :=
+  Definition valid_transition (ms ms' : ModelState) (te : TraceElem) : Prop :=
     valid_transition_ ms te (m_state ms').
 
   Definition apply_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state))
@@ -178,22 +170,29 @@ Section Actor.
       apply (r_return _ _ ret s').
   Defined.
 
-  Lemma apply_trace_elem_reachable : forall {initial_actors} (ms : ModelState) (te : TraceElem) s',
-      @ReachableState initial_actors ms ->
-      forall Hte : valid_transition_ ms te s',
-        @ReachableState initial_actors (apply_trace_elem ms te s' Hte).
-  Proof.
-    intros initial_actors ms te s' Hms Hte.
-    destruct te as [aid req ret].
+  Definition is_reachable (ms ms' : ModelState) (te : @TraceElem AID H) : Prop.
+    refine ({Hte : valid_transition ms ms' te | _}).
+    set (ms_ := ms).
+    set (ms_' := ms').
+    (* Peform some initial pattern-matching: *)
     destruct ms as [aa s].
-    destruct Hte as [HIn [Hreq Heval]].
-    refine (model_step aid (mkState aa s) _ HIn _ Hms).
-    simpl.
+    destruct ms' as [aa' s'].
+    set (hret := make_ret _ _ te s').
+    destruct te as [aid req ret].
+    destruct Hte as [HIn [Hreq _]].
     destruct (find' aid aa HIn) as [req' cont].
-    destruct Hreq.
-    exists (r_return _ _ ret s').
-    easy.
-  Qed.
+    symmetry in Hreq. subst.
+    (* This is our property: *)
+    exact (ms_' = perform_io aid req cont hret ms_).
+  Defined.
+
+  Definition HoareTripleA :=
+    @HoareTriple AID H ModelState is_reachable.
+
+  Definition ReachableState initial_actors (ms : ModelState) : Prop :=
+    exists (t : @Trace AID H),
+      HoareTripleA (fun ms0 => H.(h_initial_state) (m_state ms0) /\ (m_actors ms0) = initial_actors)
+                   (fun m => ms = m) t.
 End Actor.
 
 Section ComposeHandlers.
@@ -262,38 +261,7 @@ Global Arguments a_cont {_} {_}.
 Global Arguments ModelState {_} {_}.
 Global Arguments m_actors {_} {_} {_}.
 Global Arguments m_state {_} {_} {_}.
-Global Arguments ReachableState {_} {_}.
-Global Arguments model_init {_} {_} {_} {_}.
 Global Arguments PossibleTrace {_} {_}.
-
-Section Hoare.
-  Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
-
-  Section defn.
-    Let S := @ModelState AID AID_ord H.
-    Let TE := @TraceElem AID H.
-    Let T := @Trace AID H.
-
-    Context {chain_rule : S -> S -> TE -> Prop}.
-
-    Inductive HoareTriple (pre post : S -> Prop) : T -> Type :=
-    | ht_nil : forall s, pre s ->
-                    post s ->
-                    HoareTriple pre post []
-
-    | ht_cons : forall (s : S) (te : TraceElem)
-                  (tail : T)
-                  (th : HoareTriple (fun s' => chain_rule s s' te) post tail),
-        pre s ->
-        HoareTriple pre post (te :: tail).
-  End defn.
-
-  Definition HoareTripleH :=
-    @HoareTriple valid_transition.
-
-  Definition HoareTripleM :=
-    @HoareTriple is_reachable.
-End Hoare.
 
 Section TraceExtensiability.
   Context {AID : Set} {H : @t AID}.
@@ -301,7 +269,7 @@ Section TraceExtensiability.
   Definition bounded_by (prop : h_state H -> Prop) (te_pred : Ensemble TraceElem) :=
     forall (te : TraceElem) (s s' : h_state H),
       Complement _ te_pred te ->
-      valid_trace_elem te s s' ->
+      valid_trace_elem s s' te ->
       prop s ->
       prop s'.
 
@@ -369,18 +337,18 @@ Module Mutex.
 
   Local Notation "aid '@' req '<~' ret" := (@trace_elem AID t aid req ret).
 
-  Theorem no_double_grab : forall (s : state_t) (a1 a2 : AID),
-      ~(@PossibleTrace AID t s
-                      [ a1 @ grab <~ I;
+  Theorem no_double_grab : forall (a1 a2 : AID),
+      ~(PossibleTrace [ a1 @ grab <~ I;
                         a2 @ grab <~ I
                       ]).
   Proof.
-    intros s a1 a2 H.
-    inversion H as [|s' te tt Hvalid Ht]. subst.
-    inversion Ht as [|s'' te' tt' Hvalid' Ht']. subst.
-    simpl in *.
-    destruct s; simpl in *; inversion Hvalid; subst.
-    - easy.
+    intros a1 a2 H.
+    unfold PossibleTrace, HoareTripleH in H.
+    inversion H as [|s te tail Htail _]. subst.
+    inversion Htail as [|s' te' tail' Htail' Hss']. subst.
+    unfold valid_trace_elem, h_eval in *.
+    destruct s, s'; simpl in *; inversion Hss'.
+    - inversion Htail'. inversion H0.
   Qed.
   End defs.
 End Mutex.
