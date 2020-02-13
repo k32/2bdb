@@ -1,4 +1,8 @@
-(** This module contains a minimalistic implementation of separation logic *)
+(*** Minimalistic implementation of concurrent separation logic *)
+(** This module defines the model of distributed system used in the
+rest of the project. Whether you trust the LibTx depends on whether
+you trust the below definitions.
+*)
 From Coq Require Import
      List
      Omega
@@ -22,6 +26,9 @@ From LibTx Require Import
      FoldIn.
 
 Reserved Notation "aid '@' req '<~' ret" (at level 30).
+
+Global Arguments Ensembles.In {_}.
+Global Arguments Complement {_}.
 
 Section IOHandler.
   Context {AID : Set} `{AID_ord : OrderedType AID}.
@@ -48,8 +55,7 @@ Section IOHandler.
 End IOHandler.
 
 Section Trace.
-  Variable AID : Set.
-  Variable H : @t AID.
+  Context {AID : Set} {H : @t AID}.
 
   Record TraceElem : Set :=
     trace_elem { te_aid : AID;
@@ -70,14 +76,11 @@ Section Trace.
       let hret := r_return req (h_ret H) ret s' in
       h_eval H s aid req hret
     end.
-End Trace.
 
-Global Arguments TraceElem {_} {_}.
-Global Arguments te_aid {_} {_}.
-Global Arguments te_req {_} {_}.
-Global Arguments te_ret {_} {_}.
-Global Arguments trace_elem {_} {_}.
-Global Arguments valid_trace_elem {_} {_}.
+  Inductive ExpandedTrace (trace' : Trace) (prop : Ensemble TraceElem) (trace : Trace) : Prop :=
+    (* TODO *)
+    .
+End Trace.
 
 Section Hoare.
   Context {AID : Set} {H : @t AID}.
@@ -98,6 +101,19 @@ Section Hoare.
                   (th : HoareTriple (fun s' => chain_rule s s' te) post tail),
         pre s ->
         HoareTriple pre post (te :: tail).
+
+    Definition Local (te_subset : Ensemble TE) (prop : S -> Prop) :=
+      forall te,
+        ~Ensembles.In te_subset te ->
+        HoareTriple prop prop [te].
+
+    Theorem frame_rule : forall pre post te_subset trace trace',
+        Local te_subset pre ->
+        Local te_subset post ->
+        ExpandedTrace trace' (Complement te_subset) trace ->
+        HoareTriple pre post trace ->
+        HoareTriple pre post trace'.
+    Abort. (* TODO *)
   End defn.
 
   Section PossibleTrace.
@@ -111,6 +127,8 @@ Section Hoare.
     Definition PossibleTrace := HoareTripleH (fun _ => True) (fun _ => True).
   End PossibleTrace.
 End Hoare.
+
+Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a b t) (at level 50).
 
 Section Actor.
   Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
@@ -177,7 +195,7 @@ Section Actor.
     (* Peform some initial pattern-matching: *)
     destruct ms as [aa s].
     destruct ms' as [aa' s'].
-    set (hret := make_ret _ _ te s').
+    set (hret := make_ret te s').
     destruct te as [aid req ret].
     destruct Hte as [HIn [Hreq _]].
     destruct (find' aid aa HIn) as [req' cont].
@@ -250,33 +268,6 @@ Section ComposeHandlers.
        h_eval          := compose_eval h1 h2;
     |}.
 End ComposeHandlers.
-
-Global Arguments h_state {_}.
-Global Arguments h_req {_}.
-Global Arguments h_ret {_}.
-Global Arguments h_initial_state {_}.
-Global Arguments h_eval {_}.
-Global Arguments Actor {_} {_}.
-Global Arguments a_cont {_} {_}.
-Global Arguments ModelState {_} {_}.
-Global Arguments m_actors {_} {_} {_}.
-Global Arguments m_state {_} {_} {_}.
-Global Arguments PossibleTrace {_} {_}.
-
-Section TraceExtensiability.
-  Context {AID : Set} {H : @t AID}.
-
-  Definition bounded_by (prop : h_state H -> Prop) (te_pred : Ensemble TraceElem) :=
-    forall (te : TraceElem) (s s' : h_state H),
-      Complement _ te_pred te ->
-      valid_trace_elem s s' te ->
-      prop s ->
-      prop s'.
-
-  (* Lemma extend_trace0 : forall (prop : ModelState -> Prop) (te_pred : Ensemble TraceElem) ms te, *)
-  (*     apply_trace_elem *)
-
-End TraceExtensiability.
 
 Module Mutable.
   Inductive req_t {T : Set} :=
