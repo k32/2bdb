@@ -2,6 +2,60 @@
 (** This module defines the model of distributed system used in the
 rest of the project. Whether you trust the LibTx depends on whether
 you trust the below definitions.
+
+* Motivation
+
+Before diving into lengthy description of the model, let me first
+motivate a sceptical reader:
+
+** Q: Why not TLA+?
+
+A: ToySep allows to describe nondeterministic parts of the model in a
+way very similar to TLA+. But its deterministic part enjoys from using
+a full-fledged functional language
+
+- I want to write inductive proofs
+
+- I want to use a more or less traditional functional language
+
+- I want to extract verified programs
+
+- While TLA+ model checker is top notch, its proof checker isn't, by
+  far
+
+** Q: Why not <${model checker}>?
+
+A: Model checkers show why the code _fails_, which is good for
+verifying algorithms, but formal proofs show why the code _works_ (via
+tree of assumptions), which is good for reasoning about algorithms
+and, in particular, predicting the outcome of optimisations. Also
+model checkers can't explore the entire state space of a typical
+real-life system with unbounded number of actors.
+
+** Q: Why not Verdi?
+
+- Verdi models are low level: think UDP packets and disk IO. ToySep is
+  meant to model systems on a much higher level: think Kafka client
+  API.
+
+- Nondeterminisic part of Verdi is hardcoded, while ToySep allows user
+  to define custom nondeterministic IO handlers.
+
+** Q: Why not disel?
+
+A: disel models are closer to what I need, but implementation itself
+is an incomprehensible, undocumetned burp of ssreflect. Proofs are as
+useful as their premises: "garbage in - garbage out". Good model
+should be well documented and well understood.
+
+** Q: Why not iris/aneris?
+
+A: iris allows user to define semantics of their very own programming
+language. ToySep is focused on proving properties of _regular pure
+functinal programs_ that do IO from time to time. Hence it defines
+actors in regular Gallina language, rather than some DSL, and frees
+the user from reinventing basic control flow constructions.
+
 *)
 From Coq Require Import
      List
