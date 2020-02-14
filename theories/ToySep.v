@@ -23,7 +23,7 @@ a full-fledged functional language
 - While TLA+ model checker is top notch, its proof checker isn't, by
   far
 
-** Q: Why not <${model checker}>?
+** Q: Why not %model checker%?
 
 A: Model checkers show why the code _fails_, which is good for
 verifying algorithms, but formal proofs show why the code _works_ (via
@@ -80,6 +80,7 @@ From LibTx Require Import
      FoldIn.
 
 Reserved Notation "aid '@' req '<~' ret" (at level 30).
+Reserved Notation "'{{' a '}}' t '{{' b '}}'" (at level 40).
 
 Global Arguments Ensembles.In {_}.
 Global Arguments Complement {_}.
@@ -131,9 +132,6 @@ Section Trace.
       h_eval H s aid req hret
     end.
 
-  Inductive ExpandedTrace (trace' : Trace) (prop : Ensemble TraceElem) (trace : Trace) : Prop :=
-    (* TODO *)
-    .
 End Trace.
 
 Section Hoare.
@@ -145,29 +143,115 @@ Section Hoare.
 
     Context {S : Type} {chain_rule : S -> S -> TE -> Prop}.
 
-    Inductive HoareTriple (pre post : S -> Prop) : T -> Prop :=
-    | ht_nil : forall s,
-        pre s ->
-        post s ->
-        HoareTriple pre post []
-    | ht_cons : forall (s : S) (te : TE)
-                  (tail : T)
-                  (th : HoareTriple (fun s' => chain_rule s s' te) post tail),
-        pre s ->
-        HoareTriple pre post (te :: tail).
+    Inductive HoareTriple : (S -> Prop) -> T -> (S -> Prop) -> Prop :=
+    | ht_skip :
+        forall (p : S -> Prop), HoareTriple p [] p
+    | ht_step :
+        forall (pre post : S -> Prop) (s : S) (te : TE) (tail : T),
+          HoareTriple (fun s' => chain_rule s s' te) tail post ->
+          pre s ->
+          HoareTriple pre (te :: tail) post.
 
-    Definition Local (te_subset : Ensemble TE) (prop : S -> Prop) :=
-      forall te,
-        ~Ensembles.In te_subset te ->
-        HoareTriple prop prop [te].
+    Lemma hoare_cons : forall pre mid post (te : TE) (tail : T),
+        HoareTriple pre [te] mid -> HoareTriple mid tail post ->
+        HoareTriple pre (te :: tail) post.
+    Proof.
+      intros. inversion H0. subst. inversion H5. subst.
+      apply ht_step with (s := s); auto.
+    Qed.
 
-    Theorem frame_rule : forall pre post te_subset trace trace',
-        Local te_subset pre ->
-        Local te_subset post ->
-        ExpandedTrace trace' (Complement te_subset) trace ->
-        HoareTriple pre post trace ->
-        HoareTriple pre post trace'.
-    Abort. (* TODO *)
+    Theorem hoare_concat : forall pre mid post t1 t2,
+                             HoareTriple pre t1 mid ->
+                             HoareTriple mid t2 post ->
+                             HoareTriple pre (t1 ++ t2) post.
+    Proof.
+      intros.
+      induction H0.
+      - easy.
+      - set (mid' := (fun s' : S => chain_rule s s' te)) in *.
+        apply IHHoareTriple in H1.
+        rewrite <-app_comm_cons.
+        apply hoare_cons with (mid := mid'); auto.
+        apply ht_step with (s := s).
+        + constructor.
+        + assumption.
+    Qed.
+
+    Section FrameRule.
+      Definition Local (te_subset : Ensemble TE) (prop : S -> Prop) :=
+        forall te,
+          ~Ensembles.In te_subset te ->
+          HoareTriple prop [te] prop.
+
+      Inductive ExpandedTrace (te_subset : Ensemble TE) : T -> T -> Prop :=
+      | et_nil :
+          ExpandedTrace te_subset [] []
+      | et_match :
+          forall te t t',
+            ExpandedTrace te_subset t t' ->
+            ExpandedTrace te_subset (te :: t) (te :: t')
+      | et_expand :
+          forall te t t',
+            ~Ensembles.In te_subset te ->
+            ExpandedTrace te_subset t t' ->
+            ExpandedTrace te_subset t (te :: t').
+
+      Lemma expand_trace_nil : forall te_subset prop t,
+          Local te_subset prop ->
+          ExpandedTrace te_subset [] t ->
+          HoareTriple prop t prop.
+      Proof.
+        intros.
+        remember [] as t.
+        induction H1.
+        - constructor.
+        - exfalso.
+          inversion Heqt.
+        - apply hoare_cons with (mid := prop).
+          + apply H0. assumption.
+          + apply IHExpandedTrace. assumption.
+      Qed.
+
+      Theorem frame_rule : forall pre post te_subset te trace',
+          Local te_subset pre ->
+          Local te_subset post ->
+          ExpandedTrace te_subset [te] trace' ->
+          HoareTriple pre [te] post ->
+          HoareTriple pre trace' post.
+      Proof.
+        intros pre post te_subset te t' Hl_pre Hl_post Hexp_t' Ht.
+        inversion Ht; subst.
+        inversion H3; subst.
+        clear Ht. clear H3.
+        (* Amusing: we got [Local te_subset (fun s' : S => chain_rule s s' te)]
+           hypothesis for free! *)
+        set (mid := (fun s' : S => chain_rule s s' te)) in *.
+        remember [te] as t.
+        induction Hexp_t'; inversion Heqt; subst.
+        - apply hoare_cons with (mid := mid).
+          + apply ht_step with (s := s); [constructor | easy].
+          + apply (expand_trace_nil te_subset); auto.
+        - apply hoare_cons with (mid := pre).
+          apply Hl_pre; auto.
+          auto.
+      Qed.
+
+      Theorem expand_trace : forall pre post te_subset trace trace',
+          Local te_subset pre ->
+          Local te_subset post ->
+          ExpandedTrace te_subset trace trace' ->
+          HoareTriple pre trace post ->
+          HoareTriple pre trace' post.
+      Proof.
+        intros pre post te_subset t t' Hl_pre Hl_post Hexp Ht.
+
+        induction t.
+        - inversion Ht; subst.
+          apply (expand_trace_nil te_subset); auto.
+        - apply IHt.
+          Focus 2.
+      Abort.
+    End FrameRule.
   End defn.
 
   Section PossibleTrace.
@@ -178,11 +262,11 @@ Section Hoare.
         "physically possible". E.g. mutex can't be taken twice, messages
         don't travel backwards in time, memory doesn't change all by
         itself and so on: *)
-    Definition PossibleTrace := HoareTripleH (fun _ => True) (fun _ => True).
+    Definition PossibleTrace t := HoareTripleH (fun _ => True) t (fun _ => True).
   End PossibleTrace.
 End Hoare.
 
-Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a b t) (at level 50).
+(* Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b). *)
 
 Section Actor.
   Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
@@ -264,7 +348,8 @@ Section Actor.
   Definition ReachableState initial_actors (ms : ModelState) : Prop :=
     exists (t : @Trace AID H),
       HoareTripleA (fun ms0 => H.(h_initial_state) (m_state ms0) /\ (m_actors ms0) = initial_actors)
-                   (fun m => ms = m) t.
+                   t
+                   (fun m => ms = m).
 End Actor.
 
 Section ComposeHandlers.
@@ -389,7 +474,7 @@ Module Mutex.
   Proof.
     intros a1 a2 H.
     unfold PossibleTrace, HoareTripleH in H.
-    inversion H as [|s te tail Htail _]. subst.
+    inversion H as [|s te tail Htail _x]. subst.
     inversion Htail as [|s' te' tail' Htail' Hss']. subst.
     unfold valid_trace_elem, h_eval in *.
     destruct s, s'; simpl in *; inversion Hss'.
