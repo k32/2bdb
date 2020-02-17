@@ -81,20 +81,24 @@ From LibTx Require Import
 
 Reserved Notation "aid '@' req '<~' ret" (at level 30).
 Reserved Notation "'{{' a '}}' t '{{' b '}}'" (at level 40).
+Reserved Notation "'{{' a '&' b '}}' t '{{' c '&' d '}}'" (at level 10).
 
 Global Arguments Ensembles.In {_}.
 Global Arguments Complement {_}.
+Global Arguments Ensembles.Disjoint {_}.
+
+Ltac inversion_ a := inversion a; subst; auto.
 
 Section IOHandler.
   Context {AID : Set} `{AID_ord : OrderedType AID}.
 
-  Inductive HandlerRet {req_t state_t : Type} (req : req_t) (rep_t : req_t -> Set) : Type :=
-  | r_return : forall (reply : rep_t req)
-                 (state' : state_t)
-    , HandlerRet req rep_t
-  | r_stall : HandlerRet req rep_t.
-
   Local Notation "'Nondeterministic' a" := ((a) -> Prop) (at level 200).
+
+  Record TraceElem_ {Req : Set} {Ret : Req -> Set} : Set :=
+    trace_elem { te_aid : AID;
+                 te_req : Req;
+                 te_ret : Ret te_req;
+               }.
 
   Record t : Type :=
     {
@@ -102,37 +106,13 @@ Section IOHandler.
       h_req           : Set;
       h_ret           : h_req -> Set;
       h_initial_state : Nondeterministic h_state;
-      h_eval          : forall (state : h_state)
-                          (aid : AID)
-                          (req : h_req),
-                        Nondeterministic @HandlerRet h_req h_state req h_ret;
+      h_chain_rule    : h_state -> h_state -> @TraceElem_ h_req h_ret -> Prop
     }.
+
+  Definition TraceElem {h : t} : Set := @TraceElem_ h.(h_req) h.(h_ret).
+
+  Definition Trace {h : t} := list (@TraceElem h).
 End IOHandler.
-
-Section Trace.
-  Context {AID : Set} {H : @t AID}.
-
-  Record TraceElem : Set :=
-    trace_elem { te_aid : AID;
-                 te_req : H.(h_req);
-                 te_ret : H.(h_ret) te_req;
-               }.
-
-  Definition Trace := list TraceElem.
-
-  Definition make_ret (te : TraceElem) (s' : h_state H) : HandlerRet (te_req te) (h_ret H) :=
-    match te with
-      trace_elem _ req ret => r_return req (h_ret H) ret s'
-    end.
-
-  Definition valid_trace_elem (s s' : H.(h_state)) (te : TraceElem) : Prop :=
-    match te with
-    | trace_elem aid req ret =>
-      let hret := r_return req (h_ret H) ret s' in
-      h_eval H s aid req hret
-    end.
-
-End Trace.
 
 Section Hoare.
   Context {AID : Set} {H : @t AID}.
@@ -145,12 +125,14 @@ Section Hoare.
 
     Inductive HoareTriple : (S -> Prop) -> T -> (S -> Prop) -> Prop :=
     | ht_skip :
-        forall (p : S -> Prop), HoareTriple p [] p
+        forall (p : S -> Prop), {{ p }} [] {{ p }}
     | ht_step :
         forall (pre post : S -> Prop) (s : S) (te : TE) (tail : T),
-          HoareTriple (fun s' => chain_rule s s' te) tail post ->
+          {{ fun s' => chain_rule s s' te }} tail {{ post }} ->
           pre s ->
-          HoareTriple pre (te :: tail) post.
+          {{ pre }} (te :: tail) {{ post }}
+    where
+      "'{{' A '}}' t '{{' B '}}'" := (HoareTriple A t B).
 
     Lemma hoare_cons : forall pre mid post (te : TE) (tail : T),
         HoareTriple pre [te] mid -> HoareTriple mid tail post ->
@@ -160,10 +142,19 @@ Section Hoare.
       apply ht_step with (s := s); auto.
     Qed.
 
+    Lemma hoare_cons' : forall s te t post,
+        {{fun s' : S => chain_rule s s' te}} t {{post}} <->
+        {{fun s' => s = s'}} te :: t {{post}}.
+    Proof.
+      split; intros.
+      - apply ht_step with (s := s); easy.
+      - inversion_ H0.
+    Qed.
+
     Theorem hoare_concat : forall pre mid post t1 t2,
-                             HoareTriple pre t1 mid ->
-                             HoareTriple mid t2 post ->
-                             HoareTriple pre (t1 ++ t2) post.
+        HoareTriple pre t1 mid ->
+        HoareTriple mid t2 post ->
+        HoareTriple pre (t1 ++ t2) post.
     Proof.
       intros.
       induction H0.
@@ -177,28 +168,63 @@ Section Hoare.
         + assumption.
     Qed.
 
-    Section FrameRule.
-      Definition Local (te_subset : Ensemble TE) (prop : S -> Prop) :=
+    Notation "'{{' A '&' B '}}' t '{{' C '&' D '}}'" :=
+        ({{ fun s => A s /\ B s }} t {{ fun s => C s /\ D s }}).
+
+    Lemma hoare_and : forall (A B C D : S -> Prop) (t : T),
+        {{ A }} t {{ B }} ->
+        {{ C }} t {{ D }} ->
+        {{ fun s => A s /\ C s }} t {{ fun s => B s /\ D s }}.
+    Abort. (* TODO *)
+
+    Definition trace_elems_commute (te1 te2 : TE) :=
+      forall P Q, {{P}} [te1; te2] {{Q}} <-> {{P}} [te2; te1] {{Q}}.
+
+    Section ExpandTrace.
+      Variable te_subset : Ensemble TE.
+
+      Definition Local (prop : S -> Prop) :=
         forall te,
           ~Ensembles.In te_subset te ->
-          HoareTriple prop [te] prop.
+          {{ prop }} [te] {{ prop }}.
 
-      Inductive ExpandedTrace (te_subset : Ensemble TE) : T -> T -> Prop :=
+      Example True_is_local : Local (fun s => True).
+      Proof.
+        unfold Local. intros.
+        (* We can't prove it, thankfully! *)
+      Abort.
+
+      Definition ChainRuleLocality :=
+        forall te s,
+          Ensembles.In te_subset te ->
+          Local (fun s' => chain_rule s s' te).
+
+      Inductive ExpandedTrace : T -> T -> Prop :=
       | et_nil :
-          ExpandedTrace te_subset [] []
+          ExpandedTrace [] []
       | et_match :
           forall te t t',
-            ExpandedTrace te_subset t t' ->
-            ExpandedTrace te_subset (te :: t) (te :: t')
+            Ensembles.In te_subset te ->
+            ExpandedTrace t t' ->
+            ExpandedTrace (te :: t) (te :: t')
       | et_expand :
           forall te t t',
             ~Ensembles.In te_subset te ->
-            ExpandedTrace te_subset t t' ->
-            ExpandedTrace te_subset t (te :: t').
+            ExpandedTrace t t' ->
+            ExpandedTrace t (te :: t').
 
-      Lemma expand_trace_nil : forall te_subset prop t,
-          Local te_subset prop ->
-          ExpandedTrace te_subset [] t ->
+      (* Let's prove that our definition of [ExpandedTrace] covers
+      complete trace space; that is, any trace can be split into
+      interleaving of members of [te_subset] and the complement
+      ensemble: *)
+      Theorem extend_trace_complete : forall (t t' : T),
+          Forall (fun te => Ensembles.In te_subset te) t' ->
+          ExpandedTrace t' t.
+      Abort. (* TODO *)
+
+      Lemma expand_trace_nil : forall prop t,
+          Local prop ->
+          ExpandedTrace [] t ->
           HoareTriple prop t prop.
       Proof.
         intros.
@@ -212,61 +238,252 @@ Section Hoare.
           + apply IHExpandedTrace. assumption.
       Qed.
 
-      Theorem frame_rule : forall pre post te_subset te trace',
-          Local te_subset pre ->
-          Local te_subset post ->
-          ExpandedTrace te_subset [te] trace' ->
-          HoareTriple pre [te] post ->
-          HoareTriple pre trace' post.
+      Theorem expand_trace_elem : forall pre post te trace',
+          Local pre ->
+          Local post ->
+          ExpandedTrace [te] trace' ->
+          {{pre}} [te] {{post}} ->
+          {{pre}} trace' {{post}}.
       Proof.
-        intros pre post te_subset te t' Hl_pre Hl_post Hexp_t' Ht.
-        inversion Ht; subst.
-        inversion H3; subst.
+        intros pre post te t' Hl_pre Hl_post Hexp_t' Ht.
+        inversion_ Ht.
+        inversion_ H3.
         clear Ht. clear H3.
-        (* Amusing: we got [Local te_subset (fun s' : S => chain_rule s s' te)]
-           hypothesis for free! *)
+        (* Interesting: we got [Local te_subset (fun s' : S => chain_rule s s' te)] *)
+        (*      hypothesis for free *)
         set (mid := (fun s' : S => chain_rule s s' te)) in *.
         remember [te] as t.
-        induction Hexp_t'; inversion Heqt; subst.
+        induction Hexp_t'; inversion_ Heqt.
         - apply hoare_cons with (mid := mid).
           + apply ht_step with (s := s); [constructor | easy].
-          + apply (expand_trace_nil te_subset); auto.
+          + apply expand_trace_nil; auto.
         - apply hoare_cons with (mid := pre).
           apply Hl_pre; auto.
           auto.
       Qed.
 
-      Theorem expand_trace : forall pre post te_subset trace trace',
-          Local te_subset pre ->
-          Local te_subset post ->
-          ExpandedTrace te_subset trace trace' ->
+      (* This theorem is weaker than [expand_trace_elem], as it
+      requires an additional assumption [ChainRuleLocality] *)
+      Theorem expand_trace : forall pre post trace trace',
+          Local pre ->
+          Local post ->
+          ChainRuleLocality ->
+          ExpandedTrace trace trace' ->
           HoareTriple pre trace post ->
           HoareTriple pre trace' post.
       Proof.
-        intros pre post te_subset t t' Hl_pre Hl_post Hexp Ht.
+        (* First element of [t] is special, as it is proven using
+        [Local pre]. We don't want [Local pre] in our main induction
+        hypothesis (as [chain_rule] is not guaranteed to be [Local]
+        under any conditions), so let's handle very first element of
+        [t] separately: *)
+        intros pre post t t' Hl_pre Hl_post Hl_h Hexp Ht.
+        induction Hexp; auto.
+        2: { (* Here we drop irrelevant leading trace elements: *)
+          apply hoare_cons with (mid := pre); auto.
+        }
+        1: {
+          inversion_ Ht.
+          apply ht_step with (s := s); auto.
+          (* Now when we sorted out the situation with the
+          precondition, we use induction over [Hexp] to prove the rest
+          of the theorem: *)
+          clear H6. clear IHHexp. clear Ht.
+          generalize dependent s.
+          generalize dependent te.
+          induction Hexp; intros; auto.
+          - inversion_ H4.
+            apply hoare_cons with (mid := fun s' => chain_rule s0 s' te).
+            apply ht_step with (s := s0); auto. constructor.
+            apply IHHexp; auto.
+          - specialize (Hl_h te0 s H1).
+            apply hoare_cons with (mid := fun s' => chain_rule s s' te0); auto.
+        }
+      Qed.
+    End ExpandTrace.
 
-        induction t.
-        - inversion Ht; subst.
-          apply (expand_trace_nil te_subset); auto.
-        - apply IHt.
-          Focus 2.
-      Abort.
+    Section FrameRule.
+      Theorem frame_rule : forall (e1 e2 : Ensemble TE) (P Q R : S -> Prop) (te : TE),
+          Ensembles.Disjoint e1 e2 ->
+          Local e1 P -> Local e1 Q -> Local e2 R ->
+          Ensembles.In e1 te ->
+          {{ P }} [te] {{ Q }} ->
+          {{ fun s => P s /\ R s }} [te] {{ fun s => Q s /\ R s }}.
+        Abort.
     End FrameRule.
   End defn.
-
-  Section PossibleTrace.
-    Definition HoareTripleH :=
-      @HoareTriple (h_state H) valid_trace_elem.
-
-    (** Property that tells if a certain sequence of side effects is
-        "physically possible". E.g. mutex can't be taken twice, messages
-        don't travel backwards in time, memory doesn't change all by
-        itself and so on: *)
-    Definition PossibleTrace t := HoareTripleH (fun _ => True) t (fun _ => True).
-  End PossibleTrace.
 End Hoare.
 
-(* Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b). *)
+Section PossibleTrace.
+  (** Property that tells if a certain sequence of side effects is
+      "physically possible". E.g. mutex can't be taken twice, messages
+      don't travel backwards in time, memory doesn't change all by
+      itself and so on: *)
+  Context {AID : Set} {H : @t AID}.
+
+  Definition HoareTripleH := @HoareTriple AID H (h_state H) (h_chain_rule H).
+
+  Definition PossibleTrace t := HoareTripleH (fun _ => True) t (fun _ => True).
+End PossibleTrace.
+
+Section ComposeHandlers.
+  Context {AID : Set} `{OrderedType AID} (h_l h_r : @t AID).
+
+  Definition compose_state : Set := h_state h_l * h_state h_r.
+
+  Definition compose_req : Set := h_req h_l + h_req h_r.
+
+  Hint Transparent compose_state.
+
+  Definition compose_initial_state state :=
+    h_l.(h_initial_state) (fst state) /\ h_r.(h_initial_state) (snd state).
+
+  Hint Transparent compose_initial_state.
+
+  Definition compose_ret (req : compose_req) : Set :=
+    match req with
+    | inl l => h_l.(h_ret) l
+    | inr r => h_r.(h_ret) r
+    end.
+
+  Hint Transparent compose_ret.
+
+  Check trace_elem.
+
+  Inductive compose_chain_rule : compose_state ->
+                                 compose_state ->
+                                 @TraceElem_ AID compose_req compose_ret
+                                 -> Prop :=
+  | cmpe_left :
+      forall (l l' : h_state h_l) (r : h_state h_r)
+        (aid : AID) (req : h_req h_l) (ret : (h_ret h_l) req),
+        h_chain_rule h_l l l' (trace_elem _ _ aid req ret) ->
+        compose_chain_rule (l, r) (l', r) (trace_elem _ _ aid (inl req) ret)
+  | cmpe_right :
+      forall (r r' : h_state h_r) (l : h_state h_l)
+        (aid : AID) (req : h_req h_r) (ret : (h_ret h_r) req),
+        h_chain_rule h_r r r' (trace_elem _ _ aid req ret) ->
+        compose_chain_rule (l, r) (l, r') (trace_elem _ _ aid (inr req) ret).
+
+  Definition compose : t :=
+    {| h_state         := compose_state;
+       h_req           := compose_req;
+       h_ret           := compose_ret;
+       h_initial_state := compose_initial_state;
+       h_chain_rule    := compose_chain_rule;
+    |}.
+
+  Definition te_subset_l (te : @TraceElem AID compose) :=
+    match te_req te with
+    | inl _ => True
+    | inr _ => False
+    end.
+
+  Definition te_subset_r (te : @TraceElem AID compose) :=
+    match te_req te with
+    | inl _ => False
+    | inr _ => True
+    end.
+
+  Theorem composed_state_locality_l :
+    @ChainRuleLocality AID compose compose_state
+                       compose_chain_rule te_subset_l.
+  Proof.
+    unfold ChainRuleLocality, Local.
+    intros [aid1 req1 ret1] [s_l s_r] H1 [aid2 req2 ret2] H2.
+    unfold te_subset_l, Ensembles.In in H1, H2.
+    destruct req1 as [req1|req1], req2 as [req2|req2]; try contradiction.
+    simpl in *.
+    assert (s_r' : h_r.(h_state)). admit.
+    apply ht_step with (s := (s_l, s_r')).
+  Abort.
+End ComposeHandlers.
+
+Module Mutable.
+  Inductive req_t {T : Set} :=
+  | get : req_t
+  | put : T -> req_t.
+
+  Section defs.
+  Context (AID T : Set) `{AID_ord : OrderedType AID} (initial_state : T -> Prop).
+
+  Local Definition ret_t (req : @req_t T) : Set :=
+    match req with
+    | get => T
+    | _   => True
+    end.
+
+  Inductive mut_chain_rule : T -> T -> @TraceElem_ AID req_t ret_t -> Prop :=
+  | mut_get : forall s aid,
+      mut_chain_rule s s (trace_elem _ _ aid get s)
+  | mut_put : forall s val aid,
+      mut_chain_rule s val (trace_elem _ _ aid (put val) I).
+
+  Definition t : t :=
+    {|
+      h_state := T;
+      h_req := req_t;
+      h_initial_state := initial_state;
+      h_chain_rule := mut_chain_rule;
+    |}.
+  End defs.
+End Mutable.
+
+Module Mutex.
+  Inductive req_t : Set :=
+  | grab    : req_t
+  | release : req_t.
+
+  Local Definition ret_t (req : req_t) : Set :=
+    match req with
+    | grab => True
+    | release => bool
+    end.
+
+  Section defs.
+  Variable AID : Set.
+
+  Definition state_t : Set := option AID.
+
+  Inductive mutex_chain_rule : state_t -> state_t -> @TraceElem_ AID req_t ret_t -> Prop :=
+  | mutex_grab : forall aid,
+      mutex_chain_rule None (Some aid) (trace_elem _ _ aid grab I)
+  | mutex_release_ok : forall aid,
+      mutex_chain_rule (Some aid) None (trace_elem _ _ aid release true)
+  | mutex_release_fail : forall aid,
+      mutex_chain_rule (Some aid) None (trace_elem _ _ aid release false).
+
+  Definition t : t :=
+    {|
+      h_state         := state_t;
+      h_req           := req_t;
+      h_initial_state := fun s0 => s0 = None;
+      h_chain_rule    := mutex_chain_rule
+    |}.
+
+  Local Notation "aid '@' ret '<~' req" := (trace_elem req_t ret_t aid req ret).
+
+  Theorem no_double_grab : forall (a1 a2 : AID),
+      ~(@PossibleTrace AID t [ a1 @ I <~ grab;
+                               a2 @ I <~ grab
+                             ]).
+  Proof.
+    intros a1 a2 H.
+    inversion_ H.
+    destruct s.
+    - inversion_ H3. inversion H7.
+    - simpl in *.
+      inversion H3.
+      inversion_ H7.
+      inversion_ H4. (* TODO: fix this *)
+      set (f := fun _:state_t => True) in *.
+      assert (nonsense : f (Some a1) = True) by easy.
+      rewrite <- H1 in nonsense.
+      rewrite <-nonsense in H5.
+      inversion H5.
+  Qed.
+  End defs.
+End Mutex.
 
 Section Actor.
   Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
@@ -288,62 +505,41 @@ Section Actor.
         m_state  : H.(h_state);
       }.
 
-  Definition perform_io aid (req : h_req H) cont (ret : HandlerRet req (h_ret H)) ms :=
+  Definition perform_io aid (req : h_req H) cont (ret : (h_ret H) req) ms s' :=
     match ms with
       {| m_state := s; m_actors := aa |} =>
-      match ret with
-      | r_stall _ _         => ms
-      | r_return _ _ rep s' =>
-        let aa' := match cont rep with
-                   | Some a' => add aid a' aa
-                   | None    => remove aid aa
-                   end in
-        mkState aa' s'
-      end
+      let aa' := match cont ret with
+                 | Some a' => add aid a' aa
+                 | None    => remove aid aa
+                 end in
+      mkState aa' s'
     end.
 
-  Definition valid_transition_ (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) : Prop :=
+  Definition actor_chain_rule_ (ms : ModelState) (te : TraceElem) (s' : H.(h_state)) : Prop :=
      match te, ms with
-     | trace_elem aid req ret, mkState aa s =>
+     | trace_elem _ _ aid req ret, mkState aa s =>
        {HIn : In aid aa |
         let HReq := match find' aid aa HIn with
                     | a_cont req' _ => req = req'
                     end in
-        HReq /\ valid_trace_elem (m_state ms) s' te}
+        HReq /\ H.(h_chain_rule) (m_state ms) s' te}
      end.
 
-  Definition valid_transition (ms ms' : ModelState) (te : TraceElem) : Prop :=
-    valid_transition_ ms te (m_state ms').
+  Definition actor_chain_rule (ms ms' : ModelState) (te : TraceElem) : Prop :=
+    actor_chain_rule_ ms te (m_state ms').
 
   Definition apply_trace_elem (ms : ModelState) (te : TraceElem) (s' : H.(h_state))
-             (Hte : valid_transition_ ms te s') : ModelState.
+             (Hte : actor_chain_rule_ ms te s') : ModelState.
     destruct te as [aid req ret].
     destruct ms as [aa s].
     destruct Hte as [HIn [Hreq Hs]].
     destruct (find' aid aa HIn) as [req0 cont].
-    refine (perform_io aid req0 cont _ (mkState aa s)).
-    - rewrite <-Hreq.
-      apply (r_return _ _ ret s').
-  Defined.
-
-  Definition is_reachable (ms ms' : ModelState) (te : @TraceElem AID H) : Prop.
-    refine ({Hte : valid_transition ms ms' te | _}).
-    set (ms_ := ms).
-    set (ms_' := ms').
-    (* Peform some initial pattern-matching: *)
-    destruct ms as [aa s].
-    destruct ms' as [aa' s'].
-    set (hret := make_ret te s').
-    destruct te as [aid req ret].
-    destruct Hte as [HIn [Hreq _]].
-    destruct (find' aid aa HIn) as [req' cont].
-    symmetry in Hreq. subst.
-    (* This is our property: *)
-    exact (ms_' = perform_io aid req cont hret ms_).
+    subst.
+    apply (perform_io aid req0 cont ret (mkState aa s) s').
   Defined.
 
   Definition HoareTripleA :=
-    @HoareTriple AID H ModelState is_reachable.
+    @HoareTriple AID H ModelState actor_chain_rule.
 
   Definition ReachableState initial_actors (ms : ModelState) : Prop :=
     exists (t : @Trace AID H),
@@ -351,137 +547,6 @@ Section Actor.
                    t
                    (fun m => ms = m).
 End Actor.
-
-Section ComposeHandlers.
-  Context {AID : Set} `{OrderedType AID}.
-
-  Definition compose_state (h1 h2 : @t AID) : Set :=
-    h_state h1 * h_state h2.
-
-  Definition compose_req (h1 h2 : @t AID) : Set :=
-    h_req h1 + h_req h2.
-
-  Hint Transparent compose_state.
-
-  Definition compose_initial_state (h1 h2 : @t AID) state :=
-    h1.(h_initial_state) (fst state) /\ h2.(h_initial_state) (snd state).
-
-  Hint Transparent compose_initial_state.
-
-  Definition compose_ret_t (h1 h2 : t) (req : compose_req h1 h2) : Set :=
-    match req with
-    | inl l => h1.(h_ret) l
-    | inr r => h2.(h_ret) r
-    end.
-
-  Hint Transparent compose_ret_t.
-
-  Definition ComposeHandlerRet h1 h2 req : Type :=
-    @HandlerRet (compose_req h1 h2)
-                (compose_state h1 h2)
-                req
-                (compose_ret_t h1 h2).
-
-  Definition compose_eval h1 h2
-             (state : compose_state h1 h2)
-             (aid : AID)
-             req
-             (ret : ComposeHandlerRet h1 h2 req) : Prop.
-    refine (
-        (let (s1, s2) := state in
-         match req as req' return (req = req' -> Prop) with
-         | inl req' => fun H => h1.(h_eval) s1 aid req' _
-         | inr req' => fun H => h2.(h_eval) s2 aid req' _
-         end) (eq_refl req));
-      subst;
-      destruct ret;
-      try simpl in reply;
-      constructor; assumption.
-  Defined.
-
-  Definition compose (h1 h2 : t) : t :=
-    {| h_state         := compose_state h1 h2;
-       h_req           := compose_req h1 h2;
-       h_ret           := compose_ret_t h1 h2;
-       h_initial_state := compose_initial_state h1 h2;
-       h_eval          := compose_eval h1 h2;
-    |}.
-End ComposeHandlers.
-
-Module Mutable.
-  Inductive req_t {T : Set} :=
-  | get : req_t
-  | put : T -> req_t.
-
-  Section defs.
-  Context (AID T : Set) `{AID_ord : OrderedType AID} (initial_state : T -> Prop).
-
-  Local Definition ret_t (req : @req_t T) : Set :=
-    match req with
-    | get => T
-    | _   => True
-    end.
-
-  Local Definition eval_f (s0 : T) (aid : AID) (req : req_t) : @HandlerRet req_t T req ret_t :=
-    match req with
-    | get   => r_return _ _ s0 s0
-    | put x => r_return _ _ I x
-    end.
-
-  Definition t : t :=
-    {|
-      h_state := T;
-      h_req := req_t;
-      h_initial_state := initial_state;
-      h_eval := fun s0 aid req ret => ret = eval_f s0 aid req;
-    |}.
-  End defs.
-End Mutable.
-
-Module Mutex.
-  Inductive req_t : Set :=
-  | grab    : req_t
-  | release : req_t.
-
-  Local Definition ret_t (_ : req_t) : Set := True.
-
-  Section defs.
-  Variable AID : Set.
-
-  Local Definition state_t : Set := option AID.
-
-  Local Definition eval_f (s0 : state_t) (aid : AID) (req : req_t) : @HandlerRet req_t state_t req ret_t :=
-    match req, s0 with
-    | grab, None   => r_return _ _ I (Some aid)
-    | grab, Some _ => r_stall _ _
-    | release, _   => r_return _ _ I None
-    end.
-
-  Definition t : t :=
-    {|
-      h_state         := state_t;
-      h_req           := req_t;
-      h_initial_state := fun s0 => s0 = None;
-      h_eval          := fun s0 aid req ret => ret = eval_f s0 aid req;
-    |}.
-
-  Local Notation "aid '@' req '<~' ret" := (@trace_elem AID t aid req ret).
-
-  Theorem no_double_grab : forall (a1 a2 : AID),
-      ~(PossibleTrace [ a1 @ grab <~ I;
-                        a2 @ grab <~ I
-                      ]).
-  Proof.
-    intros a1 a2 H.
-    unfold PossibleTrace, HoareTripleH in H.
-    inversion H as [|s te tail Htail _x]. subst.
-    inversion Htail as [|s' te' tail' Htail' Hss']. subst.
-    unfold valid_trace_elem, h_eval in *.
-    destruct s, s'; simpl in *; inversion Hss'.
-    - inversion Htail'. inversion H0.
-  Qed.
-  End defs.
-End Mutex.
 
 Module ExampleModelDefn.
   Definition AID : Set := nat.
