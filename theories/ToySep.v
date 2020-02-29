@@ -194,7 +194,7 @@ Section Hoare.
         {{ A }} t {{ B }} ->
         {{ C }} t {{ D }} ->
         {{ fun s => A s /\ C s }} t {{ fun s => B s /\ D s }}.
-    Abort.
+    Proof. firstorder. Qed.
 
     Definition trace_elems_commute (te1 te2 : TE) :=
       forall s s',
@@ -217,17 +217,9 @@ Section Hoare.
     Lemma trace_elems_commute_symm : forall te1 te2,
         trace_elems_commute te1 te2 ->
         trace_elems_commute te2 te1.
-    Admitted.
+    Proof. firstorder. Qed.
 
     Hint Resolve trace_elems_commute_symm.
-
-    Lemma trace_elem_comm_head : forall pre post te1 te2 tail,
-        trace_elems_commute te1 te2 ->
-        {{pre}} te1 :: te2 :: tail {{post}} ->
-        {{pre}} te2 :: te1 :: tail {{post}}.
-    Admitted.
-
-    Hint Resolve trace_elem_comm_head.
 
     Section ExpandTrace.
       Variable te_subset : Ensemble TE.
@@ -331,7 +323,6 @@ Section Hoare.
         2:{ apply hoare_cons with (mid := pre); auto. }
         1:{ intros s e_s'' Hse_s'' Hpre.
             clear IHHexp.
-
             generalize dependent s.
             generalize dependent te.
             generalize dependent pre.
@@ -351,7 +342,7 @@ Section Hoare.
           In e1 te ->
           {{ P }} [te] {{ Q }} ->
           {{ fun s => P s /\ R s }} [te] {{ fun s => Q s /\ R s }}.
-        Abort.
+      Abort.
     End FrameRule.
   End defn.
 End Hoare.
@@ -595,6 +586,8 @@ End Mutex.
 Section Actor.
   Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
 
+  Let TE := @TraceElem AID H.
+
   CoInductive Actor : Type :=
   | a_dead : Actor
   | a_cont :
@@ -604,6 +597,22 @@ Section Actor.
 
   Definition throw (_ : string) := a_dead.
 
+  Class Runnable A : Type :=
+    {
+      runStep : A -> option (A * TE) -> Prop
+    }.
+
+  Definition singletonStep (a : Actor) (b : option (Actor * TE)) : Prop.
+    refine (match a,b with
+            | a_dead, None => True
+            | a_dead, _    => False
+            | a_cont req cont, Some (a', te) =>
+              match te with
+                trace_elem _ _ _ req_ ret => req_ = req /\ a' = cont _
+              end
+            | a_cont _ _, None => False
+            end).
+  Abort.
 End Actor.
 
 Module ExampleModelDefn.
