@@ -7,7 +7,7 @@ Import ListNotations.
 
 Section defn.
 
-Context {T : Type} (commute : T -> T -> Prop).
+Context {T : Type} (can_swap : T -> T -> Prop).
 Let L := list T.
 
 (* This datastructure reflects a _permutation_ that is needed to
@@ -17,10 +17,10 @@ Inductive InterleaveLists (l : L) : L -> Prop :=
     InterleaveLists l l
 | intl_shuf : forall l' r' a b,
     InterleaveLists l (l' ++ a :: b :: r') ->
-    commute a b ->
+    can_swap a b ->
     InterleaveLists l (l' ++ b :: a :: r').
 
-(* TODO: Prove completeness of this defintion *)
+(* TODO: Prove completeness of this definition *)
 
 End defn.
 

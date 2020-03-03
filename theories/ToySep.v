@@ -268,10 +268,12 @@ Section Hoare.
       Example True_is_local : Local (fun s => True).
       Proof. easy. Qed.
 
+      Let can_swap a b := In te_subset a /\ Complement te_subset b.
+
       Inductive ExpandedTrace (trace trace' : T) : Prop :=
         expanded_trace_ : forall expansion,
           Forall (Complement te_subset) expansion ->
-          InterleaveLists trace_elems_commute (expansion ++ trace) trace' ->
+          InterleaveLists can_swap (expansion ++ trace) trace' ->
           ExpandedTrace trace trace'.
 
       Hint Transparent Ensembles.In Ensembles.Complement.
@@ -311,6 +313,8 @@ Section Hoare.
             assert (Hls : LongStep s (l' ++ a :: b :: r') s'').
             { apply ls_concat with (s' := s'); auto.
               apply trace_elems_commute_head; auto.
+              destruct H0.
+              apply Hcr; auto.
             }
             apply IHHexp; auto.
         }
