@@ -270,7 +270,6 @@ Section Hoare.
 
       Inductive ExpandedTrace (trace trace' : T) : Prop :=
         expanded_trace_ : forall expansion,
-          Forall (In te_subset) trace ->
           Forall (Complement te_subset) expansion ->
           InterleaveLists trace_elems_commute (expansion ++ trace) trace' ->
           ExpandedTrace trace trace'.
@@ -302,7 +301,7 @@ Section Hoare.
         we can conclude that there is a state transition from {----}
         part of trace to {++++}.
         *)
-        intros pre post trace trace' Hcr Hl_pre [expansion Hcomp Hin Hexp] Htrace.
+        intros pre post trace trace' Hcr Hl_pre [expansion Hcomp Hexp] Htrace.
         induction Hexp; intros; auto.
         2:{ intros s s'' Hss'' Hpre.
             apply ls_split in Hss''.
@@ -318,7 +317,7 @@ Section Hoare.
         1:{ induction expansion.
             - easy.
             - simpl.
-              inversion_ Hin.
+              inversion_ Hcomp.
               apply hoare_cons with (mid := pre).
               apply Hl_pre; auto.
               firstorder.
