@@ -272,7 +272,7 @@ Section Hoare.
         expanded_trace_ : forall expansion,
           Forall (In te_subset) trace ->
           Forall (Complement te_subset) expansion ->
-          InterleaveLists trace_elems_commute expansion trace trace' ->
+          InterleaveLists trace_elems_commute (expansion ++ trace) trace' ->
           ExpandedTrace trace trace'.
 
       Hint Transparent Ensembles.In Ensembles.Complement.
