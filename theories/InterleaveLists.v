@@ -1,49 +1,49 @@
 From Coq Require Import
      List
-     Tactics.
+     Tactics
+     Arith.Even.
 
 Import ListNotations.
 
-Section defns.
+Section defn.
 
-Context {T : Type} (prop_l prop_r : T -> Prop).
+Context {T : Type} (commute : T -> T -> Prop).
 Let L := list T.
 
-Inductive InterleavedList : L -> L -> L -> Prop :=
-| tri_l_nil : forall l,
-    Forall prop_r l ->
-    InterleavedList [] l l
-| tri_r_nil : forall l,
-    Forall prop_l l ->
-    InterleavedList l [] l
-| tri_l_cons : forall a b x l,
-    prop_l x ->
-    InterleavedList a b l ->
-    InterleavedList (x :: a) b (x :: l)
-| tri_r_cons : forall a b x l,
-    prop_r x ->
-    InterleavedList a b l ->
-    InterleavedList a (x :: b) (x :: l).
+(* This datastructure reflects a _permutation_ that is needed to
+interleave lists: *)
+Inductive InterleaveLists (l r : L) : L -> Prop :=
+| intl_orig :
+    InterleaveLists l r (l ++ r)
+| intl_shuf : forall l' r' a b,
+    InterleaveLists l r (l' ++ a :: b :: r') ->
+    commute a b ->
+    InterleaveLists l r (l' ++ b :: a :: r').
 
-End defns.
+(* TODO: Prove completeness of this defintion *)
+
+End defn.
 
 Section tests.
 
-Let P := fun (_:nat) => True.
+Let comm a b := odd a /\ even b.
 
-Example example_interleaved_list_1 : InterleavedList P P [] [] [].
+Example example_interleaved_list_1 : InterleaveLists comm [] [] [].
 Proof. constructor; auto. Qed.
 
-Example example_interleaved_list_2 : InterleavedList P P [1; 2] [3; 4] [1; 3; 2; 4].
-Proof. repeat (constructor; auto). Qed.
+Example example_interleaved_list_2 : InterleaveLists comm [1; 3] [2; 4] [1; 3; 2; 4].
+Proof.
+  replace [1; 3; 2; 4] with ([1; 3] ++ [2; 4]) by auto.
+  constructor.
+Qed.
 
-Example example_interleaved_list_3 : InterleavedList P P [1; 2] [3; 4] [3; 1; 4; 2].
-Proof. repeat (constructor; auto). Qed.
-
-Example example_interleaved_list_4 : InterleavedList P P [1; 2] [3; 4] [4; 1; 3; 2].
-Proof. repeat (constructor; auto). Fail easy. Abort.
-
-Example example_interleaved_list_5 : InterleavedList P P [1; 2] [3; 4] [3; 1; 4; 4; 2].
-Proof. repeat (constructor; auto). Fail easy. Abort.
+Example example_interleaved_list_3 : InterleaveLists comm [1; 3] [2; 4] [1; 2; 3; 4].
+Proof.
+  replace [1; 2; 3; 4] with ([1] ++ 2 :: 3 :: [4]) by auto.
+  constructor.
+  - replace ([1] ++ [3; 2; 4]) with ([1; 3] ++ [2; 4]) by auto.
+    constructor.
+  - split; repeat constructor.
+Qed.
 
 End tests.

@@ -148,7 +148,7 @@ Section Hoare.
       inversion_clear Hs. auto.
     Qed.
 
-    Theorem ls_split : forall s s'' t1 t2,
+    Lemma ls_split : forall s s'' t1 t2,
         LongStep s (t1 ++ t2) s'' ->
         exists s', LongStep s t1 s' /\ LongStep s' t2 s''.
     Proof.
@@ -164,6 +164,19 @@ Section Hoare.
         split.
         + apply ls_cons with (s' := s'); firstorder.
         + firstorder.
+    Qed.
+
+    Lemma ls_concat : forall s s' s'' t1 t2,
+        LongStep s t1 s' ->
+        LongStep s' t2 s'' ->
+        LongStep s (t1 ++ t2) s''.
+    Proof.
+      intros.
+      generalize dependent s.
+      induction t1; intros; simpl; auto.
+      - inversion_ H0.
+      - inversion_ H0.
+        apply ls_cons with (s' := s'0); auto.
     Qed.
 
     Theorem hoare_concat : forall pre mid post t1 t2,
@@ -221,6 +234,23 @@ Section Hoare.
 
     Hint Resolve trace_elems_commute_symm.
 
+    Lemma trace_elems_commute_head : forall s s'' b a trace,
+        trace_elems_commute a b ->
+        LongStep s (b :: a :: trace) s'' ->
+        LongStep s (a :: b :: trace) s''.
+    Proof.
+      intros.
+      inversion_ H1.
+      inversion_ H7.
+      specialize (H0 s s'0).
+      replace (a :: b :: trace) with ([a; b] ++ trace) by auto.
+      apply ls_concat with (s' := s'0); auto.
+      apply H0.
+      apply ls_cons with (s' := s'); auto.
+      apply ls_cons with (s' := s'0); auto.
+      constructor.
+    Qed.
+
     Section ExpandTrace.
       Variable te_subset : Ensemble TE.
 
@@ -238,60 +268,14 @@ Section Hoare.
       Example True_is_local : Local (fun s => True).
       Proof. easy. Qed.
 
-      Inductive ExpandedTrace : T -> T -> Prop :=
-      | et_nil :
-          ExpandedTrace [] []
-      | et_match :
-          forall te t t',
-            Ensembles.In te_subset te ->
-            ExpandedTrace t t' ->
-            ExpandedTrace (te :: t) (te :: t')
-      | et_expand :
-          forall te t t',
-            ~Ensembles.In te_subset te ->
-            ExpandedTrace t t' ->
-            ExpandedTrace t (te :: t').
+      Inductive ExpandedTrace (trace trace' : T) : Prop :=
+        expanded_trace_ : forall expansion,
+          Forall (In te_subset) trace ->
+          Forall (Complement te_subset) expansion ->
+          InterleaveLists trace_elems_commute expansion trace trace' ->
+          ExpandedTrace trace trace'.
 
       Hint Transparent Ensembles.In Ensembles.Complement.
-
-      Lemma expand_trace_nil : forall pre post trace,
-          Local pre ->
-          {{pre}} [] {{post}} ->
-          ExpandedTrace [] trace ->
-          {{pre}} trace {{post}}.
-      Proof.
-        intros pre post trace Hl_pre Hp Hexp s s' Hss' Hpre.
-        generalize dependent s.
-        remember [] as t.
-        induction Hexp; intros s Hs' Hs; inversion_ Hs'.
-        - specialize (Hp s' s'). auto.
-        - exfalso.
-          inversion Heqt.
-        - apply IHHexp with (s := s'0); auto.
-          assert (Hss'0 : LongStep s [te] s'0).
-          { apply ls_cons with (s' := s'0). auto. constructor. }
-          firstorder.
-      Qed.
-
-      Theorem expand_trace_elem : forall pre post te e_trace,
-          Local pre ->
-          Local post ->
-          ExpandedTrace [te] e_trace ->
-          {{pre}} [te] {{post}} ->
-          {{pre}} e_trace {{post}}.
-      Proof.
-        intros pre post te e_trace Hl_pre Hl_post Hexp Ht.
-        induction e_trace; inversion_ Hexp.
-        - intros s s'' Hval Hpre.
-          inversion_clear Hval.
-          assert (Hss' : LongStep s [a] s').
-          { apply ls_cons with (s' := s'); auto. constructor. }
-          specialize (Ht s s' Hss' Hpre).
-          specialize (hoare_nil post) as Hpost_post.
-          specialize (expand_trace_nil post post e_trace Hl_post Hpost_post H5) as Hnil.
-          specialize (Hnil s' s''); auto.
-        - apply hoare_cons with (mid := pre); auto.
-      Qed.
 
       (* This theorem is weaker than [expand_trace_elem], as it
       requires an additional assumption [ChainRuleLocality]. But
@@ -318,32 +302,48 @@ Section Hoare.
         we can conclude that there is a state transition from {----}
         part of trace to {++++}.
         *)
-        intros pre post trace trace' Hcr Hl_pre Hexp Htrace.
-        induction Hexp; auto.
-        2:{ apply hoare_cons with (mid := pre); auto. }
-        1:{ intros s e_s'' Hse_s'' Hpre.
-            clear IHHexp.
-            generalize dependent s.
-            generalize dependent te.
-            generalize dependent pre.
-            induction Hexp; intros.
-            - apply Htrace in Hse_s''. apply Hse_s'' in Hpre. assumption.
-            - inversion_clear Hse_s''.
-              set (mid := fun s' => chain_rule s s' te0) in *.
-              apply IHHexp with (te := te) (s := s') (pre := mid); auto.
-      Abort.
-
+        intros pre post trace trace' Hcr Hl_pre [expansion Hcomp Hin Hexp] Htrace.
+        induction Hexp; intros; auto.
+        2:{ intros s s'' Hss'' Hpre.
+            apply ls_split in Hss''.
+            destruct Hss'' as [s' [Hss' Hss'']].
+            specialize (IHHexp s s'').
+            specialize (Hcr a b).
+            assert (Hls : LongStep s (l' ++ a :: b :: r') s'').
+            { apply ls_concat with (s' := s'); auto.
+              apply trace_elems_commute_head; auto.
+            }
+            apply IHHexp; auto.
+        }
+        1:{ induction expansion.
+            - easy.
+            - simpl.
+              inversion_ Hin.
+              apply hoare_cons with (mid := pre).
+              apply Hl_pre; auto.
+              firstorder.
+        }
+      Qed.
     End ExpandTrace.
 
-    Section FrameRule.
-      Theorem frame_rule : forall (e1 e2 : Ensemble TE) (P Q R : S -> Prop) (te : TE),
-          Disjoint e1 e2 ->
-          Local e1 P -> Local e1 Q -> Local e2 R ->
-          In e1 te ->
-          {{ P }} [te] {{ Q }} ->
-          {{ fun s => P s /\ R s }} [te] {{ fun s => Q s /\ R s }}.
-      Abort.
-    End FrameRule.
+    Theorem frame_rule : forall (e1 e2 : Ensemble TE) (P Q R : S -> Prop) (te : TE),
+        Disjoint e1 e2 ->
+        Local e2 R ->
+        In e1 te ->
+        {{ P }} [te] {{ Q }} ->
+        {{ fun s => P s /\ R s }} [te] {{ fun s => Q s /\ R s }}.
+    Proof.
+      intros e1 e2 P Q R te He HlR Hin Hh.
+      apply hoare_and.
+      - assumption.
+      - apply HlR.
+        destruct He as [He].
+        specialize (He te).
+        unfold not, In in He.
+        intros Hinte.
+        apply He.
+        constructor; auto.
+    Qed.
   End defn.
 End Hoare.
 
