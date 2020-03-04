@@ -472,6 +472,25 @@ Section ComposeHandlers.
       inversion_ H5.
   Qed.
 
+  Lemma lift_r_local : forall (prop : S_r -> Prop),
+      @Local AID compose S compose_chain_rule te_subset_r (lift_r prop).
+  Proof.
+    unfold Local, HoareTriple.
+    intros prop te Hin s s' Hte Hpre.
+    unfold te_subset_r in Hin.
+    destruct te as [aid req ret].
+    unfold In in *.
+    destruct req as [req|req]; simpl in *.
+    - inversion_ Hte.
+      unfold compose_chain_rule in H3.
+      destruct s, s', s'0.
+      firstorder.
+      unfold eq_rec_r in *. simpl in *.
+      subst.
+      inversion_ H5.
+    - easy.
+  Qed.
+
   Lemma local_l_chain_rule : @ChainRuleLocality AID compose S
                                                 compose_chain_rule te_subset_l.
   Proof.
@@ -491,6 +510,29 @@ Section ComposeHandlers.
       apply ls_cons with (s' := (l', r')); firstorder.
       constructor.
     - apply ls_cons with (s' := (l', r)); firstorder.
+      apply ls_cons with (s' := (l', r')); firstorder.
+      constructor.
+  Qed.
+
+  Lemma local_r_chain_rule : @ChainRuleLocality AID compose S
+                                                compose_chain_rule te_subset_r.
+  Proof.
+    intros te1 te2 Hte1 Hte2 [l r] [l' r'].
+    split; intros Hs';
+    destruct te1 as [aid1 req1 ret1];
+    destruct te2 as [aid2 req2 ret2];
+    destruct req1, req2; unfold Ensembles.In, te_subset_r in *; try easy;
+      clear Hte1; clear Hte2;
+      inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
+      inversion H1 as [|[l3 r3] [l4 r4]]; subst; clear H1;
+      inversion H3; subst; clear H3;
+      unfold compose_chain_rule in *;
+      firstorder; subst;
+      unfold eq_rec_r in *; simpl in *.
+    - apply ls_cons with (s' := (l', r)); firstorder.
+      apply ls_cons with (s' := (l', r')); firstorder.
+      constructor.
+    - apply ls_cons with (s' := (l, r')); firstorder.
       apply ls_cons with (s' := (l', r')); firstorder.
       constructor.
   Qed.
@@ -587,7 +629,7 @@ Module Mutex.
 End Mutex.
 
 Section Actor.
-  Context {AID : Set} `{AID_ord : OrderedType AID} {H : @t AID}.
+  Context {AID} {H : @t AID}.
 
   Let TE := @TraceElem AID H.
 
@@ -602,21 +644,33 @@ Section Actor.
 
   Class Runnable A : Type :=
     {
-      runStep : A -> option (A * TE) -> Prop
+      runnable_step : A -> TE -> A -> Prop
     }.
 
-  Definition singletonStep (a : Actor) (b : option (Actor * TE)) : Prop.
-    refine (match a,b with
-            | a_dead, None => True
-            | a_dead, _    => False
-            | a_cont req cont, Some (a', te) =>
-              match te with
-                trace_elem _ _ _ req_ ret => req_ = req /\ a' = cont _
-              end
-            | a_cont _ _, None => False
-            end).
-  Abort.
+  CoInductive Scheduling {A} `{Runnable A} : A -> Trace -> Prop :=
+  | shed : forall (a a' : A) te rev_trace,
+      Scheduling a rev_trace ->
+      runnable_step a te a' ->
+      Scheduling a' (te :: rev_trace).
 End Actor.
+
+Section SingletonActor.
+  Context {AID} {H : @t AID}.
+
+  Let TE := @TraceElem AID H.
+
+  Inductive SingletonStep : Actor -> TE -> Actor -> Prop :=
+  | singleton_step_ :
+      forall req cont ret aid,
+        SingletonStep (a_cont req cont)
+                      {| te_req := req; te_ret := ret; te_aid := aid |}
+                      (cont ret).
+
+  Instance runnableSingleton : Runnable Actor :=
+    {
+       runnable_step := SingletonStep
+    }.
+End SingletonActor.
 
 Module ExampleModelDefn.
   Definition AID : Set := nat.
