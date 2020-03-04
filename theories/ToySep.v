@@ -631,8 +631,6 @@ End Mutex.
 Section Actor.
   Context {AID} {H : @t AID}.
 
-  Let TE := @TraceElem AID H.
-
   CoInductive Actor : Type :=
   | a_dead : Actor
   | a_cont :
@@ -641,34 +639,40 @@ Section Actor.
       , Actor.
 
   Definition throw (_ : string) := a_dead.
-
-  Class Runnable A : Type :=
-    {
-      runnable_step : A -> TE -> A -> Prop
-    }.
-
-  CoInductive Scheduling {A} `{Runnable A} : A -> Trace -> Prop :=
-  | shed : forall (a a' : A) te rev_trace,
-      Scheduling a rev_trace ->
-      runnable_step a te a' ->
-      Scheduling a' (te :: rev_trace).
 End Actor.
 
+Section Runnable.
+  Class Runnable A :=
+    {
+      runnable_aid : Set;
+      runnable_step : forall {AID} {H : @t AID}, A AID H -> @TraceElem AID H -> A AID H -> Prop
+    }.
+
+  Context {A} `{RA : Runnable A}.
+
+  Let AID := @runnable_aid A RA.
+
+  Context (Handler : @t AID).
+
+  CoInductive Scheduling : A AID Handler -> Trace -> Prop :=
+  | shed : forall a a' te rev_trace,
+      Scheduling a rev_trace ->
+      @runnable_step A RA AID Handler a te a' ->
+      Scheduling a' (te :: rev_trace).
+End Runnable.
+
 Section SingletonActor.
-  Context {AID} {H : @t AID}.
-
-  Let TE := @TraceElem AID H.
-
-  Inductive SingletonStep : Actor -> TE -> Actor -> Prop :=
+  Inductive SingletonStep {AID H} : Actor -> @TraceElem AID H -> Actor -> Prop :=
   | singleton_step_ :
       forall req cont ret aid,
         SingletonStep (a_cont req cont)
                       {| te_req := req; te_ret := ret; te_aid := aid |}
                       (cont ret).
 
-  Instance runnableSingleton : Runnable Actor :=
+  Instance runnableSingleton : Runnable (@Actor) :=
     {
-       runnable_step := SingletonStep
+      runnable_aid := True;
+      runnable_step := @SingletonStep
     }.
 End SingletonActor.
 
