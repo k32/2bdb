@@ -67,10 +67,6 @@ From Coq Require Import
 
 Import ListNotations.
 
-From Containers Require Import
-     OrderedType
-     OrderedTypeEx.
-
 From QuickChick Require Import
      QuickChick.
 
@@ -89,7 +85,7 @@ Global Arguments Disjoint {_}.
 Ltac inversion_ a := inversion a; subst; auto.
 
 Section IOHandler.
-  Context {AID : Set} `{AID_ord : OrderedType AID}.
+  Context {AID : Set}.
 
   Local Notation "'Nondeterministic' a" := ((a) -> Prop) (at level 200).
 
@@ -370,7 +366,7 @@ Section PossibleTrace.
 End PossibleTrace.
 
 Section ComposeHandlers.
-  Context {AID : Set} `{OrderedType AID} (h_l h_r : @t AID).
+  Context {AID : Set} (h_l h_r : @t AID).
 
   Let S_l := h_state h_l.
   Let S_r := h_state h_r.
@@ -464,12 +460,12 @@ Section ComposeHandlers.
     destruct req as [req|req]; simpl in *.
     - easy.
     - inversion_ Hte.
-      unfold compose_chain_rule in H3.
+      unfold compose_chain_rule in H2.
       destruct s, s', s'0.
       firstorder.
       unfold eq_rec_r in *. simpl in *.
       subst.
-      inversion_ H5.
+      inversion_ H4.
   Qed.
 
   Lemma lift_r_local : forall (prop : S_r -> Prop),
@@ -482,12 +478,12 @@ Section ComposeHandlers.
     unfold In in *.
     destruct req as [req|req]; simpl in *.
     - inversion_ Hte.
-      unfold compose_chain_rule in H3.
+      unfold compose_chain_rule in H2.
       destruct s, s', s'0.
       firstorder.
       unfold eq_rec_r in *. simpl in *.
       subst.
-      inversion_ H5.
+      inversion_ H4.
     - easy.
   Qed.
 
@@ -501,8 +497,8 @@ Section ComposeHandlers.
     destruct req1, req2; unfold Ensembles.In, te_subset_l in *; try easy;
       clear Hte1; clear Hte2;
       inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
-      inversion H1 as [|[l3 r3] [l4 r4]]; subst; clear H1;
-      inversion H3; subst; clear H3;
+      inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
+      inversion H2; subst; clear H2;
       unfold compose_chain_rule in *;
       firstorder; subst;
       unfold eq_rec_r in *; simpl in *.
@@ -524,8 +520,8 @@ Section ComposeHandlers.
     destruct req1, req2; unfold Ensembles.In, te_subset_r in *; try easy;
       clear Hte1; clear Hte2;
       inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
-      inversion H1 as [|[l3 r3] [l4 r4]]; subst; clear H1;
-      inversion H3; subst; clear H3;
+      inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
+      inversion H2; subst; clear H2;
       unfold compose_chain_rule in *;
       firstorder; subst;
       unfold eq_rec_r in *; simpl in *.
@@ -544,7 +540,7 @@ Module Mutable.
   | put : T -> req_t.
 
   Section defs.
-  Context (AID T : Set) `{AID_ord : OrderedType AID} (initial_state : T -> Prop).
+  Context (AID T : Set) (initial_state : T -> Prop).
 
   Local Definition ret_t (req : @req_t T) : Set :=
     match req with
@@ -629,58 +625,90 @@ Module Mutex.
 End Mutex.
 
 Section Actor.
-  Context {AID} {H : @t AID}.
+  Context {AID_top} {Handler : @t AID_top}.
+
+  Let Req := h_req Handler.
+  Let Ret := h_ret Handler.
+  Let TE := @TraceElem AID_top Handler.
 
   CoInductive Actor : Type :=
   | a_dead : Actor
   | a_cont :
-      forall (pending_req : H.(h_req))
-        (continuation : H.(h_ret) pending_req -> Actor)
+      forall (pending_req : Req)
+        (continuation : Ret pending_req -> Actor)
       , Actor.
 
   Definition throw (_ : string) := a_dead.
+
+  Class Runnable (AID : Set) (A : Type) :=
+    {
+      runnable_step : AID -> A -> TE -> A -> Prop;
+    }.
 End Actor.
 
-Section Runnable.
-  Class Runnable A :=
-    {
-      runnable_aid : Set;
-      runnable_step : forall {AID} {H : @t AID}, A AID H -> @TraceElem AID H -> A AID H -> Prop
-    }.
+Section RunnableSingleton.
+  Context {AID_top} {Handler : @t AID_top}.
+  Let TE := @TraceElem AID_top Handler.
 
-  Context {A} `{RA : Runnable A}.
-
-  Let AID := @runnable_aid A RA.
-
-  Context (Handler : @t AID).
-
-  CoInductive Scheduling : A AID Handler -> Trace -> Prop :=
-  | shed : forall a a' te rev_trace,
-      Scheduling a rev_trace ->
-      @runnable_step A RA AID Handler a te a' ->
-      Scheduling a' (te :: rev_trace).
-End Runnable.
-
-Section SingletonActor.
-  Inductive SingletonStep {AID H} : Actor -> @TraceElem AID H -> Actor -> Prop :=
+  Inductive SingletonStep : Actor -> TE -> Actor -> Prop :=
   | singleton_step_ :
-      forall req cont ret aid,
-        SingletonStep (a_cont req cont)
-                      {| te_req := req; te_ret := ret; te_aid := aid |}
-                      (cont ret).
+      forall te cont,
+        SingletonStep (a_cont (te_req te) cont)
+                      te
+                      (cont (te_ret te)).
 
-  Instance runnableSingleton : Runnable (@Actor) :=
+  Instance runnableSingleton : Runnable True Actor :=
     {
-      runnable_aid := True;
-      runnable_step := @SingletonStep
+      runnable_step := fun _ => SingletonStep
     }.
-End SingletonActor.
+End RunnableSingleton.
+
+Section RunnablePair.
+  Context {AID_top} {Handler : @t AID_top}.
+  Let TE := @TraceElem AID_top Handler.
+
+  Context aid_l l aid_r r `{RL : Runnable AID_top Handler aid_l l} `{RR : Runnable AID_top Handler aid_r r}.
+
+  Let S : Type := l * r.
+
+  Let AID_pair : Set := aid_l + aid_r.
+
+  Inductive PairStep : AID_pair -> S -> TE -> S -> Prop :=
+  | pair_step_l :
+      forall aid syscall l l' r,
+        runnable_step aid l syscall l' ->
+        PairStep (inl aid) (l, r) syscall (l', r)
+  | pair_step_r :
+      forall aid syscall r r' l,
+        runnable_step aid r syscall r' ->
+        PairStep (inr aid) (l, r) syscall (l, r').
+
+  Instance runnablePair : Runnable AID_pair S :=
+    {
+      runnable_step := @PairStep
+    }.
+End RunnablePair.
+
+Section Scheduling.
+  Context {AID} {Handler : @t AID}.
+  Let TE := @TraceElem AID Handler.
+
+  Context {R} `{RR : Runnable AID Handler AID R}.
+
+  CoInductive Scheduling : R -> list TE -> Prop :=
+  | shed : forall a a' (te : TE) reverse_trace,
+      Scheduling a reverse_trace ->
+      runnable_step (te_aid te) a te a' ->
+      Scheduling a' (te :: reverse_trace).
+End Scheduling.
 
 Module ExampleModelDefn.
   Definition AID : Set := nat.
 
-  Local Definition handler := compose (Mutable.t AID nat (fun a => a = 0))
-                                      (Mutex.t AID).
+  Let handler := compose (Mutable.t AID nat (fun a => a = 0))
+                         (Mutex.t AID).
+
+  Let TE := @TraceElem AID handler.
 
   Notation "'do' V '<-' I ; C" := (@a_cont AID handler (I) (fun V => C))
                                     (at level 100, C at next level, V ident, right associativity).
@@ -719,4 +747,5 @@ Module ExampleModelDefn.
     do v <- get;
     do _ <- put (v + 1);
     done release.
+
 End ExampleModelDefn.
