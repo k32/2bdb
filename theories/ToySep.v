@@ -1,4 +1,4 @@
-(*** Minimalistic implementation of concurrent separation logic *)
+(*** Minimalistic implementation of concurrent separation logic with implicit state *)
 (** This module defines the model of distributed system used in the
 rest of the project. Whether you trust the LibTx depends on whether
 you trust the below definitions.
@@ -84,39 +84,13 @@ Global Arguments Disjoint {_}.
 
 Ltac inversion_ a := inversion a; subst; auto.
 
-Section IOHandler.
-  Context {AID : Set}.
-
-  Local Notation "'Nondeterministic' a" := ((a) -> Prop) (at level 200).
-
-  Record TraceElem_ {Req : Set} {Ret : Req -> Set} : Set :=
-    trace_elem { te_aid : AID;
-                 te_req : Req;
-                 te_ret : Ret te_req;
-               }.
-
-  Record t : Type :=
-    {
-      h_state         : Set;
-      h_req           : Set;
-      h_ret           : h_req -> Set;
-      h_initial_state : Nondeterministic h_state;
-      h_chain_rule    : h_state -> h_state -> @TraceElem_ h_req h_ret -> Prop
-    }.
-
-  Definition TraceElem {h : t} : Set := @TraceElem_ h.(h_req) h.(h_ret).
-
-  Definition Trace {h : t} := list (@TraceElem h).
-End IOHandler.
-
-Section Hoare.
-  Context {AID : Set} {H : @t AID}.
-
+Module Hoare.
   Section defn.
-    Let TE := @TraceElem AID H.
-    Let T := @Trace AID H.
+    Context {S : Type} {TE : Type} {chain_rule : S -> S -> TE -> Prop}.
 
-    Context {S : Type} {chain_rule : S -> S -> TE -> Prop}.
+    Definition Trace := list TE.
+
+    Let T := Trace.
 
     Inductive LongStep : S -> T -> S -> Prop :=
     | ls_nil : forall s,
@@ -125,11 +99,6 @@ Section Hoare.
         chain_rule s s' te ->
         LongStep s' trace  s'' ->
         LongStep s (te :: trace) s''.
-
-    Inductive ValidTrace (trace : T) :=
-    | valid_trace : forall s s',
-        LongStep s trace s' ->
-        ValidTrace trace.
 
     Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
       forall s s',
@@ -153,8 +122,8 @@ Section Hoare.
       induction t1; intros.
       - exists s.
         split; auto. constructor.
-      - inversion_clear H0.
-        specialize (IHt1 s' H2).
+      - inversion_clear H.
+        specialize (IHt1 s' H1).
         destruct IHt1.
         exists x.
         split.
@@ -170,8 +139,8 @@ Section Hoare.
       intros.
       generalize dependent s.
       induction t1; intros; simpl; auto.
-      - inversion_ H0.
-      - inversion_ H0.
+      - inversion_ H.
+      - inversion_ H.
         apply ls_cons with (s' := s'0); auto.
     Qed.
 
@@ -216,9 +185,9 @@ Section Hoare.
       unfold trace_elems_commute.
       split; intros;
       intros s s' Hss' Hpre;
-      specialize (H0 s s');
+      specialize (H s s');
+      apply H in Hss';
       apply H0 in Hss';
-      apply H1 in Hss';
       apply Hss' in Hpre;
       assumption.
     Qed.
@@ -236,12 +205,12 @@ Section Hoare.
         LongStep s (a :: b :: trace) s''.
     Proof.
       intros.
-      inversion_ H1.
-      inversion_ H7.
-      specialize (H0 s s'0).
+      inversion_ H0.
+      inversion_ H6.
+      specialize (H s s'0).
       replace (a :: b :: trace) with ([a; b] ++ trace) by auto.
       apply ls_concat with (s' := s'0); auto.
-      apply H0.
+      apply H.
       apply ls_cons with (s' := s'); auto.
       apply ls_cons with (s' := s'0); auto.
       constructor.
@@ -309,7 +278,7 @@ Section Hoare.
             assert (Hls : LongStep s (l' ++ a :: b :: r') s'').
             { apply ls_concat with (s' := s'); auto.
               apply trace_elems_commute_head; auto.
-              destruct H0.
+              destruct H.
               apply Hcr; auto.
             }
             apply IHHexp; auto.
@@ -343,198 +312,231 @@ Section Hoare.
         apply He.
         constructor; auto.
     Qed.
+
+    Definition PossibleTrace t :=
+      exists s s', LongStep s t s'.
   End defn.
 End Hoare.
 
-Section PossibleTrace.
-  (** Property that tells if a certain sequence of side effects is
-      "physically possible". E.g. mutex can't be taken twice, messages
-      don't travel backwards in time, memory doesn't change all by
-      itself and so on: *)
-  Context {AID : Set} {H : @t AID}.
+Module Handler.
+  Import Hoare.
 
-  Let S := h_state H.
-  Let chain_rule := h_chain_rule H.
+  Section IOHandler.
+    Context {AID : Set}.
 
-  Definition HoareTripleH (pre : S -> Prop) (trace : @Trace AID H) (post : S -> Prop) :=
-    @HoareTriple AID H S chain_rule pre trace post.
+    Local Notation "'Nondeterministic' a" := ((a) -> Prop) (at level 200).
 
-  Definition PossibleTrace t :=
-    exists s s', @LongStep AID H _ chain_rule s t s'.
+    Record TraceElem_ {Req : Set} {Ret : Req -> Set} : Set :=
+      trace_elem { te_aid : AID;
+                   te_req : Req;
+                   te_ret : Ret te_req;
+                 }.
+
+    Record t : Type :=
+      {
+        h_state         : Set;
+        h_req           : Set;
+        h_ret           : h_req -> Set;
+        h_initial_state : Nondeterministic h_state;
+        h_chain_rule    : h_state -> h_state -> @TraceElem_ h_req h_ret -> Prop
+      }.
+
+    Definition TraceElem {h : t} : Set := @TraceElem_ h.(h_req) h.(h_ret).
+
+    Definition Trace {h : t} := list (@TraceElem h).
+  End IOHandler.
+
+  Section Hoare.
+    (* Here we specialize definitions from Hoare module *)
+    Context {AID : Set} {H : @t AID}.
+
+    Let S := h_state H.
+    Let TE := @TraceElem AID H.
+    Let chain_rule := h_chain_rule H.
+
+    Definition HoareTripleH (pre : S -> Prop) (trace : @Trace AID H) (post : S -> Prop) :=
+      @HoareTriple S TraceElem chain_rule pre trace post.
+
+    Definition Local := @Local S TE.
+
+    Definition ChainRuleLocality := @ChainRuleLocality S TE.
+
+    Definition PossibleTrace := @PossibleTrace S TE chain_rule.
+  End Hoare.
 
   Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTripleH a t b) : handler_scope.
-End PossibleTrace.
 
-Section ComposeHandlers.
-  Context {AID : Set} (h_l h_r : @t AID).
+  Section ComposeHandlers.
+    Context {AID : Set} (h_l h_r : @t AID).
 
-  Let S_l := h_state h_l.
-  Let S_r := h_state h_r.
-  Let Q_l := h_req h_l.
-  Let Q_r := h_req h_r.
+    Let S_l := h_state h_l.
+    Let S_r := h_state h_r.
+    Let Q_l := h_req h_l.
+    Let Q_r := h_req h_r.
 
-  Definition compose_state : Set := S_l * S_r.
-  Let S := compose_state.
+    Definition compose_state : Set := S_l * S_r.
+    Let S := compose_state.
 
-  Definition compose_req : Set := Q_l + Q_r.
-  Let Q := compose_req.
+    Definition compose_req : Set := Q_l + Q_r.
+    Let Q := compose_req.
 
-  Hint Transparent compose_state.
+    Hint Transparent compose_state.
 
-  Definition compose_initial_state state :=
-    h_l.(h_initial_state) (fst state) /\ h_r.(h_initial_state) (snd state).
+    Definition compose_initial_state state :=
+      h_l.(h_initial_state) (fst state) /\ h_r.(h_initial_state) (snd state).
 
-  Hint Transparent compose_initial_state.
+    Hint Transparent compose_initial_state.
 
-  Definition compose_ret (req : Q) : Set :=
-    match req with
-    | inl l => h_l.(h_ret) l
-    | inr r => h_r.(h_ret) r
-    end.
+    Definition compose_ret (req : Q) : Set :=
+      match req with
+      | inl l => h_l.(h_ret) l
+      | inr r => h_r.(h_ret) r
+      end.
 
-  Check trace_elem.
+    Check trace_elem.
 
-  Inductive compose_chain_rule_i : S -> S -> @TraceElem_ AID Q compose_ret -> Prop :=
-  | cmpe_left :
-      forall (l l' : S_l) (r : S_r) aid req ret,
-        h_chain_rule h_l l l' (trace_elem _ _ aid req ret) ->
-        compose_chain_rule_i (l, r) (l', r) (trace_elem _ _ aid (inl req) ret)
-  | cmpe_right :
-      forall (r r' : S_r) (l : S_l) aid req ret,
-        h_chain_rule h_r r r' (trace_elem _ _ aid req ret) ->
-        compose_chain_rule_i (l, r) (l, r') (trace_elem _ _ aid (inr req) ret).
+    Inductive compose_chain_rule_i : S -> S -> @TraceElem_ AID Q compose_ret -> Prop :=
+    | cmpe_left :
+        forall (l l' : S_l) (r : S_r) aid req ret,
+          h_chain_rule h_l l l' (trace_elem _ _ aid req ret) ->
+          compose_chain_rule_i (l, r) (l', r) (trace_elem _ _ aid (inl req) ret)
+    | cmpe_right :
+        forall (r r' : S_r) (l : S_l) aid req ret,
+          h_chain_rule h_r r r' (trace_elem _ _ aid req ret) ->
+          compose_chain_rule_i (l, r) (l, r') (trace_elem _ _ aid (inr req) ret).
 
-  Definition compose_chain_rule (s s' : S) (te : @TraceElem_ AID Q compose_ret) : Prop.
-    destruct te as [aid req ret].
-    destruct s as [l r].
-    destruct s' as [l' r'].
-    remember req as req0.
-    destruct req;
-      [ refine (r = r' /\ (h_chain_rule h_l) l l' _)
-      | refine (l = l' /\ (h_chain_rule h_r) r r' _)
-      ];
-      apply trace_elem with (te_req := q);
-      try apply aid;
-      subst;
-      unfold compose_ret in ret; easy.
-  Defined.
+    Definition compose_chain_rule (s s' : S) (te : @TraceElem_ AID Q compose_ret) : Prop.
+      destruct te as [aid req ret].
+      destruct s as [l r].
+      destruct s' as [l' r'].
+      remember req as req0.
+      destruct req;
+        [ refine (r = r' /\ (h_chain_rule h_l) l l' _)
+        | refine (l = l' /\ (h_chain_rule h_r) r r' _)
+        ];
+        apply trace_elem with (te_req := q);
+        try apply aid;
+        subst;
+        unfold compose_ret in ret; easy.
+    Defined.
 
-  Definition compose : t :=
-    {| h_state         := compose_state;
-       h_req           := compose_req;
-       h_ret           := compose_ret;
-       h_initial_state := compose_initial_state;
-       h_chain_rule    := compose_chain_rule;
-    |}.
+    Definition compose : t :=
+      {| h_state         := compose_state;
+         h_req           := compose_req;
+         h_ret           := compose_ret;
+         h_initial_state := compose_initial_state;
+         h_chain_rule    := compose_chain_rule;
+      |}.
 
-  Definition te_subset_l (te : @TraceElem AID compose) :=
-    match te_req te with
-    | inl _ => True
-    | inr _ => False
-    end.
+    Definition te_subset_l (te : @TraceElem AID compose) :=
+      match te_req te with
+      | inl _ => True
+      | inr _ => False
+      end.
 
-  Definition te_subset_r (te : @TraceElem AID compose) :=
-    match te_req te with
-    | inl _ => False
-    | inr _ => True
-    end.
+    Definition te_subset_r (te : @TraceElem AID compose) :=
+      match te_req te with
+      | inl _ => False
+      | inr _ => True
+      end.
 
-  Definition lift_l (prop : S_l -> Prop) : compose_state -> Prop :=
-    fun s => match s with
-            (s_l, _) => prop s_l
-          end.
+    Definition lift_l (prop : S_l -> Prop) : compose_state -> Prop :=
+      fun s => match s with
+              (s_l, _) => prop s_l
+            end.
 
-  Definition lift_r (prop : S_r -> Prop) : compose_state -> Prop :=
-    fun s => match s with
-            (_, s_r) => prop s_r
-          end.
+    Definition lift_r (prop : S_r -> Prop) : compose_state -> Prop :=
+      fun s => match s with
+              (_, s_r) => prop s_r
+            end.
 
-  Lemma lift_l_local : forall (prop : S_l -> Prop),
-      @Local AID compose S compose_chain_rule te_subset_l (lift_l prop).
-  Proof.
-    unfold Local, HoareTriple.
-    intros prop te Hin s s' Hte Hpre.
-    unfold te_subset_l in Hin.
-    destruct te as [aid req ret].
-    unfold In in *.
-    destruct req as [req|req]; simpl in *.
-    - easy.
-    - inversion_ Hte.
-      unfold compose_chain_rule in H2.
-      destruct s, s', s'0.
-      firstorder.
-      unfold eq_rec_r in *. simpl in *.
-      subst.
-      inversion_ H4.
-  Qed.
+    Lemma lift_l_local : forall (prop : S_l -> Prop),
+        @Local AID compose compose_chain_rule te_subset_l (lift_l prop).
+    Proof.
+      unfold Local, HoareTriple.
+      intros prop te Hin s s' Hte Hpre.
+      unfold te_subset_l in Hin.
+      destruct te as [aid req ret].
+      unfold In in *.
+      destruct req as [req|req]; simpl in *.
+      - easy.
+      - inversion_ Hte.
+        unfold compose_chain_rule in H2.
+        destruct s, s', s'0.
+        firstorder.
+        unfold eq_rec_r in *. simpl in *.
+        subst.
+        inversion_ H4.
+    Qed.
 
-  Lemma lift_r_local : forall (prop : S_r -> Prop),
-      @Local AID compose S compose_chain_rule te_subset_r (lift_r prop).
-  Proof.
-    unfold Local, HoareTriple.
-    intros prop te Hin s s' Hte Hpre.
-    unfold te_subset_r in Hin.
-    destruct te as [aid req ret].
-    unfold In in *.
-    destruct req as [req|req]; simpl in *.
-    - inversion_ Hte.
-      unfold compose_chain_rule in H2.
-      destruct s, s', s'0.
-      firstorder.
-      unfold eq_rec_r in *. simpl in *.
-      subst.
-      inversion_ H4.
-    - easy.
-  Qed.
+    Lemma lift_r_local : forall (prop : S_r -> Prop),
+        @Local AID compose compose_chain_rule te_subset_r (lift_r prop).
+    Proof.
+      unfold Local, HoareTriple.
+      intros prop te Hin s s' Hte Hpre.
+      unfold te_subset_r in Hin.
+      destruct te as [aid req ret].
+      unfold In in *.
+      destruct req as [req|req]; simpl in *.
+      - inversion_ Hte.
+        unfold compose_chain_rule in H2.
+        destruct s, s', s'0.
+        firstorder.
+        unfold eq_rec_r in *. simpl in *.
+        subst.
+        inversion_ H4.
+      - easy.
+    Qed.
 
-  Lemma local_l_chain_rule : @ChainRuleLocality AID compose S
-                                                compose_chain_rule te_subset_l.
-  Proof.
-    intros te1 te2 Hte1 Hte2 [l r] [l' r'].
-    split; intros Hs';
-    destruct te1 as [aid1 req1 ret1];
-    destruct te2 as [aid2 req2 ret2];
-    destruct req1, req2; unfold Ensembles.In, te_subset_l in *; try easy;
-      clear Hte1; clear Hte2;
-      inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
-      inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
-      inversion H2; subst; clear H2;
-      unfold compose_chain_rule in *;
-      firstorder; subst;
-      unfold eq_rec_r in *; simpl in *.
-    - apply ls_cons with (s' := (l, r')); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
-    - apply ls_cons with (s' := (l', r)); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
-  Qed.
+    Lemma local_l_chain_rule : @ChainRuleLocality AID compose compose_chain_rule te_subset_l.
+    Proof.
+      intros te1 te2 Hte1 Hte2 [l r] [l' r'].
+      split; intros Hs';
+      destruct te1 as [aid1 req1 ret1];
+      destruct te2 as [aid2 req2 ret2];
+      destruct req1, req2; unfold Ensembles.In, te_subset_l in *; try easy;
+        clear Hte1; clear Hte2;
+        inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
+        inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
+        inversion H2; subst; clear H2;
+        unfold compose_chain_rule in *;
+        firstorder; subst;
+        unfold eq_rec_r in *; simpl in *.
+      - apply ls_cons with (s' := (l, r')); firstorder.
+        apply ls_cons with (s' := (l', r')); firstorder.
+        constructor.
+      - apply ls_cons with (s' := (l', r)); firstorder.
+        apply ls_cons with (s' := (l', r')); firstorder.
+        constructor.
+    Qed.
 
-  Lemma local_r_chain_rule : @ChainRuleLocality AID compose S
-                                                compose_chain_rule te_subset_r.
-  Proof.
-    intros te1 te2 Hte1 Hte2 [l r] [l' r'].
-    split; intros Hs';
-    destruct te1 as [aid1 req1 ret1];
-    destruct te2 as [aid2 req2 ret2];
-    destruct req1, req2; unfold Ensembles.In, te_subset_r in *; try easy;
-      clear Hte1; clear Hte2;
-      inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
-      inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
-      inversion H2; subst; clear H2;
-      unfold compose_chain_rule in *;
-      firstorder; subst;
-      unfold eq_rec_r in *; simpl in *.
-    - apply ls_cons with (s' := (l', r)); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
-    - apply ls_cons with (s' := (l, r')); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
-  Qed.
-End ComposeHandlers.
+    Lemma local_r_chain_rule : @ChainRuleLocality AID compose compose_chain_rule te_subset_r.
+    Proof.
+      intros te1 te2 Hte1 Hte2 [l r] [l' r'].
+      split; intros Hs';
+      destruct te1 as [aid1 req1 ret1];
+      destruct te2 as [aid2 req2 ret2];
+      destruct req1, req2; unfold Ensembles.In, te_subset_r in *; try easy;
+        clear Hte1; clear Hte2;
+        inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
+        inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
+        inversion H2; subst; clear H2;
+        unfold compose_chain_rule in *;
+        firstorder; subst;
+        unfold eq_rec_r in *; simpl in *.
+      - apply ls_cons with (s' := (l', r)); firstorder.
+        apply ls_cons with (s' := (l', r')); firstorder.
+        constructor.
+      - apply ls_cons with (s' := (l, r')); firstorder.
+        apply ls_cons with (s' := (l', r')); firstorder.
+        constructor.
+    Qed.
+  End ComposeHandlers.
+End Handler.
 
 Module Mutable.
+  Import Handler.
+
   Inductive req_t {T : Set} :=
   | get : req_t
   | put : T -> req_t.
@@ -565,6 +567,9 @@ Module Mutable.
 End Mutable.
 
 Module Mutex.
+Import Handler.
+Section defs.
+  Open Scope handler_scope.
   Inductive req_t : Set :=
   | grab    : req_t
   | release : req_t.
@@ -575,7 +580,6 @@ Module Mutex.
     | release => bool
     end.
 
-  Section defs.
   Variable AID : Set.
 
   Definition state_t : Set := option AID.
@@ -598,6 +602,8 @@ Module Mutex.
 
   Notation "aid '@' ret '<~' req" := (@trace_elem AID req_t ret_t aid req ret).
 
+  Check PossibleTrace.
+
   Theorem no_double_grab_0 : forall (a1 a2 : AID),
       ~(@PossibleTrace AID t [a1 @ I <~ grab; a2 @ I <~ grab]).
   Proof.
@@ -610,10 +616,9 @@ Module Mutex.
   Qed.
 
   Theorem no_double_grab : forall (a1 a2 : AID),
-      HoareTripleH
-        (fun _ => True)
+      {{ fun _ => True }}
         ([a1 @ I <~ grab; a2 @ I <~ grab] : @Trace AID t)
-        (fun _ => False).
+      {{ fun _ => False}}.
   Proof.
     intros a1 a2 s s' Hss' Hpre.
     inversion_ Hss'.
@@ -621,131 +626,173 @@ Module Mutex.
     inversion_ H4.
     inversion_ H3.
   Qed.
-  End defs.
+End defs.
 End Mutex.
 
-Section Actor.
-  Context {AID_top} {Handler : @t AID_top}.
+Module SUT.
+  Section Runnable.
+    (* Top-level context of the model: *)
+    Record Context : Type :=
+      { aid_top : Set;
+        handler : @Handler.t aid_top;
+      }.
 
-  Let Req := h_req Handler.
-  Let Ret := h_ret Handler.
-  Let TE := @TraceElem AID_top Handler.
+    Let ctx_to_te ctx := @Handler.TraceElem (aid_top ctx) (handler ctx).
 
-  CoInductive Actor : Type :=
-  | a_dead : Actor
-  | a_cont :
-      forall (pending_req : Req)
-        (continuation : Ret pending_req -> Actor)
-      , Actor.
+    Record t : Type :=
+      { sut_aid : Set;
+        sut_state : Context -> Type;
+        sut_chain_rule : forall (ctx : Context),
+            sut_aid ->
+            sut_state ctx ->
+            sut_state ctx ->
+            ctx_to_te ctx ->
+            Prop;
+      }.
+  End Runnable.
 
-  Definition throw (_ : string) := a_dead.
+  Section Thread.
+    Context {ctx : Context}.
 
-  Class Runnable (AID : Set) (A : Type) :=
-    {
-      runnable_step : AID -> A -> TE -> A -> Prop;
-    }.
-End Actor.
+    Let Handler := handler ctx.
+    Let AID_top := aid_top ctx.
+    Let Req := Handler.h_req Handler.
+    Let Ret := Handler.h_ret Handler.
+    Let TE := @Handler.TraceElem AID_top Handler.
 
-Section RunnableSingleton.
-  Context {AID_top} {Handler : @t AID_top}.
-  Let TE := @TraceElem AID_top Handler.
+    CoInductive Thread : Type :=
+    | t_dead : Thread
+    | t_cont :
+        forall (pending_req : Req)
+          (continuation : Ret pending_req -> Thread)
+        , Thread.
 
-  Inductive SingletonStep : Actor -> TE -> Actor -> Prop :=
-  | singleton_step_ :
-      forall te cont,
-        SingletonStep (a_cont (te_req te) cont)
-                      te
-                      (cont (te_ret te)).
+    Definition throw (_ : string) := t_dead.
+  End Thread.
 
-  Instance runnableSingleton : Runnable True Actor :=
-    {
-      runnable_step := fun _ => SingletonStep
-    }.
-End RunnableSingleton.
+  Section SingletonThread.
+    Context {ctx : Context}.
 
-Section RunnablePair.
-  Context {AID_top} {Handler : @t AID_top}.
-  Let TE := @TraceElem AID_top Handler.
+    Let Handler := handler ctx.
+    Let AID_top := aid_top ctx.
+    Let TE := @Handler.TraceElem AID_top Handler.
 
-  Context aid_l l aid_r r `{RL : Runnable AID_top Handler aid_l l} `{RR : Runnable AID_top Handler aid_r r}.
+    Inductive SingletonStep : Thread -> Thread -> TE -> Prop :=
+    | singleton_step_ :
+        forall te cont,
+          SingletonStep (t_cont (Handler.te_req te) cont)
+                        (cont (Handler.te_ret te))
+                        te.
+  End SingletonThread.
 
-  Let S : Type := l * r.
+  Definition mkSingleton : t :=
+    {| sut_aid := True;
+       sut_state := @Thread;
+       sut_chain_rule := fun ctx _ => @SingletonStep ctx;
+    |}.
 
-  Let AID_pair : Set := aid_l + aid_r.
+  Section RunnablePair.
+    Context (l r : t).
 
-  Inductive PairStep : AID_pair -> S -> TE -> S -> Prop :=
-  | pair_step_l :
-      forall aid syscall l l' r,
-        runnable_step aid l syscall l' ->
-        PairStep (inl aid) (l, r) syscall (l', r)
-  | pair_step_r :
-      forall aid syscall r r' l,
-        runnable_step aid r syscall r' ->
-        PairStep (inr aid) (l, r) syscall (l, r').
+    Let S ctx : Type := (sut_state l) ctx * (sut_state r) ctx.
 
-  Instance runnablePair : Runnable AID_pair S :=
-    {
-      runnable_step := @PairStep
-    }.
-End RunnablePair.
+    Let AID_pair : Set := (sut_aid l) + (sut_aid r).
 
-Section Scheduling.
-  Context {AID} {Handler : @t AID}.
-  Let TE := @TraceElem AID Handler.
+    Section defns.
+      Variable ctx : Context.
 
-  Context {R} `{RR : Runnable AID Handler AID R}.
+      Let Handler := handler ctx.
+      Let AID_top := aid_top ctx.
+      Let TE := @Handler.TraceElem AID_top Handler.
+      Let chain_rule_l := (sut_chain_rule l) ctx.
+      Let chain_rule_r := (sut_chain_rule r) ctx.
 
-  CoInductive Scheduling : R -> list TE -> Prop :=
-  | shed : forall a a' (te : TE) reverse_trace,
-      Scheduling a reverse_trace ->
-      runnable_step (te_aid te) a te a' ->
-      Scheduling a' (te :: reverse_trace).
-End Scheduling.
+      Inductive PairStep : AID_pair -> S ctx -> S ctx -> TE -> Prop :=
+      | pair_step_l :
+          forall aid te l l' r,
+            chain_rule_l aid l l' te ->
+            PairStep (inl aid) (l, r) (l', r) te
+      | pair_step_r :
+          forall aid te r r' l,
+            chain_rule_r aid r r' te ->
+            PairStep (inr aid) (l, r) (l, r') te.
+    End defns.
+
+    Definition mkPair : t :=
+      {| sut_aid := AID_pair;
+         sut_state := S;
+         sut_chain_rule := PairStep;
+      |}.
+  End RunnablePair.
+
+  Section Scheduling.
+    Context (sut : t) (h : forall AID, @Handler.t AID).
+
+    Let AID := sut_aid sut.
+    Let Handler := h AID.
+    Let TE := @Handler.TraceElem AID Handler.
+    Let ctx := {| aid_top := AID; handler := Handler |}.
+    Let S := (sut_state sut) ctx.
+    Let chain_rule := (sut_chain_rule sut) ctx.
+
+    CoInductive Scheduling : S -> list TE -> Prop :=
+    | shed : forall a a' (te : TE) reverse_trace,
+        Scheduling a reverse_trace ->
+        chain_rule (Handler.te_aid te) a a' te ->
+        Scheduling a' (te :: reverse_trace).
+  End Scheduling.
+End SUT.
 
 Module ExampleModelDefn.
-  Definition AID : Set := nat.
+  Import Handler.
+  Import SUT.
 
-  Let handler := compose (Mutable.t AID nat (fun a => a = 0))
-                         (Mutex.t AID).
+  Section defs.
+    Context {AID : Set}.
 
-  Let TE := @TraceElem AID handler.
+    Let Handler := compose (Mutable.t AID nat (fun a => a = 0))
+                           (Mutex.t AID).
 
-  Notation "'do' V '<-' I ; C" := (@a_cont AID handler (I) (fun V => C))
-                                    (at level 100, C at next level, V ident, right associativity).
+    Let ctx := {| aid_top := AID; handler := Handler; |}.
 
-  Notation "'done' I" := (@a_cont AID handler (I) (fun _ => a_dead))
-                           (at level 100, right associativity).
+    Let TE := @TraceElem AID Handler.
 
-  Notation "aid '@' ret '<~' req" := (trace_elem (h_req handler) (h_ret handler) aid req ret).
+    Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
+                                      (at level 100, C at next level, V ident, right associativity).
 
-  Local Definition put (val : nat) : handler.(h_req) :=
-    inl (Mutable.put val).
+    Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
+                             (at level 100, right associativity).
 
-  Local Definition get : h_req handler :=
-    inl (Mutable.get).
+    Notation "aid '@' ret '<~' req" := (trace_elem (h_req handler) (h_ret handler) aid req ret).
 
-  Local Definition grab : h_req handler :=
-    inr (Mutex.grab).
+    Local Definition put (val : nat) : Handler.(h_req) :=
+      inl (Mutable.put val).
 
-  Local Definition release : h_req handler :=
-    inr (Mutex.release).
+    Local Definition get : h_req Handler :=
+      inl (Mutable.get).
 
-  (* Just a demonstration how to define a program that loops
-  indefinitely, as long as it does IO: *)
-  Local CoFixpoint infinite_loop (aid : AID) : Actor :=
-    do _ <- put 0;
-    infinite_loop aid.
+    Local Definition grab : h_req Handler :=
+      inr (Mutex.grab).
 
-  (* Data race example: *)
-  Local Definition counter_race (_ : AID) : Actor :=
-    do v <- get;
-    done put (v + 1).
+    Local Definition release : h_req Handler :=
+      inr (Mutex.release).
 
-  (* Fixed example: *)
-  Local Definition counter_correct (_ : AID) : Actor :=
-    do _ <- grab;
-    do v <- get;
-    do _ <- put (v + 1);
-    done release.
+    (* Just a demonstration how to define a program that loops
+    indefinitely, as long as it does IO: *)
+    Local CoFixpoint infinite_loop (aid : AID) : Thread :=
+      do _ <- put 0;
+      infinite_loop aid.
 
+    (* Data race example: *)
+    Local Definition counter_race (_ : AID) : Thread :=
+      do v <- get;
+      done put (v + 1).
+
+    (* Fixed example: *)
+    Local Definition counter_correct (_ : AID) : Thread :=
+      do _ <- grab;
+      do v <- get;
+      do _ <- put (v + 1);
+      done release.
+  End defs.
 End ExampleModelDefn.
