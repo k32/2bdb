@@ -639,13 +639,13 @@ Module SUT.
 
     Let ctx_to_te ctx := @Handler.TraceElem (pid_top ctx) (handler ctx).
 
-    Record t : Type :=
-      { sut_pid : Set;
-        sut_state : Context -> Type;
-        sut_chain_rule : forall (ctx : Context),
-            sut_pid ->
-            sut_state ctx ->
-            sut_state ctx ->
+    Record Shape : Type :=
+      { shape_pid_t : Set;
+        shape_state_t : Context -> Type;
+        shape_chain_rule : forall (ctx : Context),
+            shape_pid_t ->
+            shape_state_t ctx ->
+            shape_state_t ctx ->
             ctx_to_te ctx ->
             Prop;
       }.
@@ -685,18 +685,18 @@ Module SUT.
                         te.
   End SingletonThread.
 
-  Definition mkSingleton : t :=
-    {| sut_pid := True;
-       sut_state := @Thread;
-       sut_chain_rule := fun ctx _ => @SingletonStep ctx;
+  Definition ShpSingleton : Shape :=
+    {| shape_pid_t := True;
+       shape_state_t := @Thread;
+       shape_chain_rule := fun ctx _ => @SingletonStep ctx;
     |}.
 
   Section RunnablePair.
-    Context (l r : t).
+    Context (l r : Shape).
 
-    Let S ctx : Type := (sut_state l) ctx * (sut_state r) ctx.
+    Let S ctx : Type := (shape_state_t l) ctx * (shape_state_t r) ctx.
 
-    Let PID_pair : Set := (sut_pid l) + (sut_pid r).
+    Let PID_pair : Set := (shape_pid_t l) + (shape_pid_t r).
 
     Section defns.
       Variable ctx : Context.
@@ -704,8 +704,8 @@ Module SUT.
       Let Handler := handler ctx.
       Let PID_top := pid_top ctx.
       Let TE := @Handler.TraceElem PID_top Handler.
-      Let chain_rule_l := (sut_chain_rule l) ctx.
-      Let chain_rule_r := (sut_chain_rule r) ctx.
+      Let chain_rule_l := (shape_chain_rule l) ctx.
+      Let chain_rule_r := (shape_chain_rule r) ctx.
 
       Inductive PairStep : PID_pair -> S ctx -> S ctx -> TE -> Prop :=
       | pair_step_l :
@@ -718,28 +718,28 @@ Module SUT.
             PairStep (inr pid) (l, r) (l, r') te.
     End defns.
 
-    Definition mkPair : t :=
-      {| sut_pid := PID_pair;
-         sut_state := S;
-         sut_chain_rule := PairStep;
+    Definition ShpPair : Shape :=
+      {| shape_pid_t := PID_pair;
+         shape_state_t := S;
+         shape_chain_rule := PairStep;
       |}.
   End RunnablePair.
 
   Section Scheduling.
-    Context (sut : t) (h : forall PID, @Handler.t PID).
+    Context (shape : Shape) (h : forall PID, @Handler.t PID).
 
-    Let PID := sut_pid sut.
+    Let PID := shape_pid_t shape.
     Let Handler := h PID.
     Let TE := @Handler.TraceElem PID Handler.
     Let ctx := {| pid_top := PID; handler := Handler |}.
-    Let S := (sut_state sut) ctx.
-    Let chain_rule := (sut_chain_rule sut) ctx.
+    Let S := (shape_state_t shape) ctx.
+    Let chain_rule := (shape_chain_rule shape) ctx.
 
     CoInductive Scheduling : S -> list TE -> Prop :=
     | shed : forall a a' (te : TE) reverse_trace,
-        Scheduling a reverse_trace ->
+        Scheduling a' reverse_trace ->
         chain_rule (Handler.te_pid te) a a' te ->
-        Scheduling a' (te :: reverse_trace).
+        Scheduling a (te :: reverse_trace).
   End Scheduling.
 End SUT.
 
@@ -750,8 +750,8 @@ Module ExampleModelDefn.
   Section defs.
     Context {PID : Set}.
 
-    Let Handler := compose (Mutable.t PID nat (fun a => a = 0))
-                           (Mutex.t PID).
+    Definition Handler := compose (Mutable.t PID nat (fun a => a = 0))
+                                  (Mutex.t PID).
 
     Let ctx := {| pid_top := PID; handler := Handler; |}.
 
@@ -762,8 +762,6 @@ Module ExampleModelDefn.
 
     Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
                              (at level 100, right associativity).
-
-    Notation "pid '@' ret '<~' req" := (trace_elem (h_req handler) (h_ret handler) pid req ret).
 
     Local Definition put (val : nat) : Handler.(h_req) :=
       inl (Mutable.put val).
@@ -779,20 +777,35 @@ Module ExampleModelDefn.
 
     (* Just a demonstration how to define a program that loops
     indefinitely, as long as it does IO: *)
-    Local CoFixpoint infinite_loop (pid : PID) : Thread :=
+    Local CoFixpoint infinite_loop (self : PID) : Thread :=
       do _ <- put 0;
-      infinite_loop pid.
+      infinite_loop self.
 
     (* Data race example: *)
-    Local Definition counter_race (_ : PID) : Thread :=
+    Local Definition counter_race (self : PID) : Thread :=
       do v <- get;
       done put (v + 1).
 
     (* Fixed example: *)
-    Local Definition counter_correct (_ : PID) : Thread :=
+    Local Definition counter_correct (self : PID) : Thread :=
       do _ <- grab;
       do v <- get;
       do _ <- put (v + 1);
       done release.
+
   End defs.
+
+  Check trace_elem.
+
+  Let shape := ShpPair ShpSingleton ShpSingleton.
+  Let PID := shape_pid_t shape.
+  Let PossibleScheduling := Scheduling shape (@Handler) (counter_correct (inl I), counter_correct (inr I)).
+
+  Notation "pid '@' ret '<~' req" := (trace_elem (h_req Handler) (h_ret Handler) pid req ret).
+
+  Example sched0 : PossibleScheduling [(inl I) @ I <~ grab].
+  Proof.
+    unfold PossibleScheduling, counter_correct, shape.
+    simpl.
+  Abort.
 End ExampleModelDefn.
