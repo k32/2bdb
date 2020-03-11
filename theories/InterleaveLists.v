@@ -5,39 +5,60 @@ From Coq Require Import
 
 Import ListNotations.
 
-Section defn.
+Section Interleaving.
+  Context {T : Type} (can_swap : T -> T -> Prop).
+  Let L := list T.
 
-Context {T : Type} (can_swap : T -> T -> Prop).
-Let L := list T.
+  (* This datastructure reflects a _permutation_ that is needed to
+  interleave lists: *)
+  Inductive InterleaveLists (l : L) : L -> Prop :=
+  | intl_orig :
+      InterleaveLists l l
+  | intl_shuf : forall l' r' a b,
+      InterleaveLists l (l' ++ a :: b :: r') ->
+      can_swap a b ->
+      InterleaveLists l (l' ++ b :: a :: r').
 
-(* This datastructure reflects a _permutation_ that is needed to
-interleave lists: *)
-Inductive InterleaveLists (l : L) : L -> Prop :=
-| intl_orig :
-    InterleaveLists l l
-| intl_shuf : forall l' r' a b,
-    InterleaveLists l (l' ++ a :: b :: r') ->
-    can_swap a b ->
-    InterleaveLists l (l' ++ b :: a :: r').
-
-(* TODO: Prove completeness of this definition *)
-
-End defn.
+  (* TODO: Prove completeness of this definition *)
+End Interleaving.
 
 Section tests.
+  Let comm a b := odd a /\ even b.
 
-Let comm a b := odd a /\ even b.
+  Local Hint Constructors odd.
+  Local Hint Constructors even.
 
-Example example_interleaved_list_1 : InterleaveLists comm [] [].
-Proof. constructor; auto. Qed.
+  Lemma even2 : ~odd 2.
+  Proof.
+    intros H.
+    apply (not_even_and_odd 2); auto.
+  Qed.
 
-Example example_interleaved_list_3 : InterleaveLists comm [1; 3; 2; 4] [1; 2; 3; 4].
-Proof.
-  replace [1; 2; 3; 4] with ([1] ++ 2 :: 3 :: [4]) by auto.
-  constructor.
-  - replace ([1] ++ [3; 2; 4]) with ([1; 3] ++ [2; 4]) by auto.
+  Hint Resolve even2.
+
+  Example example_interleaved_list_1 : InterleaveLists comm [] [].
+  Proof. constructor; auto. Qed.
+
+  Example example_interleaved_list_2 : InterleaveLists comm [1; 3; 2; 4] [1; 2; 3; 4].
+  Proof.
+    replace [1; 2; 3; 4] with ([1] ++ 2 :: 3 :: [4]) by auto.
     constructor.
-  - split; repeat constructor.
-Qed.
+    - replace ([1] ++ [3; 2; 4]) with ([1; 3] ++ [2; 4]) by auto.
+      constructor.
+    - split; auto.
+  Qed.
 
+  Example example_interleaved_list_3 : ~InterleaveLists comm [2; 4] [4; 2].
+  Proof.
+    intros H.
+    inversion H.
+    assert (Hl' : l' = []).
+    { destruct l'.
+      + reflexivity.
+      + repeat (destruct l'; inversion H0).
+    }
+    subst. simpl in *.
+    inversion H0. subst.
+    firstorder.
+  Qed.
 End tests.

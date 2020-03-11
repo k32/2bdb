@@ -59,11 +59,8 @@ the user from reinventing basic control flow constructions.
 *)
 From Coq Require Import
      List
-     Omega
      Tactics
-     Sets.Ensembles
-     Structures.OrdersEx
-     Logic.FunctionalExtensionality.
+     Sets.Ensembles.
 
 Import ListNotations.
 
@@ -100,6 +97,8 @@ Module Hoare.
         LongStep s' trace  s'' ->
         LongStep s (te :: trace) s''.
 
+    Hint Constructors LongStep.
+
     Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
       forall s s',
         LongStep s trace s' ->
@@ -121,7 +120,7 @@ Module Hoare.
       generalize dependent s.
       induction t1; intros.
       - exists s.
-        split; auto. constructor.
+        split; auto.
       - inversion_clear H.
         specialize (IHt1 s' H1).
         destruct IHt1.
@@ -213,7 +212,6 @@ Module Hoare.
       apply H.
       apply ls_cons with (s' := s'); auto.
       apply ls_cons with (s' := s'0); auto.
-      constructor.
     Qed.
 
     Section ExpandTrace.
@@ -787,6 +785,7 @@ Module ExampleModelDefn.
       done put (v + 1).
 
     (* Fixed example: *)
+
     Local Definition counter_correct (self : PID) : Thread :=
       do _ <- grab;
       do v <- get;
