@@ -5,22 +5,22 @@ From Coq Require Import
 
 Import ListNotations.
 
-Section Interleaving.
+Section Permutation.
   Context {T : Type} (can_swap : T -> T -> Prop).
   Let L := list T.
 
   (* This datastructure reflects a _permutation_ that is needed to
   interleave lists: *)
-  Inductive InterleaveLists (l : L) : L -> Prop :=
-  | intl_orig :
-      InterleaveLists l l
-  | intl_shuf : forall l' r' a b,
-      InterleaveLists l (l' ++ a :: b :: r') ->
+  Inductive Permutation (l : L) : L -> Prop :=
+  | perm_orig :
+      Permutation l l
+  | perm_shuf : forall l' r' a b,
+      Permutation l (l' ++ a :: b :: r') ->
       can_swap a b ->
-      InterleaveLists l (l' ++ b :: a :: r').
+      Permutation l (l' ++ b :: a :: r').
 
   (* TODO: Prove completeness of this definition *)
-End Interleaving.
+End Permutation.
 
 Section tests.
   Let comm a b := odd a /\ even b.
@@ -36,10 +36,10 @@ Section tests.
 
   Hint Resolve even2.
 
-  Example example_interleaved_list_1 : InterleaveLists comm [] [].
+  Example example_interleaved_list_1 : Permutation comm [] [].
   Proof. constructor; auto. Qed.
 
-  Example example_interleaved_list_2 : InterleaveLists comm [1; 3; 2; 4] [1; 2; 3; 4].
+  Example example_interleaved_list_2 : Permutation comm [1; 3; 2; 4] [1; 2; 3; 4].
   Proof.
     replace [1; 2; 3; 4] with ([1] ++ 2 :: 3 :: [4]) by auto.
     constructor.
@@ -48,7 +48,7 @@ Section tests.
     - split; auto.
   Qed.
 
-  Example example_interleaved_list_3 : ~InterleaveLists comm [2; 4] [4; 2].
+  Example example_interleaved_list_3 : ~Permutation comm [2; 4] [4; 2].
   Proof.
     intros H.
     inversion H.

@@ -239,7 +239,7 @@ Module Hoare.
       Inductive ExpandedTrace (trace trace' : T) : Prop :=
         expanded_trace_ : forall expansion,
           Forall (Complement te_subset) expansion ->
-          InterleaveLists can_swap (expansion ++ trace) trace' ->
+          Permutation can_swap (expansion ++ trace) trace' ->
           ExpandedTrace trace trace'.
 
       Hint Transparent Ensembles.In Ensembles.Complement.
@@ -678,16 +678,16 @@ Module SUT.
       { unfolds_to : A -> A -> T -> Prop;
       }.
 
-    CoInductive Thread : Type :=
+    CoInductive Thread {pid : PID} : Type :=
     | t_dead : Thread
     | t_cont :
         forall (pending_req : Req)
           (continuation : Ret pending_req -> Thread)
         , Thread.
 
-    Definition throw (_ : string) := t_dead.
+    Definition throw {pid} (_ : string) := @t_dead pid.
 
-    Inductive UnfoldThread (pid : PID) (t0 : Thread) : Thread -> T -> Prop :=
+    Inductive UnfoldThread (pid : PID) (t0 : @Thread pid) : @Thread pid -> T -> Prop :=
     | uft_nil : UnfoldThread pid t0 t0 []
     | uft_cons : forall req ret cont t,
         UnfoldThread pid t0 (t_cont req cont) t ->
@@ -696,60 +696,79 @@ Module SUT.
     Instance runnableThread (pid : PID) : Runnable Thread :=
       {| unfolds_to thread0 thread trace := UnfoldThread pid thread0 thread (rev trace);
       |}.
-  End defn.
 
+    Section ComposeSystems.
+      Context (sys1 sys2 : Type) `{Runnable sys1} `{Runnable sys2}.
+
+      Let S : Type := sys1 * sys2.
+
+      Let can_swap (te1 te2 : TE) := te_pid te1 <> te_pid te2.
+
+      Instance composeRunnable : Runnable S :=
+        {| unfolds_to s s' trace :=
+             match s, s' with
+             | (s1, s2), (s1', s2') => forall t1 t2,
+                 unfolds_to s1 s1' t1 /\
+                 unfolds_to s2 s2' t2 /\
+                 Permutation can_swap (t1 ++ t2) trace
+             end;
+        |}.
+    End ComposeSystems.
+  End defn.
 End SUT.
 
 Module ExampleModelDefn.
   Import Handler.
   Import SUT.
 
-  Section defs.
-    Context {PID : Set}.
+  Let PID := nat.
 
-    Definition Handler := compose (Mutable.t PID nat (fun a => a = 0))
-                                  (Mutex.t PID).
+  Definition Handler := compose (Mutable.t PID nat (fun a => a = 0))
+                                (Mutex.t PID).
 
-    Let ctx := hToCtx Handler.
+  Let ctx := hToCtx Handler.
 
-    Let TE := @TraceElem ctx.
+  Let TE := @TraceElem ctx.
 
-    Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
-                                      (at level 100, C at next level, V ident, right associativity).
+  Notation "'do' V '<-' I ; C" := (@t_cont ctx _ (I) (fun V => C))
+                                    (at level 100, C at next level, V ident, right associativity).
 
-    Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
-                             (at level 100, right associativity).
+  Notation "'done' I" := (@t_cont ctx _ (I) (fun _ => t_dead))
+                           (at level 100, right associativity).
 
-    Local Definition put (val : nat) : Handler.(h_req) :=
-      inl (Mutable.put val).
+  Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
-    Local Definition get : h_req Handler :=
-      inl (Mutable.get).
+  Local Definition put (val : nat) : Handler.(h_req) :=
+    inl (Mutable.put val).
 
-    Local Definition grab : h_req Handler :=
-      inr (Mutex.grab).
+  Local Definition get : h_req Handler :=
+    inl (Mutable.get).
 
-    Local Definition release : h_req Handler :=
-      inr (Mutex.release).
+  Local Definition grab : h_req Handler :=
+    inr (Mutex.grab).
 
-    (* Just a demonstration how to define a program that loops
-    indefinitely, as long as it does IO: *)
-    Local CoFixpoint infinite_loop (self : PID) : Thread :=
-      do _ <- put 0;
-      infinite_loop self.
+  Local Definition release : h_req Handler :=
+    inr (Mutex.release).
 
-    (* Data race example: *)
-    Local Definition counter_race (self : PID) : Thread :=
-      do v <- get;
-      done put (v + 1).
+  (* Just a demonstration how to define a program that loops
+  indefinitely, as long as it does IO: *)
+  Local CoFixpoint infinite_loop (self : PID) : @Thread ctx self :=
+    do _ <- put 0;
+    infinite_loop self.
 
-    (* Fixed example: *)
-    Local Definition counter_correct (self : PID) : Thread :=
-      do _ <- grab;
-      do v <- get;
-      do _ <- put (v + 1);
-      done release.
-  End defs.
+  (* Data race example: *)
+  Local Definition counter_race (self : PID) : @Thread ctx self :=
+    do v <- get;
+    done put (v + 1).
 
-  Check trace_elem.
+  (* Fixed example: *)
+  Local Definition counter_correct (self : PID) : @Thread ctx self :=
+    do _ <- grab;
+    do v <- get;
+    do _ <- put (v + 1);
+    done release.
+
+  Let SUT := (counter_correct 1, counter_correct 2).
+
+  Fail Example empty_trace := unfolds_to SUT SUT [].
 End ExampleModelDefn.
