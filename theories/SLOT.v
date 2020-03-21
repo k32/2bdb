@@ -1,4 +1,4 @@
-(*** Minimalistic implementation of concurrent separation logic with implicit state *)
+(*** Separation Logic of Traces *)
 (** This module defines the model of distributed system used in the
 rest of the project. Whether you trust the LibTx depends on whether
 you trust the below definitions.
@@ -20,8 +20,7 @@ a full-fledged functional language
 
 - I want to extract verified programs
 
-- While TLA+ model checker is top notch, its proof checker isn't, by
-  far
+- While TLA+ model checker is top notch, its proof checker isn't
 
 ** Q: Why not %model checker%?
 
@@ -87,7 +86,6 @@ Module Hoare.
     }.
 
   Section defn.
-    (* Context {S : Type} {TE : Type} {chain_rule : S -> S -> TE -> Prop}. *)
     Context {S : Type} {TE : Type} `{HSSp : StateSpace S TE}.
 
     Let T := list TE.
@@ -675,7 +673,7 @@ Module SUT.
     Let T := @Trace ctx.
 
     Class Runnable A : Type :=
-      { unfolds_to : A -> A -> T -> Prop;
+      { unfolds_to : A -> T -> Prop;
       }.
 
     CoInductive Thread {pid : PID} : Type :=
@@ -687,29 +685,30 @@ Module SUT.
 
     Definition throw {pid} (_ : string) := @t_dead pid.
 
-    Inductive UnfoldThread (pid : PID) (t0 : @Thread pid) : @Thread pid -> T -> Prop :=
-    | uft_nil : UnfoldThread pid t0 t0 []
+    Inductive UnfoldThread (pid : PID) : @Thread pid -> T -> Prop :=
+    | uft_nil : forall thread,
+        UnfoldThread pid thread []
     | uft_cons : forall req ret cont t,
-        UnfoldThread pid t0 (t_cont req cont) t ->
-        UnfoldThread pid t0 (cont ret) (trace_elem _ pid req ret :: t).
+        UnfoldThread pid (t_cont req cont) t ->
+        UnfoldThread pid (cont ret) (trace_elem _ pid req ret :: t).
 
-    Instance runnableThread (pid : PID) : Runnable Thread :=
-      {| unfolds_to thread0 thread trace := UnfoldThread pid thread0 thread (rev trace);
+    Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
+      {| unfolds_to thread trace := UnfoldThread pid thread (rev trace);
       |}.
 
     Section ComposeSystems.
-      Context (sys1 sys2 : Type) `{Runnable sys1} `{Runnable sys2}.
+      Context {sys1 sys2 : Type} `(Runnable sys1) `(Runnable sys2).
 
       Let S : Type := sys1 * sys2.
 
       Let can_swap (te1 te2 : TE) := te_pid te1 <> te_pid te2.
 
       Instance composeRunnable : Runnable S :=
-        {| unfolds_to s s' trace :=
-             match s, s' with
-             | (s1, s2), (s1', s2') => forall t1 t2,
-                 unfolds_to s1 s1' t1 /\
-                 unfolds_to s2 s2' t2 /\
+        {| unfolds_to s trace :=
+             match s with
+             | (s1, s2) => exists t1 t2,
+                 unfolds_to s1 t1 /\
+                 unfolds_to s2 t2 /\
                  Permutation can_swap (t1 ++ t2) trace
              end;
         |}.
@@ -770,5 +769,12 @@ Module ExampleModelDefn.
 
   Let SUT := (counter_correct 1, counter_correct 2).
 
-  Fail Example empty_trace := unfolds_to SUT SUT [].
+  Check Thread.
+  Check @unfolds_to.
+
+  Example empty_trace : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT [].
+  Proof.
+    unfold SUT, counter_correct. simpl. exists []. exists []. simpl.
+    split; try split;constructor.
+  Qed.
 End ExampleModelDefn.
