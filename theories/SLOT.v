@@ -689,11 +689,11 @@ Module SUT.
     | uft_nil : forall thread,
         UnfoldThread pid thread []
     | uft_cons : forall req ret cont t,
-        UnfoldThread pid (t_cont req cont) t ->
-        UnfoldThread pid (cont ret) (trace_elem _ pid req ret :: t).
+        UnfoldThread pid (cont ret) t ->
+        UnfoldThread pid (t_cont req cont) (trace_elem _ pid req ret :: t).
 
     Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
-      {| unfolds_to thread trace := UnfoldThread pid thread (rev trace);
+      {| unfolds_to thread trace := UnfoldThread pid thread trace;
       |}.
 
     Section ComposeSystems.
@@ -772,9 +772,46 @@ Module ExampleModelDefn.
   Check Thread.
   Check @unfolds_to.
 
-  Example empty_trace : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT [].
-  Proof.
-    unfold SUT, counter_correct. simpl. exists []. exists []. simpl.
-    split; try split;constructor.
-  Qed.
+  Section tests.
+    Example empty_trace : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT [].
+    Proof.
+      unfold SUT, counter_correct. simpl. exists []. exists []. simpl.
+      split; try split;constructor.
+    Qed.
+
+    Example trace1 : forall v, @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
+                                      [1 @ I <~ grab; 1 @ v <~ get].
+    Proof.
+      intros. unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab; 1 @ v <~ get]. exists []. simpl.
+      split; try split; repeat constructor.
+    Qed.
+
+    Example trace2 : forall v, ~@unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
+                           [1 @ v <~ get].
+    Proof.
+      intros v H.
+      unfold SUT, counter_correct in H. inversion_clear H as [t1 H0]. inversion_clear H0 as [t2 H].
+      destruct H as [H1 [H2 Hp]].
+      inversion Hp.
+      - destruct t1, t2; simpl in *; inversion H0; subst;
+        inversion H2; inversion H1.
+      - repeat (destruct l'; simpl in *; inversion H).
+    Qed.
+
+    Example forbidden_trace1 : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
+                                          [1 @ I <~ grab; 2 @ I <~ grab].
+    Proof.
+      unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
+      split; try split; repeat constructor.
+    Qed.
+
+    Example forbidden_trace2 : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
+                                          [2 @ I <~ grab; 1 @ I <~ grab].
+    Proof.
+      unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
+      replace [2 @ I <~ grab; 1 @ I <~ grab] with ([] ++ [2 @ I <~ grab; 1 @ I <~ grab]) by auto.
+      split; try split; repeat constructor; easy.
+    Qed.
+
+  End tests.
 End ExampleModelDefn.
