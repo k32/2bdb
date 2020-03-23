@@ -692,33 +692,34 @@ Module SUT.
         UnfoldThread pid (cont ret) t ->
         UnfoldThread pid (t_cont req cont) (trace_elem _ pid req ret :: t).
 
-    Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
+    Hint Constructors UnfoldThread.
+
+    Global Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
       {| unfolds_to thread trace := UnfoldThread pid thread trace;
       |}.
-
-    Section ComposeSystems.
-      Context {sys1 sys2 : Type} `(Runnable sys1) `(Runnable sys2).
-
-      Let S : Type := sys1 * sys2.
-
-      Let can_swap (te1 te2 : TE) := te_pid te1 <> te_pid te2.
-
-      Instance composeRunnable : Runnable S :=
-        {| unfolds_to s trace :=
-             match s with
-             | (s1, s2) => exists t1 t2,
-                 unfolds_to s1 t1 /\
-                 unfolds_to s2 t2 /\
-                 Permutation can_swap (t1 ++ t2) trace
-             end;
-        |}.
-    End ComposeSystems.
   End defn.
+
+  Section ComposeSystems.
+    Context {ctx : Ctx}.
+
+    Let can_swap (te1 te2 : @TraceElem ctx) := te_pid te1 <> te_pid te2.
+
+    Global Instance composeRunnable {sys1 sys2 : Type}
+             `{@Runnable ctx sys1}
+             `{@Runnable ctx sys2} : @Runnable ctx (sys1 * sys2) :=
+      {| unfolds_to s trace :=
+           match s with
+           | (s1, s2) => exists t1 t2,
+                        unfolds_to s1 t1 /\
+                        unfolds_to s2 t2 /\
+                        Permutation can_swap (t1 ++ t2) trace
+           end;
+      |}.
+  End ComposeSystems.
 End SUT.
 
 Module ExampleModelDefn.
-  Import Handler.
-  Import SUT.
+  Import Handler SUT.
 
   Let PID := nat.
 
@@ -773,21 +774,19 @@ Module ExampleModelDefn.
   Check @unfolds_to.
 
   Section tests.
-    Example empty_trace : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT [].
+    Example empty_trace : unfolds_to SUT [].
     Proof.
       unfold SUT, counter_correct. simpl. exists []. exists []. simpl.
       split; try split;constructor.
     Qed.
 
-    Example trace1 : forall v, @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
-                                      [1 @ I <~ grab; 1 @ v <~ get].
+    Example trace1 : forall v, unfolds_to SUT [1 @ I <~ grab; 1 @ v <~ get].
     Proof.
       intros. unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab; 1 @ v <~ get]. exists []. simpl.
       split; try split; repeat constructor.
     Qed.
 
-    Example trace2 : forall v, ~@unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
-                           [1 @ v <~ get].
+    Example trace2 : forall v, ~unfolds_to SUT [1 @ v <~ get].
     Proof.
       intros v H.
       unfold SUT, counter_correct in H. inversion_clear H as [t1 H0]. inversion_clear H0 as [t2 H].
@@ -798,20 +797,17 @@ Module ExampleModelDefn.
       - repeat (destruct l'; simpl in *; inversion H).
     Qed.
 
-    Example forbidden_trace1 : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
-                                          [1 @ I <~ grab; 2 @ I <~ grab].
+    Example forbidden_trace1 : unfolds_to SUT [1 @ I <~ grab; 2 @ I <~ grab].
     Proof.
       unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
       split; try split; repeat constructor.
     Qed.
 
-    Example forbidden_trace2 : @unfolds_to ctx _ (composeRunnable (runnableThread _) (runnableThread _)) SUT
-                                          [2 @ I <~ grab; 1 @ I <~ grab].
+    Example forbidden_trace2 : unfolds_to SUT [2 @ I <~ grab; 1 @ I <~ grab].
     Proof.
       unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
       replace [2 @ I <~ grab; 1 @ I <~ grab] with ([] ++ [2 @ I <~ grab; 1 @ I <~ grab]) by auto.
       split; try split; repeat constructor; easy.
     Qed.
-
   End tests.
 End ExampleModelDefn.
