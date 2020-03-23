@@ -772,93 +772,96 @@ End Model.
 Module ExampleModelDefn.
   Import Handler SUT.
 
-  Let PID := nat.
+  Section defns.
+    Let PID := nat.
 
-  Definition Handler := compose (Mutable.t PID nat (fun a => a = 0))
-                                (Mutex.t PID).
+    Let Handler := compose (Mutable.t PID nat (fun a => a = 0))
+                           (Mutex.t PID).
 
-  Let ctx := hToCtx Handler.
+    Let ctx := hToCtx Handler.
 
-  Let TE := @TraceElem ctx.
+    Let TE := @TraceElem ctx.
 
-  Notation "'do' V '<-' I ; C" := (@t_cont ctx _ (I) (fun V => C))
-                                    (at level 100, C at next level, V ident, right associativity).
+    Notation "'do' V '<-' I ; C" := (@t_cont ctx _ (I) (fun V => C))
+                                      (at level 100, C at next level, V ident, right associativity).
 
-  Notation "'done' I" := (@t_cont ctx _ (I) (fun _ => t_dead))
-                           (at level 100, right associativity).
+    Notation "'done' I" := (@t_cont ctx _ (I) (fun _ => t_dead))
+                             (at level 100, right associativity).
 
-  Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
+    Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
-  Local Definition put (val : nat) : Handler.(h_req) :=
-    inl (Mutable.put val).
+    Let put (val : nat) : Handler.(h_req) :=
+      inl (Mutable.put val).
 
-  Local Definition get : h_req Handler :=
-    inl (Mutable.get).
+    Let get : h_req Handler :=
+      inl (Mutable.get).
 
-  Local Definition grab : h_req Handler :=
-    inr (Mutex.grab).
+    Let grab : h_req Handler :=
+      inr (Mutex.grab).
 
-  Local Definition release : h_req Handler :=
-    inr (Mutex.release).
+    Let release : h_req Handler :=
+      inr (Mutex.release).
 
-  (* Just a demonstration how to define a program that loops
-  indefinitely, as long as it does IO: *)
-  Local CoFixpoint infinite_loop (self : PID) : @Thread ctx self :=
-    do _ <- put 0;
-    infinite_loop self.
+    (* Just a demonstration how to define a program that loops
+    indefinitely, as long as it does IO: *)
+    Local CoFixpoint infinite_loop (self : PID) : @Thread ctx self :=
+      do _ <- put 0;
+      infinite_loop self.
 
-  (* Data race example: *)
-  Local Definition counter_race (self : PID) : @Thread ctx self :=
-    do v <- get;
-    done put (v + 1).
+    (* Data race example: *)
+    Let counter_race (self : PID) : @Thread ctx self :=
+      do v <- get;
+      done put (v + 1).
 
-  (* Fixed example: *)
-  Local Definition counter_correct (self : PID) : @Thread ctx self :=
-    do _ <- grab;
-    do v <- get;
-    do _ <- put (v + 1);
-    done release.
+    (* Fixed example: *)
+    Let counter_correct (self : PID) : @Thread ctx self :=
+      do _ <- grab;
+      do v <- get;
+      let v' := v + 1 in
+      do _ <- put v';
+      done release.
 
-  Let SUT := (counter_correct 1, counter_correct 2).
+    Let SUT := (counter_correct 1, counter_correct 2).
 
-  Check Thread.
-  Check @unfolds_to.
+    Check Thread.
+    Check @unfolds_to.
 
-  Section tests.
-    Example empty_trace : unfolds_to SUT [].
-    Proof.
-      unfold SUT, counter_correct. simpl. exists []. exists []. simpl.
-      split; try split; constructor.
-    Qed.
+    Section unfold_tests.
+      Goal unfolds_to SUT [].
+      Proof.
+        unfold SUT, counter_correct. simpl. exists []. exists []. simpl.
+        split; try split; constructor.
+      Qed.
 
-    Example trace1 : forall v, unfolds_to SUT [1 @ I <~ grab; 1 @ v <~ get].
-    Proof.
-      intros. unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab; 1 @ v <~ get]. exists []. simpl.
-      split; try split; repeat constructor.
-    Qed.
+      Goal forall v, unfolds_to SUT [1 @ I <~ grab; 1 @ v <~ get].
+      Proof.
+        intros. unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab; 1 @ v <~ get]. exists []. simpl.
+        split; try split; repeat constructor.
+      Qed.
 
-    Example trace2 : forall v, ~unfolds_to SUT [1 @ v <~ get].
-    Proof.
-      intros v H.
-      unfold SUT, counter_correct in H. inversion_clear H as [t1 H0]. inversion_clear H0 as [t2 H].
-      destruct H as [H1 [H2 Hp]].
-      inversion Hp.
-      - destruct t1, t2; simpl in *; inversion H0; subst;
-        inversion H2; inversion H1.
-      - repeat (destruct l'; simpl in *; inversion H).
-    Qed.
+      Goal forall v, ~unfolds_to SUT [1 @ v <~ get].
+      Proof.
+        intros v H.
+        unfold SUT, counter_correct in H. inversion_clear H as [t1 H0]. inversion_clear H0 as [t2 H].
+        destruct H as [H1 [H2 Hp]].
+        inversion Hp.
+        - destruct t1, t2; simpl in *; inversion H0; subst;
+          inversion H2; inversion H1.
+        - repeat (destruct l'; simpl in *; inversion H).
+      Qed.
 
-    Example forbidden_trace1 : unfolds_to SUT [1 @ I <~ grab; 2 @ I <~ grab].
-    Proof.
-      unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
-      split; try split; repeat constructor.
-    Qed.
+      Goal unfolds_to SUT [1 @ I <~ grab; 2 @ I <~ grab].
+      Proof.
+        unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
+        split; try split; repeat constructor.
+      Qed.
 
-    Example forbidden_trace2 : unfolds_to SUT [2 @ I <~ grab; 1 @ I <~ grab].
-    Proof.
-      unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
-      replace [2 @ I <~ grab; 1 @ I <~ grab] with ([] ++ [2 @ I <~ grab; 1 @ I <~ grab]) by auto.
-      split; try split; repeat constructor; easy.
-    Qed.
-  End tests.
+      Goal unfolds_to SUT [2 @ I <~ grab; 1 @ I <~ grab].
+      Proof.
+        unfold SUT, counter_correct. simpl. exists [1 @ I <~ grab]. exists [2 @ I <~ grab]. simpl.
+        replace [2 @ I <~ grab; 1 @ I <~ grab] with ([] ++ [2 @ I <~ grab; 1 @ I <~ grab]) by auto.
+        split; try split; repeat constructor; easy.
+      Qed.
+    End unfold_tests.
+  End defns.
 End ExampleModelDefn.
