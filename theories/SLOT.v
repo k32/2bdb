@@ -320,8 +320,7 @@ Module Hoare.
         {{ inv }} [te] {{ inv }}.
   End defn.
 
-  Notation "'{{' a '}}' t '{{' b '}}'" :=
-        (HoareTriple a t b).
+  Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b) : hoare_scope.
 End Hoare.
 
 Module EventTrace.
@@ -370,7 +369,7 @@ Module Handler.
     Let ctx := hToCtx H.
     Let TE := @TraceElem ctx.
 
-    Instance handlerStateSpace : StateSpace S TE :=
+    Global Instance handlerStateSpace : StateSpace S TE :=
       {| chain_rule := h_chain_rule H |}.
 
     Definition HoareTripleH (pre : S -> Prop) (trace : @Trace ctx) (post : S -> Prop) :=
@@ -382,8 +381,6 @@ Module Handler.
 
     Definition PossibleTrace := @PossibleTrace S TE _.
   End Hoare.
-
-  Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTripleH a t b) : handler_scope.
 
   Section ComposeHandlers.
     Context {PID : Set} (h_l h_r : @t PID).
@@ -594,7 +591,7 @@ Module Mutex.
   Import Handler.
 
   Section defs.
-    Open Scope handler_scope.
+    Open Scope hoare_scope.
     Inductive req_t : Set :=
     | grab    : req_t
     | release : req_t.
@@ -673,6 +670,13 @@ Module SUT.
     Let T := @Trace ctx.
 
     Class Runnable A : Type :=
+      { runnable_step : A -> A -> TE -> Prop;
+      }.
+
+    Global Instance runnableHoare A `{Runnable A} : StateSpace A TE :=
+      {| chain_rule := runnable_step; |}.
+
+    Class Unfoldable A : Type :=
       { unfolds_to : A -> T -> Prop;
       }.
 
@@ -685,6 +689,17 @@ Module SUT.
 
     Definition throw {pid} (_ : string) := @t_dead pid.
 
+    Inductive ThreadStep (pid : PID) : @Thread pid -> @Thread pid -> TE -> Prop :=
+    | thread_step : forall req ret cont,
+        ThreadStep pid
+                   (t_cont req cont) (cont ret)
+                   (trace_elem _ pid req ret).
+
+    Hint Constructors ThreadStep.
+
+    Global Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
+      {| runnable_step := ThreadStep pid |}.
+
     Inductive UnfoldThread (pid : PID) : @Thread pid -> T -> Prop :=
     | uft_nil : forall thread,
         UnfoldThread pid thread []
@@ -694,19 +709,27 @@ Module SUT.
 
     Hint Constructors UnfoldThread.
 
-    Global Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
+    Global Instance unfoldableThread (pid : PID) : Unfoldable (@Thread pid) :=
       {| unfolds_to thread trace := UnfoldThread pid thread trace;
       |}.
   End defn.
 
   Section ComposeSystems.
-    Context {ctx : Ctx}.
+    Context {ctx : Ctx} {sys1 sys2 : Type}.
+
+    Global Instance composeRunnable `{@Runnable ctx sys1} `{@Runnable ctx sys2} :
+      @Runnable ctx (sys1 * sys2) :=
+      {| runnable_step s s' te :=
+           match s, s' with
+           | (s1, s2), (s1', s2') => (runnable_step s1 s1' te /\ s2 = s2') \/
+                                    (runnable_step s2 s2' te /\ s1 = s1')
+           end;
+      |}.
 
     Let can_swap (te1 te2 : @TraceElem ctx) := te_pid te1 <> te_pid te2.
 
-    Global Instance composeRunnable {sys1 sys2 : Type}
-             `{@Runnable ctx sys1}
-             `{@Runnable ctx sys2} : @Runnable ctx (sys1 * sys2) :=
+    Global Instance composeUnfoldable `{@Unfoldable ctx sys1} `{@Unfoldable ctx sys2} :
+      @Unfoldable ctx (sys1 * sys2) :=
       {| unfolds_to s trace :=
            match s with
            | (s1, s2) => exists t1 t2,
@@ -717,6 +740,34 @@ Module SUT.
       |}.
   End ComposeSystems.
 End SUT.
+
+Module Model.
+  Export Handler
+         SUT.
+
+  Section defn.
+    Context {PID} {SUT : Type} {Handler : @Handler.t PID}.
+
+    Let ctx := hToCtx Handler.
+
+    Context `{Runnable ctx SUT}.
+
+    Record t : Type :=
+      mkModel
+        { model_sut : SUT;
+          model_handler : h_state Handler;
+        }.
+
+    Definition model_chain_rule m m' te : Prop :=
+      match m, m' with
+      | mkModel s h, mkModel s' h' => (h_chain_rule Handler) h h' te /\
+                                     runnable_step s s' te
+      end.
+
+    Global Instance modelHoare : StateSpace t (@TraceElem ctx) :=
+      {| chain_rule := model_chain_rule; |}.
+  End defn.
+End Model.
 
 Module ExampleModelDefn.
   Import Handler SUT.
@@ -777,7 +828,7 @@ Module ExampleModelDefn.
     Example empty_trace : unfolds_to SUT [].
     Proof.
       unfold SUT, counter_correct. simpl. exists []. exists []. simpl.
-      split; try split;constructor.
+      split; try split; constructor.
     Qed.
 
     Example trace1 : forall v, unfolds_to SUT [1 @ I <~ grab; 1 @ v <~ get].
