@@ -67,7 +67,7 @@ From QuickChick Require Import
      QuickChick.
 
 From LibTx Require Import
-     InterleaveLists
+     Permutation
      FoldIn.
 
 Reserved Notation "pid '@' req '<~' ret" (at level 30).
@@ -358,7 +358,6 @@ Module Handler.
       }.
 
     Definition hToCtx (h : t) := mkCtx PID h.(h_req) h.(h_ret).
-
   End IOHandler.
 
   Section Hoare.
@@ -766,6 +765,12 @@ Module Model.
 
     Global Instance modelHoare : StateSpace t (@TraceElem ctx) :=
       {| chain_rule := model_chain_rule; |}.
+
+    Definition initial_state (sut0 : SUT) :=
+      fun m =>
+        let init_state_p := h_initial_state Handler in
+        model_sut m = sut0 /\
+        init_state_p (model_handler m).
   End defn.
 End Model.
 

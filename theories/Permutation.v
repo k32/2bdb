@@ -5,7 +5,7 @@ From Coq Require Import
 
 Import ListNotations.
 
-Section Permutation.
+Section defn.
   Context {T : Type} (can_swap : T -> T -> Prop).
   Let L := list T.
 
@@ -20,7 +20,7 @@ Section Permutation.
       Permutation l (l' ++ b :: a :: r').
 
   (* TODO: Prove completeness of this definition *)
-End Permutation.
+End defn.
 
 Section tests.
   Let comm a b := odd a /\ even b.
