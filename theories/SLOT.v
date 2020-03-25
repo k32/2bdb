@@ -58,13 +58,11 @@ the user from reinventing basic control flow constructions.
 *)
 From Coq Require Import
      List
+     String
      Tactics
      Sets.Ensembles.
 
 Import ListNotations.
-
-From QuickChick Require Import
-     QuickChick.
 
 From LibTx Require Import
      Permutation

@@ -1,1 +1,6 @@
 -R theories LibTx
+theories/EqDec.v
+theories/FoldIn.v
+theories/Storage.v
+theories/Permutation.v
+theories/SLOT.v
