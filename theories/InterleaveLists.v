@@ -28,18 +28,18 @@ Section tests.
   Local Hint Constructors odd.
   Local Hint Constructors even.
 
-  Lemma even2 : ~odd 2.
+  Let even2 : ~odd 2.
   Proof.
     intros H.
     apply (not_even_and_odd 2); auto.
   Qed.
 
-  Hint Resolve even2.
+  Local Hint Resolve even2.
 
-  Example example_interleaved_list_1 : Permutation comm [] [].
+  Goal Permutation comm [] [].
   Proof. constructor; auto. Qed.
 
-  Example example_interleaved_list_2 : Permutation comm [1; 3; 2; 4] [1; 2; 3; 4].
+  Goal Permutation comm [1; 3; 2; 4] [1; 2; 3; 4].
   Proof.
     replace [1; 2; 3; 4] with ([1] ++ 2 :: 3 :: [4]) by auto.
     constructor.
@@ -48,7 +48,7 @@ Section tests.
     - split; auto.
   Qed.
 
-  Example example_interleaved_list_3 : ~Permutation comm [2; 4] [4; 2].
+  Goal ~Permutation comm [2; 4] [4; 2].
   Proof.
     intros H.
     inversion H.
