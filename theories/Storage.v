@@ -22,537 +22,476 @@ Ltac symm_not :=
      symmetry in H;
      generalize dependent H.
 
-Module Storage.
+Section defn.
+  Context {K V : Set} `{HKeq_dec : EqDec K}.
 
-Definition TabName := String.string.
+  Class Storage t : Type :=
+    { new : t;
+      put : K -> V -> t -> t;
+      get : K -> t -> option V;
+      keys : t -> list K;
+      delete : K -> t -> t;
 
-(** Weaker equality operator comparing contents of the storage, rather
-than state of the storage backend itself: *)
-Reserved Notation "s1 =s= s2" (at level 50).
+      (* Axioms: *)
+      new_empty : forall k, get k new = None;
+      keep : forall s k v, get k (put k v s) = Some v;
+      distinct : forall s k1 k2 v2,
+          k1 <> k2 ->
+          get k1 s = get k1 (put k2 v2 s);
+      delete_keep : forall s k,
+          get k (delete k s) = None;
+      delete_distinct : forall s k1 k2,
+          k1 <> k2 ->
+          get k1 s = get k1 (delete k2 s);
+      keys_some : forall s k,
+          In k (keys s) <-> exists v, get k s = Some v;
+    }.
 
-Module Type Interface.
-  (* We assume that all operations listed here are atomic and it's up
-  to the storage backend to ensure this property *)
+  Section Equality.
+    Context {T} `{HT_Storage : Storage T}.
 
-  Parameter t : Keq_dec -> Type -> Type.
-
-  Parameter new : forall {K V}, t K V.
-
-  Parameter put : forall {K V}, K.(KT) -> V -> t K V -> t K V.
-
-  Parameter get : forall {K V}, K.(KT) -> t K V -> option V.
-
-  Parameter keys : forall {K V}, t K V -> list K.(KT).
-
-  Parameter delete : forall {K V}, K.(KT) -> t K V -> t K V.
-
-  Axiom new_empty : forall {K V} k,
-      get k (new : t K V) = None.
-
-  Axiom keep : forall {K V} (s : t K V) (k : K.(KT)) (v : V),
-      get k (put k v s) = Some v.
-
-  Axiom distinct : forall {K V} (s : t K V) (k1 : K.(KT)) (k2 : K.(KT)) (v2 : V),
-      k1 <> k2 ->
-      get k1 s = get k1 (put k2 v2 s).
-
-  Axiom delete_keep : forall {K V} (s : t K V) k,
-      get k (delete k s) = None.
-
-  Axiom delete_distinct : forall {K V} (s : t K V) (k1 : KT K) (k2 : KT K),
-      k1 <> k2 ->
-      get k1 s = get k1 (delete k2 s).
-
-  Axiom keys_some : forall {K V} (s : t K V) k,
-      In k (keys s) <-> exists v, get k s = Some v.
-End Interface.
-
-Module Equality (I : Interface).
-  Import I.
-
-  Inductive s_eq {K V} (s1 : t K V) (s2 : t K V) :=
-  | s_eq_ : (forall k, get k s1 = get k s2) -> s_eq s1 s2.
+    Inductive s_eq (s1 s2 : T) :=
+    | s_eq_ : (forall k, get k s1 = get k s2) -> s_eq s1 s2.
+  End Equality.
 
   Notation "s1 =s= s2" := (s_eq s1 s2) (at level 50).
 
-  Lemma s_eq_self : forall {K V} (s : t K V), s =s= s.
-  Proof.
-    intros.
-    assert (H: forall k, get k s = get k s).
-    { intros. reflexivity. }
-    apply (s_eq_ H).
-  Qed.
+  Section Equality.
+    Context {T} `{HT_Storage : Storage T}.
 
-  Lemma new_keys_empty : forall {K V}, keys (@new K V) = [].
-  Proof.
-    intros.
-    remember (keys new) as k.
-    destruct k.
-    - reflexivity.
-    - assert (Hk : In k (keys (@new K V))).
-      { rewrite <-Heqk. apply in_eq. }
-      apply keys_some in Hk.
-      destruct Hk as [v nonsense].
-      specialize (@new_empty K V k) as empty.
-      rewrite nonsense in empty.
-      easy.
-  Qed.
+    Lemma s_eq_self : forall (s : T), s =s= s.
+    Proof.
+      firstorder.
+    Qed.
 
-  Lemma put_eq_eq : forall {K V} (s1 s2 : t K V) k v,
-      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
-      s1 =s= s2 ->
-      put k v s1 =s= put k v s2.
-  Proof.
-    intros K V s1 s2 k v Heq_dec Heq.
-    constructor.
-    intros x.
-    destruct (Heq_dec x k) as [H|H].
-    - subst. repeat rewrite keep. reflexivity.
-    - repeat rewrite <-(@distinct _ _ _ x k v H).
-      destruct Heq as [Heq]. apply Heq.
-  Qed.
+    Lemma new_keys_empty : keys new = [].
+    Proof.
+      remember (keys new) as k.
+      destruct k.
+      - reflexivity.
+      - assert (Hk : In k (keys new)).
+        { rewrite <-Heqk. apply in_eq. }
+        apply keys_some in Hk.
+        destruct Hk as [v nonsense].
+        specialize (new_empty k) as empty.
+        rewrite nonsense in empty.
+        easy.
+    Qed.
 
-  Lemma put_same : forall {K V} (s : t K V) k v,
-      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
-      get k s = Some v ->
-      s =s= put k v s.
-  Proof.
-    intros K V s k v K_eq_dec Hkv.
-    constructor.
-    intros x.
-    destruct (K_eq_dec x k) as [H|H].
-    - subst. rewrite keep, Hkv. reflexivity.
-    - rewrite <-(@distinct _ _ _ x k v H). reflexivity.
-  Qed.
+    Lemma put_eq_eq : forall (s1 s2 : T) k v,
+        s1 =s= s2 ->
+        put k v s1 =s= put k v s2.
+    Proof.
+      intros s1 s2 k v Heq.
+      constructor.
+      intros x.
+      destruct (eq_dec x k) as [H|H].
+      - subst. repeat rewrite keep. reflexivity.
+      - repeat rewrite <-(@distinct _ _ _ x k v H).
+        firstorder.
+    Qed.
 
-  Lemma put_distict_comm : forall {K V} (s : t K V) k1 k2 v1 v2,
-      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
-      k1 <> k2 ->
-      put k2 v2 (put k1 v1 s) =s= put k1 v1 (put k2 v2 s).
-  Proof.
-    intros K V s k1 k2 v1 v2 Keq_dec H12.
-    apply s_eq_.
-    intros k.
-    destruct (Keq_dec k k1) as [|Hnk1]; subst.
-    - rewrite <-(@distinct _ _ _ k1 k2 v2 H12).
-      repeat rewrite keep.
-      reflexivity.
-    - destruct (Keq_dec k k2) as [|Hnk2]; subst.
-      + rewrite <-(@distinct _ _ _ k2 k1 _ Hnk1).
+    Lemma put_same : forall (s : T) k v,
+        get k s = Some v ->
+        s =s= put k v s.
+    Proof.
+      intros s k v Hkv.
+      constructor.
+      intros x.
+      destruct (eq_dec x k) as [H|H].
+      - subst. rewrite keep, Hkv. reflexivity.
+      - rewrite <-(@distinct _ _ _ x k v H). reflexivity.
+    Qed.
+
+    Lemma put_distict_comm : forall (s : T) k1 k2 v1 v2,
+        k1 <> k2 ->
+        put k2 v2 (put k1 v1 s) =s= put k1 v1 (put k2 v2 s).
+    Proof.
+      intros s k1 k2 v1 v2 H12.
+      apply s_eq_.
+      intros k.
+      destruct (eq_dec k k1) as [|Hnk1]; subst.
+      - rewrite <-(@distinct _ _ _ k1 k2 v2 H12).
         repeat rewrite keep.
         reflexivity.
-      + repeat ( rewrite <-(@distinct _ _ _ k _ _ Hnk1)
-               || rewrite <-(@distinct _ _ _ k _ _ Hnk2)).
-        reflexivity.
-  Qed.
-End Equality.
+      - destruct (eq_dec k k2) as [|Hnk2]; subst.
+        + rewrite <-(@distinct _ _ _ k2 k1 _ Hnk1).
+          repeat rewrite keep.
+          reflexivity.
+        + repeat ( rewrite <-(@distinct _ _ _ k _ _ Hnk1)
+                 || rewrite <-(@distinct _ _ _ k _ _ Hnk2)).
+          reflexivity.
+    Qed.
+  End Equality.
 
-Module WriteLog (I : Interface).
-  Import I.
-  Module IE := Equality I.
-  Export IE.
+  Section Operations.
+    Context {T} `{HT_Storage : Storage T}.
 
-  Inductive Wlog_en {K V} :=
-  | wl_w : KT K -> V -> Wlog_en
-  | wl_d : KT K -> Wlog_en.
+    (** Total version of get *)
+    Definition getT k (s : T) (H : In k (keys s)) : V.
+      remember (get k s) as v.
+      destruct v.
+      - destruct Heqv. apply v.
+      - exfalso. (* This is how one does exceptions in Coq :joy_cat: *)
+        apply keys_some in H.
+        rewrite <- Heqv in H.
+        destruct H.
+        inversion H.
+    Defined.
 
-  Definition Wlog_en_apply {K V} (s : t K V) (l : @Wlog_en K V) :
-    t K V :=
-    match l with
-    | wl_w k v => put k v s
-    | wl_d k => delete k s
-    end.
+    (** Atomically apply a function to all elements of the storage *)
+    Definition a_map (f : V -> V) (s : T) : T :=
+      let g k Hk acc :=
+          let v0 := getT k s Hk
+          in put k (f v0) acc
+      in foldl' (keys s) g new.
 
-  Definition Wlog {K V} := list (@Wlog_en K V).
+    Definition forallS (s : T) (prop : forall (k : K), In k (keys s) -> Prop) : Prop :=
+      let f k Hin acc := prop k Hin /\ acc
+      in foldl' (keys s) f True.
 
-  Definition Wlog_apply {K V} (l : @Wlog K V) (s : t K V) :=
-    fold_left Wlog_en_apply l s.
+    Theorem keys_none : forall (s : T) k,
+        ~In k (keys s) -> get k s = None.
+    Proof.
+      intros.
+      specialize (keys_some s k) as [Hs Hs_rev].
+      destruct (get k s).
+      - exfalso. apply H. apply Hs_rev. exists v. reflexivity.
+      - reflexivity.
+    Qed.
 
-  Definition Wlog_has_key {K V} (k : KT K) (l : @Wlog K V) : Prop :=
-    In k (map (fun x => match x with
-                     | wl_w k _ => k
-                     | wl_d k => k
-                     end) l).
+    Theorem keys_some' : forall (s : T) k v,
+        Some v = get k s -> In k (keys s).
+    Proof.
+      intros.
+      apply keys_some. exists v. easy.
+    Qed.
+  End Operations.
 
-  (* D'oh! This _should_ be somewhere in the standard library... *)
-  Lemma sumbool_dec : forall A, { A } + { ~ A } ->
-                           decidable A.
-  Proof.
-    intros A H.
-    destruct H; [left | right]; assumption.
-  Qed.
+  Section WriteLog.
+    Context {T} `{HT_Storage : Storage T}.
 
-  Lemma Wlog_has_key_dec : forall {K V} k (l : @Wlog K V),
-      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
-      decidable (Wlog_has_key k l).
-  Proof.
-    intros K V k l Keq_dec.
-    unfold Wlog_has_key.
-    induction l as [|e t IH]; simpl.
-    - apply dec_False.
-    - apply dec_or.
-      + apply sumbool_dec, Keq_dec.
-      + apply IH.
-  Qed.
+    Inductive Wlog_elem :=
+    | wl_write : K -> V -> Wlog_elem
+    | wl_delete : K -> Wlog_elem.
 
-  Inductive Wlog_nodup {K V} : @Wlog K V ->
-                               @Wlog K V ->
-                               Prop :=
-  | wse0 : Wlog_nodup [] []
-  | wse1 : forall l l' t k v,
-      l = (wl_w k v) :: t ->
-      ~Wlog_has_key k t ->
-      Wlog_nodup t l' ->
-      Wlog_nodup l ((wl_w k v) :: l')
-  | wse2 : forall l l' t k,
-      l = (wl_d k) :: t ->
-      ~Wlog_has_key k t ->
-      Wlog_nodup t l' ->
-      Wlog_nodup l ((wl_d k) :: l').
+    Definition Wlog_elem_apply (s : T) (l : Wlog_elem) : T :=
+      match l with
+      | wl_write k v => put k v s
+      | wl_delete k => delete k s
+      end.
 
-  Lemma Wlog_has_key_rev : forall {K V} (l : @Wlog K V) k,
-      Wlog_has_key k l <-> Wlog_has_key k (rev l).
-  Proof.
-    intros K V l k.
-    unfold Wlog_has_key.
-    rewrite map_rev.
-    apply in_rev.
-  Qed.
+    Definition Wlog := list Wlog_elem.
 
-  Ltac wlog_app_simpl_ NEQ :=
-    simpl; unfold Wlog_apply;
-    repeat rewrite fold_left_app;
-    simpl;
-    subst;
-    repeat rewrite keep;
-    repeat rewrite <-distinct by NEQ;
-    repeat rewrite delete_keep;
-    repeat rewrite <-delete_distinct by NEQ.
+    Definition Wlog_apply (l : Wlog) (s : T) :=
+      fold_left Wlog_elem_apply l s.
 
-  Tactic Notation "wlog_app_simpl" "by" tactic2(x) :=
-    wlog_app_simpl_ x.
+    Definition Wlog_has_key (k : K) (l : Wlog) : Prop :=
+      In k (map (fun x => match x with
+                       | wl_write k _ => k
+                       | wl_delete k => k
+                       end) l).
 
-  Tactic Notation "wlog_app_simpl" :=
-    wlog_app_simpl_ fail.
+    (* D'oh! This _should_ be somewhere in the standard library... *)
+    Lemma sumbool_dec : forall A, { A } + { ~ A } ->
+                             decidable A.
+    Proof.
+      intros A H.
+      destruct H; [left | right]; assumption.
+    Qed.
 
-  Hint Constructors s_eq.
+    Lemma Wlog_has_key_dec : forall  k (l : Wlog),
+        decidable (Wlog_has_key k l).
+    Proof.
+      intros k l.
+      unfold Wlog_has_key.
+      induction l as [|e t IH]; simpl.
+      - apply dec_False.
+      - apply dec_or.
+        + apply sumbool_dec, eq_dec.
+        + apply IH.
+    Qed.
 
-  Ltac unfold_s_eq k :=
-    constructor;
-    intros k.
+    Inductive Wlog_nodup : Wlog -> Wlog -> Prop :=
+    | wse0 : Wlog_nodup [] []
+    | wse1 : forall l l' t k v,
+        l = (wl_write k v) :: t ->
+        ~Wlog_has_key k t ->
+        Wlog_nodup t l' ->
+        Wlog_nodup l ((wl_write k v) :: l')
+    | wse2 : forall l l' t k,
+        l = (wl_delete k) :: t ->
+        ~Wlog_has_key k t ->
+        Wlog_nodup t l' ->
+        Wlog_nodup l ((wl_delete k) :: l').
 
-  Ltac unfold_s_eq_in k :=
-    destruct k as [k].
+    Lemma Wlog_has_key_rev : forall (l : Wlog) k,
+        Wlog_has_key k l <-> Wlog_has_key k (rev l).
+    Proof.
+      intros l k.
+      unfold Wlog_has_key.
+      rewrite map_rev.
+      apply in_rev.
+    Qed.
 
-  Tactic Notation "unfold_s_eq" "in" ident(k) :=
-    unfold_s_eq_in k.
-
-  Tactic Notation "unfold_s_eq" "as" ident(k) :=
-    unfold_s_eq k.
-
-  Ltac rev_wlog_induction l k v t IH :=
-    rewrite <-(rev_involutive l) in *;
-    induction (rev l) as [|[k v|k] t IH]; try easy.
-
-  Tactic Notation "rev_wlog_induction" hyp(l) "as" ident(k) ident(v) ident(t) ident(IH) :=
-    rev_wlog_induction l k v t IH.
-
-  Ltac has_key_rev_simpl H :=
-    simpl in H;
-    rewrite Wlog_has_key_rev, rev_app_distr, rev_involutive in H;
-    simpl in H;
-    unfold Wlog_has_key in H;
-    simpl in H.
-
-  Tactic Notation "has_key_rev_simpl" "in" hyp(H) := has_key_rev_simpl H.
-
-  Hint Unfold Wlog_apply.
-  Hint Unfold Wlog_has_key.
-
-  Hint Extern 3 => symm_not.
-  Hint Extern 4 => rewrite <-Wlog_has_key_rev.
-  Hint Extern 4 => rewrite keep.
-  Hint Extern 4 => rewrite delete_keep.
-  Hint Extern 4 => destruct (eq_dec _ _ _).
-  Hint Resolve s_eq_self.
-
-  Lemma Wlog_apply_same : forall {K V} (l : @Wlog K V) (s1 s2 : t K V),
-      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
-      s1 =s= s2 ->
-      Wlog_apply l s1 =s= Wlog_apply l s2.
-  Proof.
-    intros K V l s1 s2 Keq_dec H.
-    rev_wlog_induction l as k v t IH;
-      unfold_s_eq in IH;
-      unfold_s_eq as k';
-      destruct (Keq_dec k' k) as [Hkk|Hkk];
-      wlog_app_simpl by apply Hkk;
-      easy.
-  Qed.
-
-  Lemma Wlog_ignore : forall {K V} (l : @Wlog K V) s k,
-      ~ Wlog_has_key k l ->
-      get k s = get k (Wlog_apply l s).
-  Proof.
-    intros K V l s k H.
-    rev_wlog_induction l as k' _v t IH;
-      unfold Wlog_apply in IH;
-      wlog_app_simpl;
-      has_key_rev_simpl in H;
-      [rewrite <-distinct by auto | rewrite <-delete_distinct by auto];
-      firstorder;
-      rewrite <-IH;
-      auto.
-  Qed.
-
-  Lemma Wlog_ignore_cons : forall {K V} (l : @Wlog K V) s k1 k2 v,
-      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
-      k1 <> k2 ->
-      get k1 (Wlog_apply l (put k2 v s)) = get k1 (Wlog_apply l s).
-  Proof.
-    intros K V l s k1 k2 v Keq_dec H.
-    rev_wlog_induction l as ak av t IH.
-    - simpl. rewrite <-distinct.
-      reflexivity.
-      assumption.
-    - wlog_app_simpl.
-      destruct (Keq_dec ak k1) as [Hak|Hak].
-      + subst. auto.
-      + repeat rewrite <-distinct in * by auto.
-        auto.
-    - wlog_app_simpl.
-      destruct (Keq_dec ak k1) as [Hak|Hak].
-      + subst. auto.
-      + repeat rewrite <-delete_distinct by auto.
-        auto.
-  Qed.
-
-  Lemma Wlog_ignore_cons_del : forall {K V} (l : @Wlog K V) s k1 k2,
-      (forall k1 k2 : KT K, {k1 = k2} + {k1 <> k2}) ->
-      k1 <> k2 ->
-      get k1 (Wlog_apply l (delete k2 s)) = get k1 (Wlog_apply l s).
-  Proof.
-    intros K V l s k1 k2 Keq_dec H.
-    rev_wlog_induction l as ak av t IH.
-    - simpl. rewrite <-delete_distinct.
-      reflexivity.
-      assumption.
-    - wlog_app_simpl.
-      destruct (Keq_dec ak k1) as [Hak|Hak].
-      + subst. auto.
-      + repeat rewrite <-distinct in * by auto.
-        auto.
-    - wlog_app_simpl.
-      destruct (Keq_dec ak k1) as [Hak|Hak].
-      + subst. auto.
-      + repeat rewrite <-delete_distinct by auto.
-        auto.
-  Qed.
-
-  Lemma Wlog_nodup_has_key : forall {K V} k (l1 l2 : @Wlog K V),
-                                 Wlog_nodup l1 l2 ->
-                                 Wlog_has_key k l1 <-> Wlog_has_key k l2.
-  Proof.
-    intros K V k l1 l2 H.
-    induction H; split; intros Hinv;
-      try easy;
-      subst; simpl in *;
-      unfold Wlog_has_key; simpl;
-      unfold Wlog_has_key in Hinv; simpl in Hinv;
-      destruct Hinv;
-      try (left; assumption);
-      apply IHWlog_nodup in H; right; assumption.
-  Qed.
-
-  Theorem Wlog_significant_entries :
-    forall {K V} (l l' : @Wlog K V) s,
-      Wlog_nodup l l' ->
-      Wlog_apply l s =s= Wlog_apply l' s.
-  Proof.
-    intros [K Keq_dec] V l l' s H.
-    induction H; subst; auto;
-      unfold_s_eq as k';
-      unfold_s_eq in IHWlog_nodup;
-      apply (Wlog_nodup_has_key k') in H1;
+    Ltac wlog_app_simpl_ NEQ :=
+      simpl; unfold Wlog_apply;
+      repeat rewrite fold_left_app;
       simpl;
-      destruct (Keq_dec k k') as [Heq|Hneq]; subst;
-      (* [k = k'] *)
-      try (rewrite <-Wlog_ignore with (l := t0) by auto;
-           rewrite <-Wlog_ignore with (l := l') by firstorder;
-           auto).
-      (* [k <> k'] *)
-    - repeat rewrite Wlog_ignore_cons with (k2 := k) (v0 := v) by auto.
-      auto.
-    - repeat rewrite Wlog_ignore_cons_del with (k2 := k) by auto.
-      auto.
-  Qed.
-End WriteLog.
+      subst;
+      repeat rewrite keep;
+      repeat rewrite <-distinct by NEQ;
+      repeat rewrite delete_keep;
+      repeat rewrite <-delete_distinct by NEQ.
 
-Module Versioned (I : Interface).
-  Inductive maybe_dead (A : Type) :=
-  | Alive : A -> maybe_dead A
-  | Dead : nat -> maybe_dead A.
+    Tactic Notation "wlog_app_simpl" "by" tactic2(x) :=
+      wlog_app_simpl_ x.
 
-  Record versioned d := mkVer
-                          { version : nat;
-                            data : maybe_dead d;
-                          }.
+    Tactic Notation "wlog_app_simpl" :=
+      wlog_app_simpl_ fail.
 
-  Definition VS K V := I.t K (versioned V).
+    Hint Constructors s_eq.
 
-  Definition put {K V} (k : KT K) (v : V) (s : VS K V) : VS K V :=
-    match I.get k s with
-    | None => I.put k (mkVer 1 (Alive v)) s
-    | Some v0 => I.put k (mkVer (S (version v0)) (Alive v)) s
-    end.
+    Ltac unfold_s_eq k :=
+      constructor;
+      intros k.
 
-  Definition get {K V} (k : KT K) (s : VS K V) : option V :=
-    match I.get k s with
-    | None => None
-    | Some v => match data v with
-               | Alive x => Some x
-               | Dead _ => None
-               end
-    end.
+    Ltac unfold_s_eq_in k :=
+      destruct k as [k].
 
-  Definition get_v {K V} (k : KT K) (s : VS K V) : (nat * option V) :=
-    match I.get k s with
-    | None => (0, None)
-    | Some v => match data v with
-               | Alive x => (version v, Some x)
-               | Dead _ => (version v, None)
-               end
-    end.
+    Tactic Notation "unfold_s_eq" "in" ident(k) :=
+      unfold_s_eq_in k.
 
-  Definition delete {K V} (k : KT K) (n : nat) (s : VS K V) : VS K V :=
-    match I.get k s with
-    | None => s
-    | Some v0 => I.put k (mkVer (S (version v0)) (Dead V n)) s
-    end.
+    Tactic Notation "unfold_s_eq" "as" ident(k) :=
+      unfold_s_eq k.
 
-  Definition new {K V} :=
-    @I.new K V.
-End Versioned.
+    Ltac rev_wlog_induction l k v t IH :=
+      rewrite <-(rev_involutive l) in *;
+      induction (rev l) as [|[k v|k] t IH]; try easy.
 
-Module ListStorage <: Interface.
-  Definition t K V := list (KT K * V).
+    Tactic Notation "rev_wlog_induction" hyp(l) "as" ident(k) ident(v) ident(t) ident(IH) :=
+      rev_wlog_induction l k v t IH.
 
-  Definition new {K V} : t K V := [].
+    Ltac has_key_rev_simpl H :=
+      simpl in H;
+      rewrite Wlog_has_key_rev, rev_app_distr, rev_involutive in H;
+      simpl in H;
+      unfold Wlog_has_key in H;
+      simpl in H.
 
-  Fixpoint delete {K V} (k : KT K) s : t K V :=
-    match s with
-    | [] => []
-    | (k', v) :: t =>
-      if K.(eq_dec) k k' then delete k t
-      else (k', v) :: delete k t
-    end.
+    Tactic Notation "has_key_rev_simpl" "in" hyp(H) := has_key_rev_simpl H.
 
-  Definition put {K V} (k : KT K) (v : V) s : t K V :=
-    (k, v) :: (delete k s).
+    Hint Unfold Wlog_apply.
+    Hint Unfold Wlog_has_key.
 
-  Fixpoint get {K V} (k : KT K) (s : t K V) : option V :=
-    match s with
-    | [] => None
-    | (k', v) :: t =>
-      if K.(eq_dec) k' k then Some v else get k t
-    end.
+    Hint Extern 3 => symm_not.
+    Hint Extern 4 => rewrite <-Wlog_has_key_rev.
+    Hint Extern 4 => rewrite keep.
+    Hint Extern 4 => rewrite delete_keep.
+    Hint Extern 4 => destruct (eq_dec _ _ _).
+    Hint Resolve s_eq_self.
 
-  Fixpoint keys {K V} (s : t K V) : list (KT K) :=
-    match s with
-    | [] => []
-    | (k, _) :: t => k :: keys t
-    end.
+    Lemma Wlog_apply_same : forall (l : Wlog) (s1 s2 : T),
+        s1 =s= s2 ->
+        Wlog_apply l s1 =s= Wlog_apply l s2.
+    Proof.
+      intros l s1 s2 H.
+      rev_wlog_induction l as k v t IH;
+        unfold_s_eq in IH;
+        unfold_s_eq as k';
+        destruct (eq_dec k' k) as [Hkk|Hkk];
+        wlog_app_simpl by apply Hkk;
+        easy.
+    Qed.
 
-  Theorem new_empty : forall {K V} k,
-      get k (new : t K V) = None.
-  Proof.
-    easy.
-  Qed.
+    Lemma Wlog_ignore : forall (l : Wlog) s k,
+        ~ Wlog_has_key k l ->
+        get k s = get k (Wlog_apply l s).
+    Proof.
+      intros l s k H.
+      rev_wlog_induction l as k' _v t IH;
+        unfold Wlog_apply in IH;
+        wlog_app_simpl;
+        has_key_rev_simpl in H;
+        [rewrite <-distinct by auto | rewrite <-delete_distinct by auto];
+        firstorder;
+        rewrite <-IH;
+        auto.
+    Qed.
 
-  Theorem keep : forall {K V} (s : t K V) (k : K.(KT)) (v : V),
-      get k (put k v s) = Some v.
-  Proof.
-    intros.
-    simpl. destruct (eq_dec K k k); easy.
-  Qed.
+    Lemma Wlog_ignore_cons : forall (l : Wlog) s k1 k2 v,
+        k1 <> k2 ->
+        get k1 (Wlog_apply l (put k2 v s)) = get k1 (Wlog_apply l s).
+    Proof.
+      intros l s k1 k2 v H.
+      rev_wlog_induction l as ak av t IH.
+      - simpl. rewrite <-distinct.
+        reflexivity.
+        assumption.
+      - wlog_app_simpl.
+        destruct (eq_dec ak k1) as [Hak|Hak].
+        + subst. auto.
+        + repeat rewrite <-distinct in * by auto.
+          auto.
+      - wlog_app_simpl.
+        destruct (eq_dec ak k1) as [Hak|Hak].
+        + subst. auto.
+        + repeat rewrite <-delete_distinct by auto.
+          auto.
+    Qed.
 
-  Theorem delete_keep : forall {K V} (s : t K V) k,
-      get k (delete k s) = None.
-  Proof.
-    intros.
-    induction s as [|[k1 v] t IH].
-    - easy.
-    - simpl.
-      destruct (eq_dec K k k1).
-      + easy.
-      + simpl.
-        rewrite IH.
-        destruct (eq_dec K k1 k) as [H|H]; try symmetry in H; easy.
-  Qed.
+    Lemma Wlog_ignore_cons_del : forall (l : Wlog) s k1 k2,
+        k1 <> k2 ->
+        get k1 (Wlog_apply l (delete k2 s)) = get k1 (Wlog_apply l s).
+    Proof.
+      intros l s k1 k2 H.
+      rev_wlog_induction l as ak av t IH.
+      - simpl. rewrite <-delete_distinct.
+        reflexivity.
+        assumption.
+      - wlog_app_simpl.
+        destruct (eq_dec ak k1) as [Hak|Hak].
+        + subst. auto.
+        + repeat rewrite <-distinct in * by auto.
+          auto.
+      - wlog_app_simpl.
+        destruct (eq_dec ak k1) as [Hak|Hak].
+        + subst. auto.
+        + repeat rewrite <-delete_distinct by auto.
+          auto.
+    Qed.
 
-  Theorem delete_distinct : forall {K V} (s : t K V) (k1 : KT K) (k2 : KT K),
-      k1 <> k2 ->
-      get k1 s = get k1 (delete k2 s).
-  Admitted. (* This proof is left as an exercise for the reader ;) *)
+    Lemma Wlog_nodup_has_key : forall k (l1 l2 : Wlog),
+        Wlog_nodup l1 l2 ->
+        Wlog_has_key k l1 <-> Wlog_has_key k l2.
+    Proof.
+      intros k l1 l2 H.
+      induction H; split; intros Hinv;
+        try easy;
+        subst; simpl in *;
+        unfold Wlog_has_key; simpl;
+        unfold Wlog_has_key in Hinv; simpl in Hinv;
+        destruct Hinv;
+        try (left; assumption);
+        apply IHWlog_nodup in H; right; assumption.
+    Qed.
 
-  Theorem distinct : forall {K V} (s : t K V) (k1 : K.(KT)) (k2 : K.(KT)) (v2 : V),
-      k1 <> k2 ->
-      get k1 s = get k1 (put k2 v2 s).
-  Proof.
-    intros. simpl.
-    destruct (eq_dec K k2 k1) as [He|He].
-    - symmetry in He. easy.
-    - rewrite <-delete_distinct; easy.
-  Qed.
+    Theorem Wlog_significant_entries :
+      forall  (l l' : Wlog) s,
+        Wlog_nodup l l' ->
+        Wlog_apply l s =s= Wlog_apply l' s.
+    Proof.
+      intros l l' s H.
+      induction H; subst; auto;
+        unfold_s_eq as k';
+        unfold_s_eq in IHWlog_nodup;
+        apply (Wlog_nodup_has_key k') in H1;
+        simpl;
+        destruct (eq_dec k k') as [Heq|Hneq]; subst;
+          (* [k = k'] *)
+        try (rewrite <-Wlog_ignore with (l := t) by auto;
+             rewrite <-Wlog_ignore with (l := l') by firstorder;
+             auto).
+        (* [k <> k'] *)
+      - repeat rewrite Wlog_ignore_cons; auto.
+      - repeat rewrite Wlog_ignore_cons_del; auto.
+    Qed.
+  End WriteLog.
+End defn.
 
-  Theorem keys_some : forall {K V} (s : t K V) k,
-      In k (keys s) <-> exists v, get k s = Some v.
-  Admitted. (* This proof is left as an exercise for the reader ;) *)
+Notation "s1 =s= s2" := (s_eq s1 s2) (at level 50).
+
+Module ListStorage.
+  Section defns.
+    Context {K V : Set} `{HKeq_dec : EqDec K}.
+
+    Definition t := list (K * V).
+
+    Fixpoint list_delete (k : K) s : t :=
+      match s with
+      | [] => []
+      | (k', v) :: t =>
+        if eq_dec k k'
+        then list_delete k t
+        else (k', v) :: list_delete k t
+      end.
+
+    Definition list_put (k : K) (v : V) s : t :=
+      (k, v) :: (list_delete k s).
+
+    Fixpoint list_get (k : K) (s : t) : option V :=
+      match s with
+      | [] => None
+      | (k', v) :: t =>
+        if eq_dec k' k
+        then Some v
+        else list_get k t
+      end.
+
+    Fixpoint list_keys (s : t) : list K :=
+      match s with
+      | [] => []
+      | (k, _) :: t => k :: list_keys t
+      end.
+
+    Let list_new_empty : forall k,
+        list_get k [] = None.
+    Proof.
+      easy.
+    Qed.
+
+    Let list_keep : forall (s : t) (k : K) (v : V),
+        list_get k (list_put k v s) = Some v.
+    Proof.
+      intros.
+      simpl. destruct (eq_dec k k); easy.
+    Qed.
+
+    Let list_delete_keep : forall (s : t) k,
+        list_get k (list_delete k s) = None.
+    Proof.
+      intros.
+      induction s as [|[k1 v] t IH].
+      - easy.
+      - simpl.
+        destruct (eq_dec k k1).
+        + easy.
+        + simpl.
+          rewrite IH.
+          destruct (eq_dec k1 k) as [H|H]; try symmetry in H; easy.
+    Qed.
+
+    Let list_delete_distinct : forall (s : t) (k1 k2 : K),
+        k1 <> k2 ->
+        list_get k1 s = list_get k1 (list_delete k2 s).
+    Admitted. (* This proof is left as an exercise for the reader ;) *)
+
+    Let list_distinct : forall (s : t) (k1 k2 : K) (v2 : V),
+        k1 <> k2 ->
+        list_get k1 s = list_get k1 (list_put k2 v2 s).
+    Proof.
+      intros. simpl.
+      destruct (eq_dec k2 k1) as [He|He].
+      - symmetry in He. easy.
+      - rewrite <-list_delete_distinct; easy.
+    Qed.
+
+    Let list_keys_some : forall (s : t) k,
+        In k (list_keys s) <-> exists v, list_get k s = Some v.
+    Admitted. (* This proof is left as an exercise for the reader ;) *)
+
+    Global Instance listStorage : @Storage K V t :=
+      {| new := [];
+         put := list_put;
+         get := list_get;
+         keys := list_keys;
+         delete := list_delete;
+         new_empty := list_new_empty;
+         keep := list_keep;
+         distinct := list_distinct;
+         delete_keep := list_delete_keep;
+         delete_distinct := list_delete_distinct;
+         keys_some := list_keys_some;
+      |}.
+  End defns.
 End ListStorage.
-
-Module Properties (I : Interface).
-  Import I.
-
-  (** Total version of get *)
-  Definition getT {K V} k (s : t K V) (H : In k (keys s)) : V.
-    remember (get k s) as v.
-    destruct v.
-    - destruct Heqv. apply v.
-    - exfalso. (* This is how one does exceptions in Coq :joy_cat: *)
-      apply keys_some in H.
-      rewrite <- Heqv in H.
-      destruct H.
-      inversion H.
-  Defined.
-
-  (** Atomically apply a function to all elements of the storage *)
-  Definition a_map {K V} (f : V -> V) (s : t K V) : t K V :=
-    let g k Hk acc :=
-        let v0 := getT k s Hk
-        in put k (f v0) acc
-    in foldl' (keys s) g new.
-
-  Definition forallS {K V} (s : t K V) (prop : forall (k : KT K), In k (keys s) -> Prop) : Prop :=
-    let f k Hin acc := prop k Hin /\ acc
-    in foldl' (keys s) f True.
-
-  Theorem keys_none : forall {K V} (s : t K V) k,
-      ~In k (keys s) -> get k s = None.
-  Proof.
-    intros.
-    specialize (keys_some s k) as [Hs Hs_rev].
-    destruct (get k s).
-    - exfalso. apply H. apply Hs_rev. exists v. reflexivity.
-    - reflexivity.
-  Qed.
-
-  Theorem keys_some' : forall {K V} (s : t K V) k v,
-      Some v = get k s -> In k (keys s).
-  Proof.
-    intros.
-    apply keys_some. exists v. easy.
-  Qed.
-
-End Properties.
-
-End Storage.
