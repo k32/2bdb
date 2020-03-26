@@ -2,8 +2,7 @@
 (** This module defines a "black box" storage engine *)
 From Coq Require Import
      String
-     List
-     Program.Basics.
+     List.
 
 Import ListNotations.
 Import Decidable.
@@ -464,7 +463,20 @@ Module ListStorage.
     Let list_delete_distinct : forall (s : t) (k1 k2 : K),
         k1 <> k2 ->
         list_get k1 s = list_get k1 (list_delete k2 s).
-    Admitted. (* This proof is left as an exercise for the reader ;) *)
+    Proof with autorewrite with eq_dec; auto.
+      intros.
+      induction s...
+      destruct a as [k v].
+      destruct (eq_dec k k1); subst.
+      - simpl...
+        destruct (eq_dec k1 k1); destruct (eq_dec k2 k1); unfold not; firstorder.
+        + symmetry in e0. firstorder.
+        + simpl. destruct (eq_dec k1 k1); firstorder.
+      - simpl...
+        destruct (eq_dec k k1); destruct (eq_dec k2 k); firstorder.
+        simpl.
+        destruct (eq_dec k k1); firstorder.
+    Qed.
 
     Let list_distinct : forall (s : t) (k1 k2 : K) (v2 : V),
         k1 <> k2 ->
@@ -478,7 +490,29 @@ Module ListStorage.
 
     Let list_keys_some : forall (s : t) k,
         In k (list_keys s) <-> exists v, list_get k s = Some v.
-    Admitted. (* This proof is left as an exercise for the reader ;) *)
+    Proof with autorewrite with eq_dec; auto.
+      intros.
+      split; intros H.
+      { induction s; firstorder.
+        destruct a as [k' v].
+        destruct (eq_dec k k'); subst.
+        - exists v. simpl...
+        - destruct IHs.
+          + simpl in H. destruct H as [H|H]; firstorder.
+            symmetry in H. firstorder.
+          + exists x.
+            simpl.
+            destruct (eq_dec k' k)...
+            symmetry in e. firstorder.
+      }
+      { destruct H.
+        induction s.
+        - unfold list_get. simpl in *. inversion H.
+        - destruct a as [k' v].
+          simpl in *.
+          destruct (eq_dec k' k); auto.
+      }
+    Qed.
 
     Global Instance listStorage : @Storage K V t :=
       {| new := [];
