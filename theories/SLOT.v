@@ -60,7 +60,8 @@ From Coq Require Import
      List
      String
      Tactics
-     Sets.Ensembles.
+     Sets.Ensembles
+     Program.Basics.
 
 Import ListNotations.
 
@@ -290,6 +291,28 @@ Module Hoare.
         }
       Qed.
     End ExpandTrace.
+
+    Section CommutingTraces.
+      Context (can_swap : TE -> TE -> Prop).
+
+      Definition orthogonal_traces (t1 t2 : T) :=
+        fixed can_swap t1 /\ fixed can_swap t2 /\ orthogonal can_swap t1 t2.
+
+      Definition traces_commute (t1 t2 : T) :=
+        forall t P Q,
+          {{ P }} t1 ++ t2 {{ Q }} ->
+          orthogonal_traces t1 t2 ->
+          Permutation can_swap (t1 ++ t2) t ->
+          {{ P }} t {{ Q }}.
+
+      Theorem trace_comm_concat : forall t1 t2 t : T,
+          traces_commute t1 t ->
+          traces_commute t2 t ->
+          traces_commute (t1 ++ t2) t.
+      Proof with simpl in *; subst; auto.
+        intros *. intros Ht1 Ht2 t' P Q H0 Hperm s s' Hls Hpre.
+      Abort.
+    End CommutingTraces.
 
     Theorem frame_rule : forall (e1 e2 : Ensemble TE) (P Q R : S -> Prop) (te : TE),
         Disjoint e1 e2 ->
@@ -782,7 +805,6 @@ Module ExampleModelDefn.
                            (Mutex.t PID).
 
     Let ctx := hToCtx Handler.
-
     Let TE := @TraceElem ctx.
 
     Notation "'do' V '<-' I ; C" := (@t_cont ctx _ (I) (fun V => C))

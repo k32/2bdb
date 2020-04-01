@@ -4,3 +4,4 @@ theories/FoldIn.v
 theories/Storage.v
 theories/Permutation.v
 theories/SLOT.v
+theories/Models.v

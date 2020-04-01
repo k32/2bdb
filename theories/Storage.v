@@ -68,7 +68,8 @@ Section defn.
       remember (keys new) as k.
       destruct k.
       - reflexivity.
-      - assert (Hk : In k (keys new)).
+      - exfalso.
+        assert (Hk : In k (keys new)).
         { rewrite <-Heqk. apply in_eq. }
         apply keys_some in Hk.
         destruct Hk as [v nonsense].

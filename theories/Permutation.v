@@ -19,7 +19,33 @@ Section defn.
       can_swap a b ->
       Permutation l (l' ++ b :: a :: r').
 
+  Hint Constructors Permutation.
+
   (* TODO: Prove completeness of this definition *)
+
+  Definition fixed (l : L) : Prop :=
+    forall a b, In a l -> In b l -> ~can_swap a b.
+
+  Lemma permut_fixed : forall l l',
+      fixed l ->
+      Permutation l l' ->
+      l = l'.
+  Proof with auto with *.
+    intros.
+    induction H0...
+    exfalso.
+    assert (Ha : In a l). { subst... }
+    assert (Hb : In b l). { subst... }
+    firstorder.
+  Qed.
+
+  Definition orthogonal (l1 l2 : L) : Prop :=
+    forall a b, In a l1 -> In b l2 -> can_swap a b.
+
+  Lemma permut_orth_concat_symm : forall (l1 l2 : L),
+      orthogonal l1 l2 ->
+      Permutation (l1 ++ l2) (l2 ++ l1).
+  Abort.
 End defn.
 
 Section tests.
