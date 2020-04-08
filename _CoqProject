@@ -8,4 +8,6 @@ theories/SLOT/Hoare.v
 theories/SLOT/Handler.v
 theories/SLOT/Process.v
 theories/SLOT.v
-theories/Models.v
+theories/Handlers/KV.v
+theories/Handlers/Mutable.v
+theories/Handlers/Mutex.v

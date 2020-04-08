@@ -66,116 +66,6 @@ From LibTx Require Export
 From Coq Require Import
      List.
 
-Import ListNotations.
-
-Module Mutable.
-  Import Handler.
-
-  Inductive req_t {T : Set} :=
-  | get : req_t
-  | put : T -> req_t.
-
-  Section defs.
-    Context (PID T : Set) (initial_state : T -> Prop).
-
-    Local Definition ret_t (req : @req_t T) : Set :=
-      match req with
-      | get => T
-      | _   => True
-      end.
-
-    Let ctx := mkCtx PID req_t ret_t.
-    Let TE := @TraceElem ctx.
-
-    Inductive mut_chain_rule : T -> T -> TE -> Prop :=
-    | mut_get : forall s pid,
-        mut_chain_rule s s (trace_elem ctx pid get s)
-    | mut_put : forall s val pid,
-        mut_chain_rule s val (trace_elem ctx pid (put val) I).
-
-    Definition t : t :=
-      {|
-        h_state := T;
-        h_req := req_t;
-        h_initial_state := initial_state;
-        h_chain_rule := mut_chain_rule;
-      |}.
-
-    Fail Lemma mut_get_comm : forall v pid1 pid2, (*TODO*)
-        trace_elems_commute (trace_elem ctx pid1 get v) (trace_elem ctx pid2 get v).
-  End defs.
-End Mutable.
-
-Module Mutex.
-  Import Handler.
-
-  Section defs.
-    Open Scope hoare_scope.
-    Inductive req_t : Set :=
-    | grab    : req_t
-    | release : req_t.
-
-    Local Definition ret_t (req : req_t) : Set :=
-      match req with
-      | grab => True
-      | release => bool
-      end.
-
-    Variable PID : Set.
-
-    Definition state_t : Set := option PID.
-
-    Let ctx := mkCtx PID req_t ret_t.
-    Let TE := @TraceElem ctx.
-
-    Inductive mutex_chain_rule : state_t -> state_t -> TE -> Prop :=
-    | mutex_grab : forall pid,
-        mutex_chain_rule None (Some pid) (trace_elem ctx pid grab I)
-    | mutex_release_ok : forall pid,
-        mutex_chain_rule (Some pid) None (trace_elem ctx pid release true)
-    | mutex_release_fail : forall pid,
-        mutex_chain_rule (Some pid) None (trace_elem ctx pid release false).
-
-    Definition t : t :=
-      {|
-        h_state         := state_t;
-        h_req           := req_t;
-        h_initial_state := fun s0 => s0 = None;
-        h_chain_rule    := mutex_chain_rule
-      |}.
-
-    Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
-
-    Theorem no_double_grab_0 : forall (a1 a2 : PID),
-        ~(@PossibleTrace PID t [a1 @ I <~ grab;
-                                a2 @ I <~ grab]).
-    Proof.
-      intros a1 a2 H.
-      destruct H as [s [s' H]].
-      inversion_ H.
-      inversion_ H3.
-      inversion_ H5.
-      inversion_ H4.
-    Qed.
-
-    Let state_space := state_t. Let trace_elem := req_t.
-
-    Theorem no_double_grab : forall (a1 a2 : PID),
-        {{ fun (_ : h_state t) => True }}
-          [a1 @ I <~ grab;
-           a2 @ I <~ grab]
-        {{ fun _ => False}}.
-    Proof.
-      intros a1 a2 s s' Hss' Hpre.
-      inversion_ Hss'.
-      inversion_ H2.
-      inversion_ H4.
-      inversion_ H3.
-    Qed.
-  End defs.
-End Mutex.
-
-
 Module Model.
   Section defn.
     Context {PID} {SUT : Type} {Handler : @Handler.t PID}.
@@ -222,6 +112,10 @@ Module Model.
 End Model.
 
 Module ExampleModelDefn.
+  Require Import
+          Handlers.Mutex
+          Handlers.Mutable.
+
   Section defns.
     Let PID := nat.
 
