@@ -3,5 +3,9 @@ theories/EqDec.v
 theories/FoldIn.v
 theories/Storage.v
 theories/Permutation.v
+theories/SLOT/EventTrace.v
+theories/SLOT/Hoare.v
+theories/SLOT/Handler.v
+theories/SLOT/Process.v
 theories/SLOT.v
 theories/Models.v

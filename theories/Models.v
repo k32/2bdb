@@ -76,7 +76,7 @@ Module KV.
         KvTEComm (p1 @ v <~ read k)
                  (p2 @ s <~ snapshot).
 
-    Lemma kv_comm : forall te1 te2, KvTEComm te1 te2 <->
+    Fail Lemma kv_comm : forall te1 te2, KvTEComm te1 te2 <->
                                @trace_elems_commute S TE _ te1 te2.
   End Properties.
 End KV.
