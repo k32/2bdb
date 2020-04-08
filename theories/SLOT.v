@@ -72,6 +72,8 @@ From LibTx Require Import
 Reserved Notation "pid '@' req '<~' ret" (at level 30).
 Reserved Notation "'{{' a '}}' t '{{' b '}}'" (at level 40).
 Reserved Notation "'{{' a '&' b '}}' t '{{' c '&' d '}}'" (at level 10).
+Reserved Notation "<{' a '}>' t '<{' b '}>'" (at level 40).
+
 
 Global Arguments In {_}.
 Global Arguments Complement {_}.
@@ -292,28 +294,6 @@ Module Hoare.
       Qed.
     End ExpandTrace.
 
-    Section CommutingTraces.
-      Context (can_swap : TE -> TE -> Prop).
-
-      Definition orthogonal_traces (t1 t2 : T) :=
-        fixed can_swap t1 /\ fixed can_swap t2 /\ orthogonal can_swap t1 t2.
-
-      Definition traces_commute (t1 t2 : T) :=
-        forall t P Q,
-          {{ P }} t1 ++ t2 {{ Q }} ->
-          orthogonal_traces t1 t2 ->
-          Permutation can_swap (t1 ++ t2) t ->
-          {{ P }} t {{ Q }}.
-
-      Theorem trace_comm_concat : forall t1 t2 t : T,
-          traces_commute t1 t ->
-          traces_commute t2 t ->
-          traces_commute (t1 ++ t2) t.
-      Proof with simpl in *; subst; auto.
-        intros *. intros Ht1 Ht2 t' P Q H0 Hperm s s' Hls Hpre.
-      Abort.
-    End CommutingTraces.
-
     Theorem frame_rule : forall (e1 e2 : Ensemble TE) (P Q R : S -> Prop) (te : TE),
         Disjoint e1 e2 ->
         Local e2 R ->
@@ -336,12 +316,34 @@ Module Hoare.
     Definition PossibleTrace t :=
       exists s s', LongStep s t s'.
 
-    Definition Invariant inv :=
-      forall (te : TE),
-        {{ inv }} [te] {{ inv }}.
+    Section TraceEnsemble.
+      Class Generator (A : Type) :=
+        { unfolds_to : A -> T -> Prop;
+        }.
+
+      Definition TraceEnsemble := T -> Prop.
+
+      Definition EHoareTriple (pre : S -> Prop) (g : TraceEnsemble) (post : S -> Prop) :=
+        forall t, g t ->
+             {{ pre }} t {{ post}}.
+
+      Inductive TraceEnsembleConcat (e1 e2 : TraceEnsemble) : TraceEnsemble :=
+      | et_concat : forall t1 t2, e1 t1 -> e2 t2 -> TraceEnsembleConcat e1 e2 (t1 ++ t2).
+
+      Lemma e_hoare_concat : forall pre mid post e1 e2,
+          EHoareTriple pre e1 mid ->
+          EHoareTriple mid e2 post ->
+          EHoareTriple pre (TraceEnsembleConcat e1 e2) post.
+      Proof.
+        intros *. intros H1 H2 t Ht.
+        inversion_ Ht.
+        apply hoare_concat with (mid := mid); auto.
+      Qed.
+    End TraceEnsemble.
   End defn.
 
   Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b) : hoare_scope.
+  Notation "'<{' a '}>' t '<{' b '}>'" := (EHoareTriple a t b) : hoare_scope.
 End Hoare.
 
 Module EventTrace.
@@ -431,7 +433,6 @@ Module Handler.
 
     Let ctx := mkCtx PID Q compose_ret.
     Let TE := @TraceElem ctx.
-
 
     Inductive compose_chain_rule_i : S -> S -> TE -> Prop :=
     | cmpe_left :
@@ -580,30 +581,33 @@ Module Mutable.
   | put : T -> req_t.
 
   Section defs.
-  Context (PID T : Set) (initial_state : T -> Prop).
+    Context (PID T : Set) (initial_state : T -> Prop).
 
-  Local Definition ret_t (req : @req_t T) : Set :=
-    match req with
-    | get => T
-    | _   => True
-    end.
+    Local Definition ret_t (req : @req_t T) : Set :=
+      match req with
+      | get => T
+      | _   => True
+      end.
 
-  Let ctx := mkCtx PID req_t ret_t.
-  Let TE := @TraceElem ctx.
+    Let ctx := mkCtx PID req_t ret_t.
+    Let TE := @TraceElem ctx.
 
-  Inductive mut_chain_rule : T -> T -> TE -> Prop :=
-  | mut_get : forall s pid,
-      mut_chain_rule s s (trace_elem ctx pid get s)
-  | mut_put : forall s val pid,
-      mut_chain_rule s val (trace_elem ctx pid (put val) I).
+    Inductive mut_chain_rule : T -> T -> TE -> Prop :=
+    | mut_get : forall s pid,
+        mut_chain_rule s s (trace_elem ctx pid get s)
+    | mut_put : forall s val pid,
+        mut_chain_rule s val (trace_elem ctx pid (put val) I).
 
-  Definition t : t :=
-    {|
-      h_state := T;
-      h_req := req_t;
-      h_initial_state := initial_state;
-      h_chain_rule := mut_chain_rule;
-    |}.
+    Definition t : t :=
+      {|
+        h_state := T;
+        h_req := req_t;
+        h_initial_state := initial_state;
+        h_chain_rule := mut_chain_rule;
+      |}.
+
+    Fail Lemma mut_get_comm : forall v pid1 pid2, (*TODO*)
+        trace_elems_commute (trace_elem ctx pid1 get v) (trace_elem ctx pid2 get v).
   End defs.
 End Mutable.
 
@@ -678,6 +682,7 @@ End Mutex.
 
 Module SUT.
   Export Hoare EventTrace.
+  Open Scope hoare_scope.
 
   Section defn.
     Context {ctx : Ctx}.
@@ -691,13 +696,6 @@ Module SUT.
 
     Class Runnable A : Type :=
       { runnable_step : A -> A -> TE -> Prop;
-      }.
-
-    Global Instance runnableHoare A `{Runnable A} : StateSpace A TE :=
-      {| chain_rule := runnable_step; |}.
-
-    Class Unfoldable A : Type :=
-      { unfolds_to : A -> T -> Prop;
       }.
 
     CoInductive Thread {pid : PID} : Type :=
@@ -720,17 +718,11 @@ Module SUT.
     Global Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
       {| runnable_step := ThreadStep pid |}.
 
-    Inductive UnfoldThread (pid : PID) : @Thread pid -> T -> Prop :=
-    | uft_nil : forall thread,
-        UnfoldThread pid thread []
-    | uft_cons : forall req ret cont t,
-        UnfoldThread pid (cont ret) t ->
-        UnfoldThread pid (t_cont req cont) (trace_elem _ pid req ret :: t).
+    Global Instance runnableHoare {A} `{Runnable A} : StateSpace A TE :=
+      {| chain_rule := runnable_step; |}.
 
-    Hint Constructors UnfoldThread.
-
-    Global Instance unfoldableThread (pid : PID) : Unfoldable (@Thread pid) :=
-      {| unfolds_to thread trace := UnfoldThread pid thread trace;
+    Global Instance runnableGenerator {A} `{Runnable A} : Generator A :=
+      {| unfolds_to g t := exists g', LongStep g t g';
       |}.
   End defn.
 
@@ -745,19 +737,6 @@ Module SUT.
                                     (runnable_step s2 s2' te /\ s1 = s1')
            end;
       |}.
-
-    Let can_swap (te1 te2 : @TraceElem ctx) := te_pid te1 <> te_pid te2.
-
-    Global Instance composeUnfoldable `{@Unfoldable ctx sys1} `{@Unfoldable ctx sys2} :
-      @Unfoldable ctx (sys1 * sys2) :=
-      {| unfolds_to s trace :=
-           match s with
-           | (s1, s2) => exists t1 t2,
-                        unfolds_to s1 t1 /\
-                        unfolds_to s2 t2 /\
-                        Permutation can_swap (t1 ++ t2) trace
-           end;
-      |}.
   End ComposeSystems.
 End SUT.
 
@@ -767,16 +746,16 @@ Module Model.
 
   Section defn.
     Context {PID} {SUT : Type} {Handler : @Handler.t PID}.
-
     Let ctx := hToCtx Handler.
-
-    Context `{Runnable ctx SUT}.
 
     Record t : Type :=
       mkModel
         { model_sut : SUT;
           model_handler : h_state Handler;
         }.
+
+
+    Context `{Runnable ctx SUT}.
 
     Definition model_chain_rule m m' te : Prop :=
       match m, m' with
@@ -793,6 +772,20 @@ Module Model.
         model_sut m = sut0 /\
         init_state_p (model_handler m).
   End defn.
+
+  Section commute.
+    Open Scope hoare_scope.
+    Context {PID} {SUT : Type} (Handler : @Handler.t PID).
+    Let ctx := hToCtx Handler.
+    Context {sys_t1 sys_t2 : Type} `{Runnable ctx sys_t1} `{Runnable ctx sys_t2}.
+    Let S := @t PID (sys_t1 * sys_t2) Handler.
+    Let T := @Trace ctx.
+
+    (* Definition systems_commute (sys1 : sys_t1) (sys2 : sys_t2) : *)
+    (*   forall (tr : T) (P Q : S -> Prop), *)
+    (*     unfolds_to (sys1, sys2) tr -> *)
+    (*     {{ P }} tr {{ Q }}. *)
+  End commute.
 End Model.
 
 Module ExampleModelDefn.

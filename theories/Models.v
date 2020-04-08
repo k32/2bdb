@@ -7,14 +7,14 @@ Import SLOT.Handler.
 
 Module KV.
   (** Reliable key-value storage IO handler *)
-  Record KV : Type :=
-    makeKV
-      { key_t : Set;
-        val_t : Set;
-        backend : Set;
-        key_eq_dec : EqDec key_t;
-        store_t : @Storage key_t val_t backend;
-      }.
+  (* Record KV : Type := *)
+  (*   makeKV *)
+  (*     { key_t : Set; *)
+  (*       val_t : Set; *)
+  (*       backend : Set; *)
+  (*       key_eq_dec : EqDec key_t; *)
+  (*       store_t : @Storage key_t val_t backend; *)
+  (*     }.  *)
 
   Section defn.
     Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
@@ -23,8 +23,7 @@ Module KV.
     (* Let K := key_t kv. *)
     (* Let V := val_t kv. *)
     (* Let S := backend kv. *)
-    (* Let HStore : Storage S := store_t kv. *)
-    (* Generalizable Variables HStore. *)
+    (* Let HStore := store_t kv. *)
 
     Inductive req_t :=
     | read : K -> req_t
@@ -77,6 +76,7 @@ Module KV.
         KvTEComm (p1 @ v <~ read k)
                  (p2 @ s <~ snapshot).
 
-    Fail Lemma kv_comm : forall te1 te2, KvTEComm te1 te2 <-> trace_elems_commute te1 te2.
+    Lemma kv_comm : forall te1 te2, KvTEComm te1 te2 <->
+                               @trace_elems_commute S TE _ te1 te2.
   End Properties.
 End KV.
