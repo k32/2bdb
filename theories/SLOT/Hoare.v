@@ -23,6 +23,8 @@ Class StateSpace (S TE : Type) :=
   { chain_rule : S -> S -> TE -> Prop;
   }.
 
+Notation "a '~' b '~>' c" := (chain_rule a c b)(at level 40).
+
 Section defn.
   Context {S : Type} {TE : Type} `{HSSp : StateSpace S TE}.
 

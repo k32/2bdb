@@ -76,15 +76,27 @@ Section props.
     (* Let's try and prove the simplest case... If it's true,
     that'd be pretty epic, as it would allow using dynamic programming
     techniques for exploration of schedulings *)
+    Goal forall P Q R x a b,
+        {{P}} [a; x] {{Q}} ->
+        {{P}} [x; a] {{Q}} ->
+        {{Q}} [b; x] {{R}} ->
+        {{Q}} [x; b] {{R}} ->
+        {{P}} [a;b;x] {{R}} /\
+        {{P}} [a;x;b] {{R}} /\
+        {{P}} [x;a;b] {{R}}.
+    Proof.
+      intros.
+      split; try split; intros s s' H4 HP;
+        inversion_ H4; inversion_ H10; inversion_ H12; inversion_ H14.
+    Abort.
+
     Goal forall P Q R te0 te1 te2,
         -{{P}} perm [te0] [te1] {{Q}} ->
         -{{Q}} perm [te0] [te2] {{R}} ->
         -{{P}} perm [te0] [te1; te2] {{R}}.
     Proof.
       intros. intros t Ht.
-      inversion_ Ht.
-      Focus 2.
-      inversion_ H2. simpl in *.
+      destruct Ht.
     Abort.
 
     Lemma hoare_perm_seq : forall P Q R t0 t1 t2,
