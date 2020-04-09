@@ -1,6 +1,8 @@
 From Coq Require Import
      List.
 
+Reserved Notation "pid '@' req '<~' ret" (at level 30).
+
 Record Ctx : Type :=
   mkCtx { ctx_pid_t : Set;
           ctx_req_t : Set;

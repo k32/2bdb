@@ -11,9 +11,7 @@ From LibTx Require Import
      Permutation
      FoldIn.
 
-Reserved Notation "pid '@' req '<~' ret" (at level 30).
 Reserved Notation "'{{' a '}}' t '{{' b '}}'" (at level 40).
-Reserved Notation "'?{{' a '}}' t '{{' b '}}'" (at level 39).
 
 Global Arguments In {_}.
 Global Arguments Complement {_}.
@@ -248,34 +246,6 @@ Section defn.
 
   Definition PossibleTrace t :=
     exists s s', LongStep s t s'.
-
-  Section TraceEnsemble.
-    Class Generator (A : Type) :=
-      { unfolds_to : A -> T -> Prop;
-      }.
-
-    Definition TraceEnsemble := T -> Prop.
-
-    Definition EHoareTriple (pre : S -> Prop) (g : TraceEnsemble) (post : S -> Prop) :=
-      forall t, g t ->
-           {{ pre }} t {{ post}}.
-
-    Notation "'?{{' a '}}' t '{{' b '}}'" := (EHoareTriple a t b).
-
-    Inductive TraceEnsembleConcat (e1 e2 : TraceEnsemble) : TraceEnsemble :=
-    | et_concat : forall t1 t2, e1 t1 -> e2 t2 -> TraceEnsembleConcat e1 e2 (t1 ++ t2).
-
-    Lemma e_hoare_concat : forall pre mid post e1 e2,
-        ?{{pre}} e1 {{mid}} ->
-        ?{{mid}} e2 {{post}} ->
-        ?{{pre}} TraceEnsembleConcat e1 e2 {{post}}.
-    Proof.
-      intros *. intros H1 H2 t Ht.
-      inversion_ Ht.
-      apply hoare_concat with (mid := mid); auto.
-    Qed.
-  End TraceEnsemble.
 End defn.
 
 Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b) : hoare_scope.
-Notation "'?{{' a '}}' t '{{' b '}}'" := (EHoareTriple a t b) : hoare_scope.

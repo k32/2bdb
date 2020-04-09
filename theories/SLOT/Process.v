@@ -3,6 +3,7 @@ From Coq Require Import
 
 From LibTx Require Import
      SLOT.Hoare
+     SLOT.Ensemble
      SLOT.EventTrace.
 
 Open Scope hoare_scope.
