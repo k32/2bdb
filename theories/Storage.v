@@ -356,7 +356,7 @@ Section defn.
           auto.
       - wlog_app_simpl.
         destruct (eq_dec ak k1) as [Hak|Hak].
-        + subst. auto.
+       + subst. auto.
         + repeat rewrite <-delete_distinct by auto.
           auto.
     Qed.
