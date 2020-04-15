@@ -5,7 +5,7 @@ From Coq Require Import
      Sets.Ensembles
      Program.Basics.
 
-Import ListNotations.
+Export ListNotations.
 
 From LibTx Require Import
      Permutation
@@ -23,7 +23,10 @@ Class StateSpace (S TE : Type) :=
   { chain_rule : S -> S -> TE -> Prop;
   }.
 
-Notation "a '~' b '~>' c" := (chain_rule a c b)(at level 40).
+Notation "a '~' b '~>' c" := (chain_rule a c b)(at level 40) : hoare_scope.
+Infix "/\'" := (fun a b x => a x /\ b x)(at level 80) : hoare_scope.
+
+Open Scope hoare_scope.
 
 Section defn.
   Context {S : Type} {TE : Type} `{HSSp : StateSpace S TE}.
@@ -232,7 +235,7 @@ Section defn.
       Local e2 R ->
       In e1 te ->
       {{ P }} [te] {{ Q }} ->
-      {{ fun s => P s /\ R s }} [te] {{ fun s => Q s /\ R s }}.
+      {{ P /\' R }} [te] {{ Q /\' R }}.
   Proof.
     intros e1 e2 P Q R te He HlR Hin Hh.
     apply hoare_and.

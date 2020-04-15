@@ -9,8 +9,6 @@ Import ListNotations.
 
 Open Scope hoare_scope.
 
-Reserved Notation "'-{{' a '}}' t '{{' b '}}'" (at level 40).
-
 Section defn.
   Context {S TE} `{StateSpace S TE}.
   Let T := list TE.
@@ -24,8 +22,6 @@ Section defn.
   Definition EHoareTriple (pre : S -> Prop) (g : TraceEnsemble) (post : S -> Prop) :=
     forall t, g t ->
          {{ pre }} t {{ post}}.
-
-  Notation "'?{{' a '}}' t '{{' b '}}'" := (EHoareTriple a t b).
 
   Inductive TraceEnsembleConcat (e1 e2 : TraceEnsemble) : TraceEnsemble :=
   | et_concat : forall t1 t2, e1 t1 -> e2 t2 -> TraceEnsembleConcat e1 e2 (t1 ++ t2).
@@ -49,9 +45,8 @@ Section defn.
       Parallel e1 e2 t.
 End defn.
 
-Notation "'-{{' a '}}' t '{{' b '}}'" := (EHoareTriple a t b) : hoare_scope.
+Notation "'-{{' a '}}' t '{{' b '}}'" := (EHoareTriple a t b)(at level 40) : hoare_scope.
 Infix ">>" := (TraceEnsembleConcat) (at level 100) : hoare_scope.
-
 Infix "|>" := (Parallel) (at level 101) : hoare_scope.
 
 Section props.
@@ -73,21 +68,15 @@ Section props.
 
     Definition perm t1 t2 := Permutation can_swap (t1 ++ t2).
 
-    (* Let's try and prove the simplest case... If it's true,
-    that'd be pretty epic, as it would allow using dynamic programming
-    techniques for exploration of schedulings *)
-    Goal forall P Q R x a b,
-        {{P}} [a; x] {{Q}} ->
-        {{P}} [x; a] {{Q}} ->
-        {{Q}} [b; x] {{R}} ->
-        {{Q}} [x; b] {{R}} ->
-        {{P}} [a;b;x] {{R}} /\
-        {{P}} [a;x;b] {{R}} /\
-        {{P}} [x;a;b] {{R}}.
-    Proof.
-      intros.
-      split; try split; intros s s' H4 HP;
-        inversion_ H4; inversion_ H10; inversion_ H12; inversion_ H14.
+    Definition compatible P Q t1 t2 :=
+      {{P}} t1 {{Q}} ->
+      {{P}} t2 {{Q}} ->
+      -{{P}} perm t1 t2 {{Q}}.
+
+    Goal forall P Q R a b x,
+        compatible P Q [a] [x] ->
+        compatible Q R [b] [x] ->
+        compatible P R [a;b] [x].
     Abort.
 
     Goal forall P Q R te0 te1 te2,
