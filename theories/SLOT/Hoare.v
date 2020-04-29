@@ -23,7 +23,7 @@ Class StateSpace (S TE : Type) :=
   { chain_rule : S -> S -> TE -> Prop;
   }.
 
-Notation "a '~' b '~>' c" := (chain_rule a c b)(at level 40) : hoare_scope.
+Notation "a '~[' b ']~>' c" := (chain_rule a c b)(at level 40) : hoare_scope.
 Infix "/\'" := (fun a b x => a x /\ b x)(at level 80) : hoare_scope.
 
 Open Scope hoare_scope.
@@ -42,6 +42,12 @@ Section defn.
       LongStep s (te :: trace) s''.
 
   Hint Constructors LongStep.
+
+  Definition Invariant (prop : S -> Prop) : Prop :=
+    forall s s' te,
+      prop s ->
+      chain_rule s s' te ->
+      prop s'.
 
   Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
     forall s s',
@@ -254,3 +260,63 @@ Section defn.
 End defn.
 
 Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b) : hoare_scope.
+
+Ltac unfold_trace f tac :=
+  match type of f with
+  | LongStep ?s1 [] ?s2 =>
+    let x := fresh "s" in
+    let Hx := fresh "Hx" in
+    let Hy := fresh "Hy" in
+    let Hz := fresh "Hz" in
+    inversion f as [x Hx Hy Hz|];
+    destruct Hz; destruct Hy; destruct Hx;
+    clear f
+  | LongStep ?s1 (?h :: ?t) ?s2 =>
+    let s1 := fresh "s" in
+    let s2 := fresh "s" in
+    let s3 := fresh "s" in
+    let te := fresh "te" in
+    let tail := fresh "tail" in
+    let Hcr := fresh "Hcr" in
+    let Htl := fresh "Htl" in
+    inversion_clear f as [|s1 s2 s3 te tail Hcr Htl];
+    tac Hcr;
+    unfold_trace Htl tac
+  end.
+
+Tactic Notation "unfold_trace" ident(f) tactic3(tac) := unfold_trace f tac.
+Tactic Notation "unfold_trace" ident(f) := unfold_trace f (fun _ => idtac).
+Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => inversion x); subst.
+
+Hint Constructors LongStep.
+
+Ltac unfold_ht :=
+  let s := fresh "s" in
+  let s' := fresh "s'" in
+  let Hls := fresh "Hls" in
+  let Hpre := fresh "Hpre" in
+  intros s s' Hls Hpre.
+
+Section tests.
+  Generalizable Variables ST TE.
+
+  Goal forall `{StateSpace ST TE} s s' (te : TE), LongStep s [te; te; te] s' -> True.
+    intros.
+    unfold_trace H0.
+  Abort.
+
+  Goal forall `{StateSpace ST TE} s s' (te : TE), LongStep s [te] s' -> True.
+    intros.
+    unfold_trace H0 (fun x => try inversion x).
+  Abort.
+
+  Goal forall `{StateSpace ST TE} s s' (te : TE), LongStep s [] s' -> True.
+    intros.
+    unfold_trace H0.
+  Abort.
+
+  Goal forall `{StateSpace ST TE} pre post l, {{pre}} (l: list TE) {{post}}.
+    intros.
+    unfold_ht.
+  Abort.
+End tests.

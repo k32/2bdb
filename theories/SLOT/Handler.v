@@ -1,7 +1,7 @@
 From Coq Require Import
      Ensembles.
 
-From LibTx Require Import
+From LibTx Require Export
      SLOT.EventTrace
      SLOT.Hoare.
 
@@ -41,6 +41,10 @@ Section Hoare.
   Definition ChainRuleLocality := @ChainRuleLocality S TE _.
 
   Definition PossibleTrace := @PossibleTrace S TE _.
+
+  Definition trace_elems_commute_h (te1 te2 : TE) :=
+    forall s s',
+      @LongStep S TE _ s [te1; te2] s' <-> LongStep s [te2; te1] s'.
 End Hoare.
 
 Section ComposeHandlers.
@@ -182,10 +186,8 @@ Section ComposeHandlers.
       unfold eq_rec_r in *; simpl in *.
     - apply ls_cons with (s' := (l, r')); firstorder.
       apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
     - apply ls_cons with (s' := (l', r)); firstorder.
       apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
   Qed.
 
   Lemma local_r_chain_rule : @ChainRuleLocality PID compose te_subset_r.
@@ -204,9 +206,7 @@ Section ComposeHandlers.
       unfold eq_rec_r in *; simpl in *.
     - apply ls_cons with (s' := (l', r)); firstorder.
       apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
     - apply ls_cons with (s' := (l, r')); firstorder.
       apply ls_cons with (s' := (l', r')); firstorder.
-      constructor.
   Qed.
 End ComposeHandlers.

@@ -1,5 +1,5 @@
 From LibTx Require Import
-     SLOT
+     SLOT.Handler
      EqDec
      Storage.
 
@@ -65,14 +65,54 @@ Section Properties.
 
   Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
-  Inductive KvTEComm : TE -> TE -> Prop :=
-  | kv_rr_comm : forall p1 p2 k1 k2 v1 v2,
-      KvTEComm (p1 @ v1 <~ read k1)
-               (p2 @ v2 <~ read k2)
-  | kv_rs_comm : forall p1 p2 k v s,
-      KvTEComm (p1 @ v <~ read k)
-               (p2 @ s <~ snapshot).
+  Lemma kv_rr_comm : forall p1 p2 k1 k2 v1 v2,
+      @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
+  Proof.
+    split; intros;
+      unfold_trace_deep H;
+      repeat apply ls_cons with (s' := s4); auto.
+  Qed.
 
-  Fail Lemma kv_comm : forall te1 te2, KvTEComm te1 te2 <->
-                             @trace_elems_commute S TE _ te1 te2.
+  Lemma kv_rs_comm : forall p1 p2 k v s,
+      @trace_elems_commute_h _ t (p1 @ v <~ read k) (p2 @ s <~ snapshot).
+  Proof.
+    split; intros;
+      unfold_trace_deep H;
+      inversion_ Hcr; inversion_ Hcr0;
+      repeat apply ls_cons with (s' := s5); auto.
+  Qed.
+
+  Lemma kv_read_get : forall pid (s : h_state t) k v,
+      s ~[pid @ v <~ read k]~> s ->
+      v = get k s.
+  Admitted.
+  (* Proof. *)
+  (*   intros. *)
+  (*   simpl in H. *)
+  (*   set (te := pid @ v <~ read k) in *. *)
+  (*   remember te as te0. *)
+  (*   destruct H; inversion_ Heqte0.     *)
+  (*   replace v with (te_ret te) by reflexivity. *)
+  (* Abort. *)
+
+  Lemma kv_rw_comm : forall p1 p2 k1 k2 v1 v2,
+      k1 <> k2 ->
+      @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
+  Proof.
+    split; intros;
+      unfold_trace_deep H0.
+    - repeat apply ls_cons with (s' := put k2 v2 s1); auto.
+      apply kv_read_get in Hcr.
+      replace v1 with (get k1 (put k2 v2 s1)).
+      constructor.
+      replace v1 with (get k1 s1).
+      symmetry; apply distinct; auto.
+    - apply ls_cons with (s' := s).
+      apply kv_read_get in Hcr0.
+      replace v1 with (get k1 s).
+      constructor.
+      rewrite Hcr0.
+      apply distinct; auto.
+      apply ls_cons with (s' := put k2 v2 s); auto.
+  Qed.
 End Properties.

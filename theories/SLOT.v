@@ -77,7 +77,6 @@ Module Model.
           model_handler : h_state Handler;
         }.
 
-
     Context `{Runnable ctx SUT}.
 
     Definition model_chain_rule m m' te : Prop :=
@@ -96,19 +95,9 @@ Module Model.
         init_state_p (model_handler m).
   End defn.
 
-  Section commute.
-    Open Scope hoare_scope.
-    Context {PID} {SUT : Type} (Handler : @Handler.t PID).
-    Let ctx := hToCtx Handler.
-    Context {sys_t1 sys_t2 : Type} `{Runnable ctx sys_t1} `{Runnable ctx sys_t2}.
-    Let S := @t PID (sys_t1 * sys_t2) Handler.
-    Let T := @Trace ctx.
-
-    (* Definition systems_commute (sys1 : sys_t1) (sys2 : sys_t2) : *)
-    (*   forall (tr : T) (P Q : S -> Prop), *)
-    (*     unfolds_to (sys1, sys2) tr -> *)
-    (*     {{ P }} tr {{ Q }}. *)
-  End commute.
+  (* Helper function for infering type of model: *)
+  Definition model_t {SUT} {PID} (sut : SUT) (h : @Handler.t PID) : Type :=
+    @t PID SUT h.
 End Model.
 
 Module ExampleModelDefn.
@@ -116,8 +105,11 @@ Module ExampleModelDefn.
           Handlers.Mutex
           Handlers.Mutable.
 
+  Import Model.
+
   Section defns.
-    Let PID := nat.
+    Context (N : nat).
+    Let PID := Fin.t N.
 
     Let Handler := compose (Mutable.t PID nat (fun a => a = 0))
                            (Mutex.t PID).
@@ -164,6 +156,15 @@ Module ExampleModelDefn.
       do _ <- put v';
       done release.
 
-    Let SUT := (counter_correct 1, counter_correct 2).
+    Let SUT := replicated N counter_correct.
+
+    Let Model := model_t SUT Handler.
+
+    Let alive_threads_plus_n (sys : Model) : nat :=
+      match sys with
+        {| model_sut := sut; model_handler := h |} => 0
+      end.
+
+    Lemma system_invariant : Invariant
   End defns.
 End ExampleModelDefn.

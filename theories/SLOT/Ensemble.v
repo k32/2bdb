@@ -68,16 +68,20 @@ Section props.
 
     Definition perm t1 t2 := Permutation can_swap (t1 ++ t2).
 
-    Definition compatible P Q t1 t2 :=
-      {{P}} t1 {{Q}} ->
-      {{P}} t2 {{Q}} ->
-      -{{P}} perm t1 t2 {{Q}}.
+    Definition compatible P1 Q1 P2 Q2 t1 t2 :=
+      {{P1}} t1 {{Q1}} ->
+      {{P2}} t2 {{Q2}} ->
+      -{{P1 /\' P2}} perm t1 t2 {{Q1 /\' Q2}}.
 
-    Goal forall P Q R a b x,
-        compatible P Q [a] [x] ->
-        compatible Q R [b] [x] ->
-        compatible P R [a;b] [x].
-    Abort.
+    Goal forall A B P Q R a b x,
+        compatible P Q A B [a] [x] ->
+        compatible Q R A B [b] [x] ->
+        compatible P R A B [a;b] [x].
+    Proof.
+      unfold compatible, perm.
+      simpl in *.
+      intros. intros t Ht.
+Abort.
 
     Goal forall P Q R te0 te1 te2,
         -{{P}} perm [te0] [te1] {{Q}} ->

@@ -1,5 +1,9 @@
-From Coq Require Import
-     String.
+From Coq Require
+     String
+     Vector.
+
+Import String.
+Module Vec := Vector.
 
 From LibTx Require Import
      SLOT.Hoare
@@ -22,16 +26,16 @@ Section defn.
     { runnable_step : A -> A -> TE -> Prop;
     }.
 
-  CoInductive Thread {pid : PID} : Type :=
+  CoInductive Thread : Type :=
   | t_dead : Thread
   | t_cont :
       forall (pending_req : Req)
         (continuation : Ret pending_req -> Thread)
       , Thread.
 
-  Definition throw {pid} (_ : string) := @t_dead pid.
+  Definition throw (_ : string) := t_dead.
 
-  Inductive ThreadStep (pid : PID) : @Thread pid -> @Thread pid -> TE -> Prop :=
+  Inductive ThreadStep (pid : PID) : Thread -> Thread -> TE -> Prop :=
   | thread_step : forall req ret cont,
       ThreadStep pid
                  (t_cont req cont) (cont ret)
@@ -39,7 +43,7 @@ Section defn.
 
   Hint Constructors ThreadStep.
 
-  Global Instance runnableThread (pid : PID) : Runnable (@Thread pid) :=
+  Global Instance runnableThread (pid : PID) : Runnable Thread :=
     {| runnable_step := ThreadStep pid |}.
 
   Global Instance runnableHoare {A} `{Runnable A} : StateSpace A TE :=
@@ -51,14 +55,37 @@ Section defn.
 End defn.
 
 Section ComposeSystems.
-  Context {ctx : Ctx} {sys1 sys2 : Type}.
+  Context {ctx : Ctx} {sys1 sys2 : Type} `{@Runnable ctx sys1} `{@Runnable ctx sys2}.
 
-  Global Instance composeRunnable `{@Runnable ctx sys1} `{@Runnable ctx sys2} :
+  Let S : Type := sys1 * sys2.
+
+  Inductive composeRunnableStep : S -> S -> _ -> Prop :=
+  | cr_step_l : forall s_l s_l' s_r te,
+      runnable_step s_l s_l' te ->
+      composeRunnableStep (s_l, s_r) (s_l', s_r) te
+  | cr_step_r : forall s_r s_r' s_l te,
+      runnable_step s_r s_r' te ->
+      composeRunnableStep (s_l, s_r) (s_l, s_r') te.
+
+  Global Instance composeRunnable  :
     @Runnable ctx (sys1 * sys2) :=
-    {| runnable_step s s' te :=
-         match s, s' with
-         | (s1, s2), (s1', s2') => (runnable_step s1 s1' te /\ s2 = s2') \/
-                                  (runnable_step s2 s2' te /\ s1 = s1')
-         end;
-    |}.
+    {| runnable_step := composeRunnableStep |}.
 End ComposeSystems.
+
+Section ReplicateSystem.
+  Context {ctx : Ctx} {sys : Type} `{Runnable ctx sys}.
+
+  Definition replicated {t} (N : nat) create : Vec.t t N :=
+    Vec.map create (FoldIn.seq_vec N).
+
+  Inductive replRunnableStep {N : nat} : Vec.t sys N -> Vec.t sys N -> _ -> Prop :=
+  | repl_run_step : forall i vec s s' te,
+      Vec.nth vec i = s ->
+      runnable_step s s' te ->
+      replRunnableStep vec (Vec.replace vec i s') te.
+
+  Global Instance replicatedRunnable `{@Runnable ctx sys} {N} :
+    @Runnable ctx (Vec.t sys N) :=
+    {| runnable_step := replRunnableStep;
+    |}.
+End ReplicateSystem.
