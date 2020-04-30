@@ -51,8 +51,8 @@ End defn.
 Section tests.
   Let comm a b := odd a /\ even b.
 
-  Local Hint Constructors odd.
-  Local Hint Constructors even.
+  Hint Constructors odd.
+  Hint Constructors even.
 
   Let even2 : ~odd 2.
   Proof.
@@ -60,7 +60,7 @@ Section tests.
     apply (not_even_and_odd 2); auto.
   Qed.
 
-  Local Hint Resolve even2.
+  Hint Resolve even2.
 
   Goal Permutation comm [] [].
   Proof. constructor; auto. Qed.

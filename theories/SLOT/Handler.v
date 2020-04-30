@@ -61,8 +61,6 @@ Section ComposeHandlers.
   Definition compose_req : Set := Q_l + Q_r.
   Let Q := compose_req.
 
-  Hint Transparent compose_state.
-
   Definition compose_initial_state state :=
     h_l.(h_initial_state) (fst state) /\ h_r.(h_initial_state) (snd state).
 
@@ -210,3 +208,5 @@ Section ComposeHandlers.
       apply ls_cons with (s' := (l', r')); firstorder.
   Qed.
 End ComposeHandlers.
+
+Hint Transparent compose_state.

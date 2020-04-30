@@ -143,8 +143,6 @@ Section defn.
       trace_elems_commute te2 te1.
   Proof. firstorder. Qed.
 
-  Hint Resolve trace_elems_commute_symm.
-
   Lemma trace_elems_commute_head : forall s s'' b a trace,
       trace_elems_commute a b ->
       LongStep s (b :: a :: trace) s'' ->
@@ -185,8 +183,6 @@ Section defn.
         Forall (Complement te_subset) expansion ->
         Permutation can_swap (expansion ++ trace) trace' ->
         ExpandedTrace trace trace'.
-
-    Hint Transparent Ensembles.In Ensembles.Complement.
 
     Theorem expand_trace : forall pre post trace trace',
         ChainRuleLocality ->
@@ -288,7 +284,10 @@ Tactic Notation "unfold_trace" ident(f) tactic3(tac) := unfold_trace f tac.
 Tactic Notation "unfold_trace" ident(f) := unfold_trace f (fun _ => idtac).
 Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => inversion x); subst.
 
+
+Hint Transparent Ensembles.In Ensembles.Complement.
 Hint Constructors LongStep.
+Hint Resolve trace_elems_commute_symm.
 
 Ltac unfold_ht :=
   let s := fresh "s" in
