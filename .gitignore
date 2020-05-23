@@ -30,3 +30,6 @@ nlia.cache
 nra.cache
 Makefile.conf
 .coqdeps.d
+*.aux
+*.pdf
+*.log

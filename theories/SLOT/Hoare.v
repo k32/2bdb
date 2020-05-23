@@ -43,12 +43,6 @@ Section defn.
 
   Hint Constructors LongStep.
 
-  Definition Invariant (prop : S -> Prop) : Prop :=
-    forall s s' te,
-      prop s ->
-      chain_rule s s' te ->
-      prop s'.
-
   Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
     forall s s',
       LongStep s trace s' ->
@@ -61,6 +55,21 @@ Section defn.
     intros p s s' Hs.
     inversion_clear Hs. auto.
   Qed.
+
+  Inductive TraceInvariant (prop : S -> Prop) : T -> Prop :=
+  | inv_nil : TraceInvariant prop []
+  | inv_cons : forall te t,
+      {{prop}} te :: t {{prop}} ->
+      TraceInvariant prop t ->
+      TraceInvariant prop (te :: t).
+
+  Inductive PointInvariant (prop : S -> Prop) (s0 : S) : Prop := (* Wrong!*)
+  | inv_start : prop s0 -> PointInvariant prop s0
+  | inv_cont : forall s te,
+      prop s ->
+      PointInvariant prop s ->
+      chain_rule s0 s te ->
+      PointInvariant prop s0.
 
   Lemma ls_split : forall s s'' t1 t2,
       LongStep s (t1 ++ t2) s'' ->

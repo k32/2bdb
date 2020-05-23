@@ -61,7 +61,8 @@ From LibTx Require Export
      SLOT.EventTrace
      SLOT.Hoare
      SLOT.Handler
-     SLOT.Process.
+     SLOT.Process
+     SLOT.Ensemble.
 
 From Coq Require Import
      List.
@@ -85,7 +86,7 @@ Module Model.
                                      runnable_step s s' te
       end.
 
-    Global Instance modelHoare : StateSpace t (@TraceElem ctx) :=
+    Global Instance modelStateSpace : StateSpace t (@TraceElem ctx) :=
       {| chain_rule := model_chain_rule; |}.
 
     Definition initial_state (sut0 : SUT) :=
@@ -108,19 +109,18 @@ Module ExampleModelDefn.
   Import Model.
 
   Section defns.
-    Context (N : nat).
-    Let PID := Fin.t N.
+    Context {PID : Set}.
 
-    Let Handler := compose (Mutable.t PID nat (fun a => a = 0))
-                           (Mutex.t PID).
+    Definition Handler := compose (Mutable.t PID nat (fun a => a = 0))
+                                  (Mutex.t PID).
 
-    Let ctx := hToCtx Handler.
-    Let TE := @TraceElem ctx.
+    Definition ctx := hToCtx Handler.
+    Definition TE := @TraceElem ctx.
 
-    Notation "'do' V '<-' I ; C" := (@t_cont ctx _ (I) (fun V => C))
+    Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
                                       (at level 100, C at next level, V ident, right associativity).
 
-    Notation "'done' I" := (@t_cont ctx _ (I) (fun _ => t_dead))
+    Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
                              (at level 100, right associativity).
 
     Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
@@ -139,32 +139,85 @@ Module ExampleModelDefn.
 
     (* Just a demonstration how to define a program that loops
     indefinitely, as long as it does IO: *)
-    Local CoFixpoint infinite_loop (self : PID) : @Thread ctx self :=
+    Local CoFixpoint infinite_loop (self : PID) : @Thread ctx :=
       do _ <- put 0;
       infinite_loop self.
 
     (* Data race example: *)
-    Let counter_race (self : PID) : @Thread ctx self :=
+    Definition counter_race (self : PID) : @Thread ctx :=
       do v <- get;
       done put (v + 1).
 
     (* Fixed example: *)
-    Let counter_correct (self : PID) : @Thread ctx self :=
+    Definition counter_correct (self : PID) : @Thread ctx :=
       do _ <- grab;
       do v <- get;
       let v' := v + 1 in
       do _ <- put v';
       done release.
 
-    Let SUT := replicated N counter_correct.
+  End defns.
+
+  Section simple.
+    Let PID := True.
+    Let ctx := @ctx PID.
+
+    Let SUT := counter_correct I.
+    Let Handler := @Handler PID.
 
     Let Model := model_t SUT Handler.
 
-    Let alive_threads_plus_n (sys : Model) : nat :=
+    Let counter_invariant (sys : Model) : Prop :=
       match sys with
-        {| model_sut := sut; model_handler := h |} => 0
+        {| model_sut := sut; model_handler := (M, l) |} =>
+        match l with
+        | Some _ => True
+        | None =>
+          let n_alive := match sut with
+                         | t_dead => 0
+                         | t_cont _ _ => 1
+                         end
+          in n_alive + M = 1
+        end
       end.
 
-    Lemma system_invariant : Invariant
+    Goal forall h0, h_initial_state Handler h0 ->
+               @PointInvariant Model TE modelStateSpace counter_invariant
+                               (mkModel (counter_correct I) h0).
+    Proof.
+      intros.
+      destruct h0 as [val0 mtx0].
+      firstorder. simpl in H, H0. subst.
+
+
+
+  End simple.
+
+    Let n_alive_plus_m (sys : Model) : Prop :=
+      match sys with
+        {| model_sut := sut; model_handler := (M, l) |} =>
+        match l with
+        | Some _ => True
+        | None =>
+          let n_alive := Vector.fold_left (fun x t => match t with
+                                                   | t_dead => x
+                                                   | _ => S x
+                                                   end) 0 sut
+          in n_alive + M = N
+        end
+      end.
+
+    Lemma counter_invariant : @Invariant Model TE modelStateSpace n_alive_plus_m.
+    Proof.
+      unfold Invariant.
+      intros.
+      unfold n_alive_plus_m in H.
+      destruct s as [sut [num mutex]].
+      destruct s' as [sut' [num' mutex']].
+      simpl in H0.
+      intuition.
+      inversion_ H2.
+      destruct mutex.
+      2: {
   End defns.
 End ExampleModelDefn.

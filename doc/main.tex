@@ -1,0 +1,185 @@
+\documentclass[10pt,letterpaper]{article}
+\usepackage[english]{babel}
+\usepackage[utf8x]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper,top=3cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{dsfont}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{indentfirst}
+
+\newcommand \prop{\mathds{P}}
+\newcommand \dom[1]{\text{dom}\left(#1\right)}
+\newcommand \cod[1]{\text{cod}\left(#1\right)}
+\newcommand \crpred[3]{\mathrel{\kappa\left(#1\,#2\,#3\right)}}
+\newcommand \chain[3]{\mathrel{#1\stackrel{#3}{\rightsquigarrow}#2}}
+\newcommand \bm[1]{\boldsymbol{#1}}
+\newcommand \comm[2]{\mathrel{\text{comm}\left(#1,#2\right)}}
+\newcommand \possible[1]{\mathrel{\text{possible}\left({#1}\right)}}
+\newcommand \local[2]{\mathrel{\underset{#1}{\text{local}}\left(#2\right)}}
+\newcommand \crlocal[2]{\mathrel{\underset{#1}{\text{chain\_rule\_local}}\left(#2\right)}}
+\newcommand \mdoubleplus{\mathbin{+\mkern-6mu+}}
+\newtheorem{theorem}{Theorem}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+%% Title
+\title{
+		\huge Separation logic of traces (SLOT)
+}
+\selectlanguage{english}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  SLOT is an experimental framework that allows to formally prove
+  temporal properties of functional programs with side effects. It is
+  based entirely on constructive logic without additional axioms. It
+  comes with a shallow embedded DSL for describing systems in Gallina
+  language, and an extendable model of non-deterministic side effect
+  handlers.
+\end{abstract}
+
+\section{Motivation}
+
+\section{Supporting definitions}
+
+SLOT is based on constructive logic rather than set theory, and relies
+on Coq definition of ensemble. Ensemble $E$ on type $T$ is defined by
+a predicate of type $T \to \prop$. Hypothesis that element $t$ belongs
+to $E$ is defined as following: $t \in E \triangleq E\, t$. Ensemble
+$E'$ is included in $E$ when
+$E' \subset E \triangleq \forall t, t \in E' \to t \in E$.
+
+\section{Core definitions}
+
+Model of the system is defined by state space $S$, set of side effects
+$T$, and predicate $\mathrel{\kappa:S\to S\to T\to \prop}$, called
+chain rule. Hypothesis of type $\crpred{s}{s'}{t}$ provides evidence that
+system can be transitioned from state $s$ to state $s'$ via side
+effect $t$. Trace is a list of elements of $T$.
+
+\begin{definition}
+  Let $s$ and $s'$ are points of state space, and $\bm{t}$ is a trace.
+  Long step property of a trace $\chain{s}{s'}{\bm{t}}$ is defined by
+  the following rules:
+
+  \begin{equation}
+    \text{ls\_nil}: \frac{s : S}{\chain{s}{s}{[]}}
+  \end{equation}
+  \\
+  \begin{equation}
+    \text{ls\_cons}:
+    \frac{s\, s' \, s'' : S \quad  t : T \quad \bm{t} : \text{list}\,T \quad \crpred{s}{s'}{t} \quad \chain{s'}{s''}{\bm{t}}}
+         {\chain{s}{s''}{t::\bm{t}}}
+  \end{equation}
+\end{definition}
+
+\begin{definition}
+  Domain $\dom{\bm{t}}$ and codomain $\cod{\bm{t}}$ of a trace
+  $\bm{t}$ are ensembles that satisfy the following property:
+  \begin{equation}
+    \forall s\, s', s \in \dom{\bm{t}} \land s' \in \cod{\bm{t}} \iff
+    \chain{s}{s'}{t}
+  \end{equation}
+
+\end{definition}
+
+\begin{definition}
+  Trace $\bm{t}$ is called possible when its domain and codomain are
+  inhibited. Or more formally:
+
+  \begin{equation}
+    \possible{\bm{t}} \triangleq \exists s\, s', \chain{s}{s'}{\bm{t}}
+  \end{equation}
+\end{definition}
+
+Important to note: $\neg \possible{\bm{t}}$ hypothesis provides
+evidence that sequence of side effects $\bm{t}$ cannot be produced by
+a running system. This can be used to prove temporal safety
+properties. Converse is not true: $\possible{\bm{t}}$ does not
+guarantee that $\bm{t}$ can be produced by a running system, because
+domain of $\bm{t}$ does not necessarily match with the set of valid
+initial states of the system.
+
+\begin{definition}
+Side effects $t_1$ and $t_2$ commute when
+
+\begin{equation}
+\comm{t_1}{t_2} \triangleq \forall s\,s', \chain{s}{s'}{[t_1,t_2]} \iff \chain{s}{s'}{[t_2,t_1]}
+\end{equation}
+\end{definition}
+\begin{figure}
+  \centering
+  \begin{tikzpicture}[node distance=3cm, auto]
+    \node (s) {$s$};
+    \node (s1) [right of=s] {$s_1$};
+    \node (s2) [below of=s] {$s_2$};
+    \node (s') [right of=s2] {$s'$};
+    \draw[->] (s) to node {$t_1$} (s1);
+    \draw[->] (s1) to node {$t_2$} (s');
+    \draw[->] (s) to node {$t_2$} (s2);
+    \draw[->] (s2) to node {$t_1$} (s');
+  \end{tikzpicture}
+  \caption{Paths in state space implied by commutativity of $t_1$ and $t_2$}
+  \label{fig:comm}
+\end{figure}
+
+Hoare logic of traces consists of just one rule:
+
+\begin{equation}
+  \text{hoare}:
+  \frac{P\, Q: S \to \prop \quad \bm{t} \quad \forall s\,s', \chain{s}{s'}{\bm{t}} \to P s \to Q s'}
+       {\{P\} \bm{t} \{Q\}}
+\end{equation}
+
+\begin{theorem}
+  Let $P$, $Q$, $R$ are asserts, $\bm{t_1}$ and $\bm{t_2}$ are traces,
+  then from $\{P\}\bm{t_1}\{Q\}$ and $\{Q\}\bm{t_2}\{R\}$ follows
+  $\{P\}\bm{t_1} \mdoubleplus \bm{t_2} \{R\}$.
+\end{theorem}
+\begin{proof}
+See \mbox{hoare\_concat}.
+\end{proof}
+
+\begin{definition}
+  Assert $P$ is called local under ensemble of side effects $E$ when
+
+  \begin{equation}
+  \local{E}{P} \triangleq \forall t:T,t \notin E \to \{P\} [t] \{P\}
+  \end{equation}
+\end{definition}
+
+\begin{theorem}
+  Let $E_1$ and $E_2$ are disjoint ensembles of side effects, $P$,
+  $Q$, $R$ are asserts, such that $\local{E_2}{R}$, and $t$ is a side
+  effect that belongs to $E_1$, then from and $\{P\} [t] \{Q\}$
+  follows $\{P \land R\}[t]\{Q \land R\}$.
+\end{theorem}
+\begin{proof}
+  See \mbox{frame\_rule}
+\end{proof}
+
+\begin{definition}
+  Chain rule $\kappa$ is local under ensemble of side effects $E$ when
+
+  \begin{equation}
+    \crlocal{E}{\kappa} \triangleq \forall t_1\, t_2, t_1 \in E \land t_2 \notin E \to \comm{t_1}{t_2}
+  \end{equation}
+\end{definition}
+
+
+\section{Handlers}
+
+\section{Processes}
+
+SLOT is used to define an experimental framework for modeling
+functional programs with side effects, implemented as a shallow
+embedded DSL in Coq.
+
+\end{document}
+
+\usepackage{amsmath}

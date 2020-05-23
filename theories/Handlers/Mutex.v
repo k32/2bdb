@@ -10,6 +10,7 @@ From LibTx Require Import
 
 Section defs.
   Open Scope hoare_scope.
+
   Inductive req_t : Set :=
   | grab    : req_t
   | release : req_t.
@@ -33,7 +34,7 @@ Section defs.
   | mutex_release_ok : forall pid,
       mutex_chain_rule (Some pid) None (trace_elem ctx pid release true)
   | mutex_release_fail : forall pid,
-      mutex_chain_rule (Some pid) None (trace_elem ctx pid release false).
+      mutex_chain_rule None None (trace_elem ctx pid release false).
 
   Definition t : t :=
     {|
@@ -51,10 +52,8 @@ Section defs.
   Proof.
     intros a1 a2 H.
     destruct H as [s [s' H]].
-    inversion_ H.
-    inversion_ H3.
-    inversion_ H5.
-    inversion_ H4.
+    unfold_trace_deep H.
+    discriminate.
   Qed.
 
   Let state_space := state_t. Let trace_elem := req_t.
@@ -66,9 +65,7 @@ Section defs.
       {{ fun _ => False}}.
   Proof.
     intros a1 a2 s s' Hss' Hpre.
-    inversion_ Hss'.
-    inversion_ H2.
-    inversion_ H4.
-    inversion_ H3.
+    unfold_trace_deep Hss'.
+    discriminate.
   Qed.
 End defs.

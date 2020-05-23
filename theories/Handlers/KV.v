@@ -57,6 +57,8 @@ Section defn.
     |}.
 End defn.
 
+Hint Constructors kv_chain_rule.
+
 Section Properties.
   Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
 
@@ -78,7 +80,6 @@ Section Properties.
   Proof.
     split; intros;
       unfold_trace_deep H;
-      inversion_ Hcr; inversion_ Hcr0;
       repeat apply ls_cons with (s' := s5); auto.
   Qed.
 
@@ -115,4 +116,37 @@ Section Properties.
       apply distinct; auto.
       apply ls_cons with (s' := put k2 v2 s); auto.
   Qed.
+
+  Lemma kv_rd_comm : forall p1 p2 k1 k2 v1,
+      k1 <> k2 ->
+      @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
+  Proof.
+    split; intros;
+      unfold_trace_deep H0.
+    - repeat apply ls_cons with (s' := Storage.delete k2 s1); auto.
+      apply kv_read_get in Hcr.
+      replace v1 with (get k1 (Storage.delete k2 s1)).
+      constructor.
+      replace v1 with (get k1 s1).
+      symmetry; apply delete_distinct; auto.
+    - apply ls_cons with (s' := s).
+      apply kv_read_get in Hcr0.
+      replace v1 with (get k1 s).
+      constructor.
+      rewrite Hcr0.
+      apply delete_distinct; auto.
+      apply ls_cons with (s' := Storage.delete k2 s); auto.
+  Qed.
+
+  (* These operations don't commute in the general case! *)
+  Example kv_ww_comm : forall p1 p2 k1 k2 v1 v2,
+      k1 <> k2 ->
+      @trace_elems_commute_h _ t (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
+  Proof.
+    split; intros;
+      unfold_trace_deep H0.
+    - apply ls_cons with (s' := put k2 v2 s);
+      try apply ls_cons with (s' := put k1 v1 (put k2 v2 s)); try constructor.
+      (* [LongStep (put k1 v1 (put k2 v2 s)) [] (put k2 v2 (put k1 v1 s))] *)
+  Abort.
 End Properties.
