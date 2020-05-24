@@ -67,6 +67,55 @@ Section props.
   Qed.
 
   Section perm_props.
+    Lemma interleaving_symm : forall {TE} (t1 t2 t : list TE),
+      Interleaving t1 t2 t ->
+      Interleaving t2 t1 t.
+    Proof.
+      intros.
+      induction H0; constructor; auto.
+    Qed.
+
+    Lemma e_hoare_par_ergo_seq : forall e1 e2 P Q,
+      -{{P}} e1 -|| e2 {{Q}} ->
+      -{{P}} e1 ->> e2 {{Q}}.
+    Proof.
+      intros. intros t Hseq.
+      specialize (H0 t). apply H0. clear H0.
+      destruct Hseq as [t1 t2].
+      apply ilv_par with (t3 := t1) (t4 := t2); auto.
+      clear H0 H1.
+      induction t1; simpl; constructor; easy.
+    Qed.
+
+    Lemma e_hoare_par_symm : forall e1 e2 P Q,
+        -{{P}} e1 -|| e2 {{Q}} ->
+        -{{P}} e2 -|| e1 {{Q}}.
+    Proof.
+      intros. intros t Hpar.
+      specialize (H0 t). apply H0. clear H0.
+      destruct Hpar as [t1 t2 t H1 H2 Hint].
+      apply interleaving_symm in Hint.
+      apply ilv_par with (t3 := t2) (t4 := t1); easy.
+    Qed.
+
+    Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
+        (* -{{P}} e1 -|| e {{Q}} -> *)
+        (* -{{Q}} e2 -|| e {{Q}} -> *)
+        (* -{{P}} e1 ->> e2 {{Q}} -> *)
+        -{{P}} e1 ->> e2 -|| e {{Q}}.
+    Proof.
+      intros *. (* intros Hpar1 Hpar2 Hseq. *)
+      intros t Ht.
+      destruct Ht as [t12 t_ t H12 Ht_ Hint].
+      destruct H12 as [t1 t2 H1 H2].
+      (*   t_, t, t1, t2 : list TE
+           H1 : e1 t1
+           H2 : e2 t2
+           Ht_ : e t_
+           Hint : Interleaving (t1 ++ t2) t_ t
+       *)
+    Abort.
+
     Lemma e_hoare_par_seq : forall e1 e2 e P Q R,
         -{{P}} e1 -|| e {{Q}} ->
         -{{Q}} e2 -|| e {{R}} ->
