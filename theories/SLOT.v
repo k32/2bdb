@@ -91,9 +91,14 @@ Module Model.
 
     Definition initial_state (sut0 : SUT) :=
       fun m =>
-        let init_state_p := h_initial_state Handler in
-        model_sut m = sut0 /\
-        init_state_p (model_handler m).
+        match m with
+        | {| model_sut := sut; model_handler := h |} =>
+          sut = sut0 /\ h_initial_state Handler h
+        end.
+
+    Definition SystemInvariant (prop : t -> Prop) (sut : SUT) :=
+      @SystemInvariant t _ modelStateSpace prop (initial_state sut).
+
   End defn.
 
   (* Helper function for infering type of model: *)
@@ -181,50 +186,23 @@ Module ExampleModelDefn.
         end
       end.
 
-    Goal forall h0, h_initial_state Handler h0 ->
-               @SystemInvariant Model TE modelStateSpace
-                                counter_invariant
-                                (fun m0 => model_sut m0 = (counter_correct I) /\
-                                        h_initial_state Handler (model_handler m0)).
+    Goal SystemInvariant counter_invariant (counter_correct I).
     Proof with simpl in *.
-      unfold SystemInvariant, compose_initial_state. intros.
+      unfold SystemInvariant, Hoare.SystemInvariant, initial_state. intros.
       unfold_ht.
-      destruct Hpre as [Hs Hh].
-      remember s as s0.
-      destruct s as [sut0 [val mtx]].
-      inversion Hh.
-      inversion H0.
-      inversion H1... subst.
-      destruct Hls.
+      destruct s as [sut [val mtx]].
+      destruct Hpre as [Hsut [Hval Hmtx]].
+      simpl in *. subst.
+      inversion Hls.
+      - subst. easy.
+      - simpl in *. subst.
+        clear Hls.
+        induction H0.
+        2: { destruct s' as [sut' [val' mtx']].
+             destruct s as [sut [val mtx]].
+             simpl in H0.
     Abort.
 
   End simple.
 
-    Let n_alive_plus_m (sys : Model) : Prop :=
-      match sys with
-        {| model_sut := sut; model_handler := (M, l) |} =>
-        match l with
-        | Some _ => True
-        | None =>
-          let n_alive := Vector.fold_left (fun x t => match t with
-                                                   | t_dead => x
-                                                   | _ => S x
-                                                   end) 0 sut
-          in n_alive + M = N
-        end
-      end.
-
-    Lemma counter_invariant : @Invariant Model TE modelStateSpace n_alive_plus_m.
-    Proof.
-      unfold Invariant.
-      intros.
-      unfold n_alive_plus_m in H.
-      destruct s as [sut [num mutex]].
-      destruct s' as [sut' [num' mutex']].
-      simpl in H0.
-      intuition.
-      inversion_ H2.
-      destruct mutex.
-      2: {
-  End defns.
 End ExampleModelDefn.
