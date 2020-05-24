@@ -182,14 +182,21 @@ Module ExampleModelDefn.
       end.
 
     Goal forall h0, h_initial_state Handler h0 ->
-               @PointInvariant Model TE modelStateSpace counter_invariant
-                               (mkModel (counter_correct I) h0).
-    Proof.
-      intros.
-      destruct h0 as [val0 mtx0].
-      firstorder. simpl in H, H0. subst.
-
-
+               @SystemInvariant Model TE modelStateSpace
+                                counter_invariant
+                                (fun m0 => model_sut m0 = (counter_correct I) /\
+                                        h_initial_state Handler (model_handler m0)).
+    Proof with simpl in *.
+      unfold SystemInvariant, compose_initial_state. intros.
+      unfold_ht.
+      destruct Hpre as [Hs Hh].
+      remember s as s0.
+      destruct s as [sut0 [val mtx]].
+      inversion Hh.
+      inversion H0.
+      inversion H1... subst.
+      destruct Hls.
+    Abort.
 
   End simple.
 

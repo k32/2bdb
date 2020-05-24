@@ -63,13 +63,9 @@ Section defn.
       TraceInvariant prop t ->
       TraceInvariant prop (te :: t).
 
-  Inductive PointInvariant (prop : S -> Prop) (s0 : S) : Prop := (* Wrong!*)
-  | inv_start : prop s0 -> PointInvariant prop s0
-  | inv_cont : forall s te,
-      prop s ->
-      PointInvariant prop s ->
-      chain_rule s0 s te ->
-      PointInvariant prop s0.
+  Definition SystemInvariant (prop : S -> Prop) (E0 : Ensemble S) : Prop :=
+    forall t,
+      {{ E0 }} t {{ prop }}.
 
   Lemma ls_split : forall s s'' t1 t2,
       LongStep s (t1 ++ t2) s'' ->
