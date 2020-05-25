@@ -142,13 +142,13 @@ Section props.
       intros t Ht.
       destruct Ht as [t12 t0 t Ht12 Ht0 Hint].
       destruct Ht12 as [t1 t2 Ht1 Ht2].
-      apply interleaving_par_seq in Hint.
-      destruct Hint as [t1' [t2' [t01 [t02 Hx]]]].
-      firstorder.
-      subst.
-      unfold EnsembleInvariant in H0, H1.
-      specialize (H0 t1').
-      specialize (H1 t2').
+      (* apply interleaving_par_seq in Hint. *)
+      (* destruct Hint as [t1' [t2' [t01 [t02 Hx]]]]. *)
+      (* firstorder. *)
+      (* subst. *)
+      (* unfold EnsembleInvariant in H0, H1. *)
+      (* specialize (H0 t1'). *)
+      (* specialize (H1 t2'). *)
     Abort.
 
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,

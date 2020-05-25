@@ -59,9 +59,11 @@ Section defn.
 
   Inductive ThreadGenerator pid : Thread -> TraceEnsemble :=
   | tg_nil : ThreadGenerator pid t_dead []
-  | tg_cons : forall req ret cont trace,
-      ThreadGenerator pid (cont ret) trace ->
-      ThreadGenerator pid (t_cont req cont) (trace_elem _ pid req ret :: trace).
+  | tg_cons : forall req ret t t' trace,
+      let te := trace_elem _ pid req ret in
+      threadStep t t' te ->
+      ThreadGenerator pid t' trace ->
+      ThreadGenerator pid t (te :: trace).
 
   Global Instance threadGen pid : Generator Thread :=
     { unfolds_to := ThreadGenerator pid;

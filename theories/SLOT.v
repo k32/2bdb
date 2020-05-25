@@ -130,16 +130,16 @@ Module ExampleModelDefn.
 
     Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
-    Let put (val : nat) : Handler.(h_req) :=
+    Definition put (val : nat) : Handler.(h_req) :=
       inl (Mutable.put val).
 
-    Let get : h_req Handler :=
+    Definition get : h_req Handler :=
       inl (Mutable.get).
 
-    Let grab : h_req Handler :=
+    Definition grab : h_req Handler :=
       inr (Mutex.grab).
 
-    Let release : h_req Handler :=
+    Definition release : h_req Handler :=
       inr (Mutex.release).
 
     (* Just a demonstration how to define a program that loops
@@ -171,6 +171,52 @@ Module ExampleModelDefn.
     Let Handler := @Handler PID.
 
     Let Model := model_t SUT Handler.
+
+    Let SingletonEnsemble := @ThreadGenerator ctx I (counter_correct I).
+
+    Ltac thread_step Ht Hstep :=
+      let s0 := fresh "s" in
+      let Heq := fresh "Heq" in
+      let req := fresh "req" in
+      let ret := fresh "ret" in
+      let t := fresh "t" in
+      let t' := fresh "t" in
+      let trace := fresh "trace" in
+      let te := fresh "te" in
+      (* let Hstep := fresh "Hstep" in *)
+      match type of Ht with
+      | ThreadGenerator _ ?thread _ =>
+        remember thread as s0 eqn:Heq;
+        destruct Ht as [|req ret t t' trace te Hstep Ht]
+      end.
+
+    Tactic Notation "thread_step" ident(Ht) ident(Hstep) :=
+      thread_step Ht Hstep.
+
+    Tactic Notation "thread_step" ident(Ht) :=
+      let Hstep := fresh "Hstep" in thread_step Ht Hstep.
+
+    Ltac unfold_thread_ Ht Hstep0 :=
+      let Hstep := fresh "Hstep" in
+      thread_step Ht Hstep; subst; inversion Hstep0;
+      [discriminate | clear Hstep0; try (unfold_thread_ Ht Hstep)].
+
+    Ltac unfold_thread Ht :=
+      let Hstep0 := fresh "Hstep" in
+      thread_step Ht Hstep0;
+      [discriminate | try (unfold_thread_ Ht Hstep0)];
+      clear Ht.
+
+      (* [discriminate *)
+      (* |unfold_thread_ Heq Ht *)
+      (* ]. *)
+
+    Goal EnsembleInvariant (fun _ => True) SingletonEnsemble.
+    Proof.
+      intros t Ht.
+      unfold SingletonEnsemble in Ht.
+      unfold_thread Ht.
+    Abort.
 
     Let counter_invariant (sys : Model) : Prop :=
       match sys with
