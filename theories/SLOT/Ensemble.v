@@ -75,6 +75,41 @@ Section props.
       induction H0; constructor; auto.
     Qed.
 
+    (* Lemma interleaving_par_seq : forall (t0 t1 t2 t : list TE), *)
+    (*     Interleaving (t1 ++ t2) t0 t -> *)
+    (*     exists t_hd t_tl t0_hd t0_tl, *)
+    (*       t_hd ++ t_tl = t /\ t0_hd ++ t0_tl = t0 /\ *)
+    (*       Interleaving t1 t0_hd t_hd /\ Interleaving t2 t0_tl t_tl. *)
+    (* Proof. *)
+    (*   intros t0 t1 t2 t Hint.       *)
+    (*   induction Hint. *)
+    (*   - destruct IHHint as [t_hd [t_tl [t0_hd [t0_tl IH]]]]. *)
+    (*     exists (te :: t_hd). exists t_tl. exists (te :: t0_hd). exists t0_tl. *)
+    (*     firstorder. *)
+    (*     firstorder;  *)
+    (*     + reflexivity. *)
+    (*     + constructor. *)
+
+    Lemma interleaving_par_head : forall (t1 t2 t : list TE),
+        Interleaving t1 t2 t ->
+        exists t' t1_hd t1_tl,
+          t = t1_hd ++ t' /\ t1 = t1_hd ++ t1_tl /\ Interleaving t1_tl t2 t'.
+    Proof.
+      intros *. intros Hint.
+      induction Hint.
+      - destruct IHHint as [t' [t1_hd [t1_tl IH]]].
+        exists t'. exists (te :: t1_hd). exists (t1_tl).
+        firstorder; subst; reflexivity.
+      - exists (te :: t). exists []. exists t1.
+        firstorder. subst.
+        constructor.
+        assumption.
+      - exists t2. exists []. exists [].
+        firstorder. constructor.
+      - exists t1. exists []. exists t1.
+        firstorder. constructor.
+    Qed.
+
     Lemma e_hoare_par_ergo_seq : forall e1 e2 P Q,
       -{{P}} e1 -|| e2 {{Q}} ->
       -{{P}} e1 ->> e2 {{Q}}.
@@ -97,6 +132,24 @@ Section props.
       apply interleaving_symm in Hint.
       apply ilv_par with (t3 := t2) (t4 := t1); easy.
     Qed.
+
+    Lemma e_hoare_inv_par_seq : forall e1 e2 e prop,
+        EnsembleInvariant prop (e1 -|| e) ->
+        EnsembleInvariant prop (e2 -|| e) ->
+        EnsembleInvariant prop (e1 ->> e2 -|| e).
+    Proof.
+      intros.
+      intros t Ht.
+      destruct Ht as [t12 t0 t Ht12 Ht0 Hint].
+      destruct Ht12 as [t1 t2 Ht1 Ht2].
+      apply interleaving_par_seq in Hint.
+      destruct Hint as [t1' [t2' [t01 [t02 Hx]]]].
+      firstorder.
+      subst.
+      unfold EnsembleInvariant in H0, H1.
+      specialize (H0 t1').
+      specialize (H1 t2').
+    Abort.
 
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
         (* -{{P}} e1 -|| e {{Q}} -> *)

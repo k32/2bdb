@@ -56,17 +56,6 @@ Section defn.
     inversion_clear Hs. auto.
   Qed.
 
-  Inductive TraceInvariant (prop : S -> Prop) : T -> Prop :=
-  | inv_nil : TraceInvariant prop []
-  | inv_cons : forall te t,
-      {{prop}} te :: t {{prop}} ->
-      TraceInvariant prop t ->
-      TraceInvariant prop (te :: t).
-
-  Definition SystemInvariant (prop : S -> Prop) (E0 : Ensemble S) : Prop :=
-    forall t,
-      {{ E0 }} t {{ prop }}.
-
   Lemma ls_split : forall s s'' t1 t2,
       LongStep s (t1 ++ t2) s'' ->
       exists s', LongStep s t1 s' /\ LongStep s' t2 s''.
@@ -124,6 +113,30 @@ Section defn.
       {{ C }} t {{ D }} ->
       {{ fun s => A s /\ C s }} t {{ fun s => B s /\ D s }}.
   Proof. firstorder. Qed.
+
+
+  Inductive TraceInvariant (prop : S -> Prop) : T -> Prop :=
+  | inv_nil : TraceInvariant prop []
+  | inv_cons : forall te t,
+      {{prop}} [te] {{prop}} ->
+      TraceInvariant prop t ->
+      TraceInvariant prop (te :: t).
+
+  Hint Constructors TraceInvariant.
+
+  Definition SystemInvariant (prop : S -> Prop) (E0 : Ensemble S) : Prop :=
+    forall t,
+      {{ E0 }} t {{ prop }}.
+
+  Lemma trace_inv_split : forall prop t1 t2,
+      TraceInvariant prop (t1 ++ t2) ->
+      TraceInvariant prop t1 /\ TraceInvariant prop t2.
+  Proof.
+    intros.
+    induction t1; split; auto;
+    inversion_ H; specialize (IHt1 H3);
+    try constructor; firstorder.
+  Qed.
 
   Definition trace_elems_commute (te1 te2 : TE) :=
     forall s s',
