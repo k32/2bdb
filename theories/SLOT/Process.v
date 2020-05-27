@@ -84,6 +84,56 @@ Section defn.
   (*     ThreadsStep threads (Map.add pid thread' threads) te. *)
 End defn.
 
+Lemma dead_thread : forall ctx t pid,
+    @ThreadGenerator ctx pid t_dead t -> t = [].
+Proof.
+  intros _ctx t pid Ht.
+  remember t_dead as thread.
+  destruct Ht.
+  - reflexivity.
+  - simpl in t0. subst. contradiction.
+Qed.
+
+Ltac thread_step Ht Hstep :=
+  let s0 := fresh "s" in
+  let Heq := fresh "Heq" in
+  let req := fresh "req" in
+  let ret := fresh "ret" in
+  let t := fresh "t" in
+  let t' := fresh "t" in
+  let trace := fresh "trace" in
+  let te := fresh "te" in
+  (* let Hstep := fresh "Hstep" in *)
+  match type of Ht with
+  | ThreadGenerator _ ?thread _ =>
+    destruct Ht as [|req ret t t' trace te Hstep Ht]
+  end.
+
+Ltac unfold_thread Ht :=
+  match type of Ht with
+    ThreadGenerator ?pid ?thread ?trace =>
+    match eval lazy in thread with
+    | t_dead =>
+      apply dead_thread in Ht;
+      try (rewrite Ht in *; clear Ht)
+    | (t_cont ?req ?cont) =>
+      let t := fresh "t" in
+      let eq := fresh "Heq" t in
+      let Hstep := fresh "Hstep" in
+      let Hreq := fresh "Hstep" in
+      let Ht' := fresh "Hstep" in
+      remember thread as t eqn:eq;
+      thread_step Ht Hstep;
+      [inversion eq
+      |rewrite eq in Hstep;
+       destruct Hstep as [Hreq Ht'];
+       rewrite Ht' in Ht; clear Ht';
+       (* rewrite Hreq in *; clear Hreq *)
+       unfold_thread Ht
+      ]
+    end
+  end.
+
 (* Section ComposeSystems. *)
 (*   Context {ctx : Ctx} {sys1 sys2 : Type} `{@Runnable ctx sys1} `{@Runnable ctx sys2}. *)
 
