@@ -212,8 +212,12 @@ Module ExampleModelDefn.
 
     Ltac unfold_interleaving H :=
       match type of H with
-      | Interleaving [] _ _ => apply interleaving_nil in H
-      | Interleaving _ [] _ => apply interleaving_symm, interleaving_nil in H
+      | Interleaving [] _ _ =>
+        apply interleaving_nil in H;
+        rewrite <-H in *; clear H
+      | Interleaving _ [] _ =>
+        apply interleaving_symm, interleaving_nil in H;
+        rewrite <-H in *; clear H
       | Interleaving ?tl ?tr ?t =>
         let tl0 := fresh "tl" in
         let Htl0 := fresh "Heql"  in
@@ -250,12 +254,15 @@ Module ExampleModelDefn.
         unfold_interleaving Hint
       end.
 
-    Goal EnsembleInvariant (fun _ => True) PairEnsemble.
+    Goal -{{ h_initial_state Handler }} PairEnsemble {{ fun s => fst s = 2 }}.
     Proof.
       intros t Ht.
-      bruteforce Ht; subst;
-      repeat (constructor; try easy).
-    Qed.
+      unfold_ht.
+      cbv in Hpre.
+      bruteforce Ht.
+      unfold_trace Hls.
+      lazy in Hcr. subst.
+    Abort.
 
     Let counter_invariant (sys : Model) : Prop :=
       match sys with
