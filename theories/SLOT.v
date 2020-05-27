@@ -167,7 +167,7 @@ Module ExampleModelDefn.
   End defns.
 
   Section simple.
-    Let PID := True.
+    Let PID := bool.
     Let ctx := @ctx PID.
 
     Let SUT := counter_correct I.
@@ -175,12 +175,13 @@ Module ExampleModelDefn.
 
     Let Model := model_t SUT Handler.
 
-    Let SingletonEnsemble := @ThreadGenerator ctx I (counter_correct I).
-    Let NopEnsemble := @ThreadGenerator ctx I (nop I).
+    Let mk_counter pid := @ThreadGenerator ctx pid (counter_correct pid).
+    Let SingletonEnsemble := mk_counter true.
+    Let PairEnsemble := (mk_counter true) -|| (mk_counter false).
+    Let NopEnsemble := @ThreadGenerator ctx true (nop true).
 
     Goal forall t, NopEnsemble t -> True.
       intros t Ht.
-      unfold NopEnsemble in Ht.
       unfold_thread Ht.
       easy.
     Qed.
@@ -188,8 +189,71 @@ Module ExampleModelDefn.
     Goal EnsembleInvariant (fun _ => True) SingletonEnsemble.
     Proof.
       intros t Ht.
-      unfold SingletonEnsemble in Ht.
       unfold_thread Ht. subst.
+      repeat (constructor; try easy).
+    Qed.
+
+    Goal EnsembleInvariant (fun _ => True) SingletonEnsemble.
+    Proof.
+      intros t Ht.
+      unfold_thread Ht. subst.
+      repeat (constructor; try easy).
+    Qed.
+
+    Lemma interleaving_nil : forall {ctx} t1 t2,
+        @Interleaving ctx [] t1 t2 ->
+        t1 = t2.
+    Proof.
+      intros.
+      remember [] as t.
+      induction H; subst; try easy.
+      rewrite IHInterleaving; auto.
+    Qed.
+
+    Ltac unfold_interleaving H :=
+      match type of H with
+      | Interleaving [] _ _ => apply interleaving_nil in H
+      | Interleaving _ [] _ => apply interleaving_symm, interleaving_nil in H
+      | Interleaving ?tl ?tr ?t =>
+        let tl0 := fresh "tl" in
+        let Htl0 := fresh "Heql"  in
+        let tr0 := fresh "tr" in
+        let Htr0 := fresh "Heqr" in
+        let te := fresh "te" in
+        let tl' := fresh "tl" in
+        let tr' := fresh "tr" in
+        let t := fresh "t" in
+        remember tl as tl0 eqn:Htl0;
+        remember tr as tr0 eqn:Htr0;
+        destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl' ];
+        repeat (match goal with
+                | [H : _ :: _ = _ |- _] =>
+                  inversion H; subst; clear H
+                end);
+        discriminate || unfold_interleaving H
+      end.
+
+    Ltac bruteforce Ht :=
+      try lazy in Ht;
+      match type of Ht with
+      | ThreadGenerator _ _ _ =>
+        unfold_thread Ht
+      | Parallel ?e1 ?e2 ?t =>
+        let t1 := fresh "t_l" in
+        let t2 := fresh "t_r" in
+        let H1 := fresh "H" t1 in
+        let H2 := fresh "H" t2 in
+        let t := fresh "t" in
+        let Hint := fresh "Hint_" t in
+        destruct Ht as [t1 t2 t H1 H2 Hint];
+        bruteforce H1; subst; bruteforce H2;
+        unfold_interleaving Hint
+      end.
+
+    Goal EnsembleInvariant (fun _ => True) PairEnsemble.
+    Proof.
+      intros t Ht.
+      bruteforce Ht; subst;
       repeat (constructor; try easy).
     Qed.
 
@@ -206,24 +270,6 @@ Module ExampleModelDefn.
           in n_alive + M = 1
         end
       end.
-
-    Goal SystemInvariant counter_invariant (counter_correct I).
-    Proof with simpl in *.
-      unfold SystemInvariant, Hoare.SystemInvariant, initial_state. intros.
-      unfold_ht.
-      destruct s as [sut [val mtx]].
-      destruct Hpre as [Hsut [Hval Hmtx]].
-      simpl in *. subst.
-      inversion Hls.
-      - subst. easy.
-      - simpl in *. subst.
-        clear Hls.
-        induction H0.
-        2: { destruct s' as [sut' [val' mtx']].
-             destruct s as [sut [val mtx]].
-             simpl in H0.
-    Abort.
-
   End simple.
 
 End ExampleModelDefn.

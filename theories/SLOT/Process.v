@@ -103,13 +103,13 @@ Ltac thread_step Ht Hstep :=
   let t' := fresh "t" in
   let trace := fresh "trace" in
   let te := fresh "te" in
-  (* let Hstep := fresh "Hstep" in *)
   match type of Ht with
   | ThreadGenerator _ ?thread _ =>
     destruct Ht as [|req ret t t' trace te Hstep Ht]
   end.
 
 Ltac unfold_thread Ht :=
+  try lazy in Ht;
   match type of Ht with
     ThreadGenerator ?pid ?thread ?trace =>
     match eval lazy in thread with
@@ -133,38 +133,3 @@ Ltac unfold_thread Ht :=
       ]
     end
   end.
-
-(* Section ComposeSystems. *)
-(*   Context {ctx : Ctx} {sys1 sys2 : Type} `{@Runnable ctx sys1} `{@Runnable ctx sys2}. *)
-
-(*   Let S : Type := sys1 * sys2. *)
-
-(*   Inductive composeRunnableStep : S -> S -> _ -> Prop := *)
-(*   | cr_step_l : forall s_l s_l' s_r te, *)
-(*       runnable_step s_l s_l' te -> *)
-(*       composeRunnableStep (s_l, s_r) (s_l', s_r) te *)
-(*   | cr_step_r : forall s_r s_r' s_l te, *)
-(*       runnable_step s_r s_r' te -> *)
-(*       composeRunnableStep (s_l, s_r) (s_l, s_r') te. *)
-
-(*   Global Instance composeRunnable  : *)
-(*     @Runnable ctx (sys1 * sys2) := *)
-(*     {| runnable_step := composeRunnableStep |}. *)
-(* End ComposeSystems. *)
-
-(* Section ReplicateSystem. *)
-(*   Context {ctx : Ctx} {sys : Type} `{Runnable ctx sys}. *)
-
-(*   Definition replicated {t} (N : nat) create : Vec.t t N := *)
-(*     Vec.map create (FoldIn.seq_vec N). *)
-
-(*   Inductive replRunnableStep {N : nat} : Vec.t sys N -> Vec.t sys N -> _ -> Prop := *)
-(*   | repl_run_step : forall i vec s s' te, *)
-(*       Vec.nth vec i = s -> *)
-(*       runnable_step s s' te -> *)
-(*       replRunnableStep vec (Vec.replace vec i s') te. *)
-
-(*   Global Instance replicatedRunnable `{@Runnable ctx sys} {N} : *)
-(*     @Runnable ctx (Vec.t sys N) := *)
-(*     {| runnable_step := replRunnableStep; |}. *)
-(* End ReplicateSystem. *)

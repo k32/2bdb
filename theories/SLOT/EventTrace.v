@@ -16,3 +16,5 @@ Record TraceElem {ctx : Ctx} : Set :=
              }.
 
 Definition Trace {ctx : Ctx} := list (@TraceElem ctx).
+
+Notation "pid '@' req '<~' ret" := (trace_elem _ pid req ret).
