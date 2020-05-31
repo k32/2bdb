@@ -129,8 +129,6 @@ Module ExampleModelDefn.
     Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
                              (at level 100, right associativity).
 
-    Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
-
     Definition put (val : nat) : Handler.(h_req) :=
       inl (Mutable.put val).
 
@@ -165,6 +163,8 @@ Module ExampleModelDefn.
     Definition nop (self : PID) :=
       @throw ctx "Exception".
   End defns.
+
+  Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
   Section simple.
     Let PID := bool.
@@ -219,22 +219,23 @@ Module ExampleModelDefn.
         apply interleaving_symm, interleaving_nil in H;
         rewrite <-H in *; clear H
       | Interleaving ?tl ?tr ?t =>
-        let tl0 := fresh "tl" in
-        let Htl0 := fresh "Heql"  in
-        let tr0 := fresh "tr" in
-        let Htr0 := fresh "Heqr" in
-        let te := fresh "te" in
-        let tl' := fresh "tl" in
-        let tr' := fresh "tr" in
-        let t := fresh "t" in
-        remember tl as tl0 eqn:Htl0;
-        remember tr as tr0 eqn:Htr0;
-        destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl' ];
-        repeat (match goal with
-                | [H : _ :: _ = _ |- _] =>
-                  inversion H; subst; clear H
-                end);
-        discriminate || unfold_interleaving H
+        (* let tl0 := fresh "tl" in *)
+        (* let Htl0 := fresh "Heql"  in *)
+        (* let tr0 := fresh "tr" in *)
+        (* let Htr0 := fresh "Heqr" in *)
+        (* let te := fresh "te" in *)
+        (* let tl' := fresh "tl" in *)
+        (* let tr' := fresh "tr" in *)
+        (* let t := fresh "t" in *)
+        (* remember tl as tl0 eqn:Htl0; *)
+        (* remember tr as tr0 eqn:Htr0; *)
+        (* destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl' ]; *)
+        (* repeat (match goal with *)
+        (*         | [H : _ :: _ = _ |- _] => *)
+        (*           inversion H; subst; clear H *)
+        (*         end); *)
+        (* discriminate || unfold_interleaving H *)
+        idtac tl tr t
       end.
 
     Ltac bruteforce Ht :=
@@ -254,14 +255,76 @@ Module ExampleModelDefn.
         unfold_interleaving Hint
       end.
 
+    Ltac trace_step f :=
+      simpl in f;
+      match type of f with
+      | LongStep _ [] _ =>
+        let s := fresh "s" in
+        let Hx := fresh "Hx" in
+        let Hy := fresh "Hy" in
+        let Hz := fresh "Hz" in
+        inversion f as [s Hx Hy Hz|];
+        subst s; clear f; clear Hy;
+        match type of Hz with
+        | ?s = _ => subst s
+        end
+      | LongStep _ (_ :: _) _ =>
+        let s' := fresh "s" in
+        let te := fresh "te" in
+        let tail := fresh "tail" in
+        let Hcr := fresh "Hcr" in
+        let Htl := fresh "Htl" in
+        inversion_clear f as [|? s' ? te tail Hcr Htl];
+        rename Htl into f
+      end.
+
+    Ltac handler_step' Hcr :=
+      simpl in Hcr;
+      match type of Hcr with
+      | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
+        let s0 := fresh "s_" in
+        let s'0 := fresh "s'_" in
+        let l := fresh "l" in
+        let r := fresh "r" in
+        let l' := fresh "l" in
+        let r' := fresh "r" in
+        let Hcr_l := fresh Hcr "_l" in
+        let Hcr_r := fresh Hcr "_r" in
+        remember s' as s'0;
+        destruct s as [l r];
+        destruct s' as [l' r'];
+        inversion Hcr as [Hcr_l];
+        simpl in Hcr_l
+        (* subst s0; *)
+        (* subst s'0 *)
+        (* destruct Hcr_l as [Hcr_l Hcr_r] *)
+        (* match type of Hcr_l with *)
+        (* | l = l' => try (subst l'); rename Hcr_r into Hcr *)
+        (* | _      => try (subst r'); rename Hcr_l into Hcr *)
+        (* end(* ; *) *)
+        (* handler_step' Hcr *)
+      (* | _ => *)
+      (*   try (inversion Hcr; [idtac]) *)
+      end.
+
+
+    Goal {{ h_initial_state Handler }}
+           [true @ I <~ grab; false @ I <~ grab]
+         {{ fun s => fst s = 2 }}.
+    Proof.
+      unfold_ht.
+      trace_step Hls.
+      trace_step Hls.
+      trace_step Hls.
+      handler_step' Hcr.
+      handler_step' Hcr0.  subst.
+      firstorder.
+      subst.
+    Abort.
+
+
     Goal -{{ h_initial_state Handler }} PairEnsemble {{ fun s => fst s = 2 }}.
     Proof.
-      intros t Ht.
-      unfold_ht.
-      cbv in Hpre.
-      bruteforce Ht.
-      unfold_trace Hls.
-      lazy in Hcr. subst.
     Abort.
 
     Let counter_invariant (sys : Model) : Prop :=

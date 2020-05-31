@@ -293,6 +293,7 @@ Ltac unfold_trace f tac :=
     let tail := fresh "tail" in
     let Hcr := fresh "Hcr" in
     let Htl := fresh "Htl" in
+    try subst h;
     inversion_clear f as [|s1 s2 s3 te tail Hcr Htl];
     tac Hcr;
     unfold_trace Htl tac
@@ -300,16 +301,14 @@ Ltac unfold_trace f tac :=
 
 Tactic Notation "unfold_trace" ident(f) tactic3(tac) := unfold_trace f tac.
 Tactic Notation "unfold_trace" ident(f) := unfold_trace f (fun _ => idtac).
-Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => inversion x); subst.
-
 
 Hint Transparent Ensembles.In Ensembles.Complement.
 Hint Constructors LongStep.
 Hint Resolve trace_elems_commute_symm.
 
 Ltac unfold_ht :=
-  let s := fresh "s" in
-  let s' := fresh "s'" in
+  let s := fresh "s_begin" in
+  let s' := fresh "s_end" in
   let Hls := fresh "Hls" in
   let Hpre := fresh "Hpre" in
   intros s s' Hls Hpre.

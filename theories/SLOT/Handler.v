@@ -100,12 +100,16 @@ Section ComposeHandlers.
       unfold compose_ret in ret; easy.
   Defined.
 
+  Inductive ComposeChainRule s s' te :=
+  | h_cr_par : compose_chain_rule s s' te ->
+               ComposeChainRule s s' te.
+
   Definition compose : t :=
     {| h_state         := compose_state;
        h_req           := compose_req;
        h_ret           := compose_ret;
        h_initial_state := compose_initial_state;
-       h_chain_rule    := compose_chain_rule;
+       h_chain_rule    := ComposeChainRule;
     |}.
 
   Definition te_subset_l (te : TE) :=
@@ -208,5 +212,29 @@ Section ComposeHandlers.
       apply ls_cons with (s' := (l', r')); firstorder.
   Qed.
 End ComposeHandlers.
+
+Ltac handler_step Hcr :=
+  simpl in Hcr;
+  match type of Hcr with
+  | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
+    let l := fresh "l" in
+    let r := fresh "r" in
+    let l' := fresh "l" in
+    let r' := fresh "r" in
+    let Hcr_l := fresh Hcr "_l" in
+    let Hcr_r := fresh Hcr "_r" in
+    destruct s as [l r];
+      destruct s' as [l' r'];
+      inversion_clear Hcr as [[Hcr_l Hcr_r]];
+      match type of Hcr_l with
+      | l = l' => subst l'; rename Hcr_r into Hcr
+      | _      => subst r'; rename Hcr_l into Hcr
+      end;
+      handler_step Hcr
+  | ?fff =>
+    try (inversion Hcr; [idtac])
+  end.
+
+Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => handler_step x); subst.
 
 Hint Transparent compose_state.
