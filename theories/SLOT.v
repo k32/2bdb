@@ -240,11 +240,6 @@ Module ExampleModelDefn.
       | _ => destruct_tuple s l r
       end;
       destruct_tuple s' l' r';
-      match goal with
-      | [H : (l', r') = ?x |- _] => subst x
-      | [H : ?x = (l', r') |- _] => subst x
-      | _ => idtac
-      end;
       destruct H as [H];
       simpl in H;
       destruct H as [Hcr_l Hcr_r];
