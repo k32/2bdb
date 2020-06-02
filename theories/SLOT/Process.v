@@ -120,8 +120,8 @@ Ltac unfold_thread Ht :=
       let t := fresh "t" in
       let eq := fresh "Heq" t in
       let Hstep := fresh "Hstep" in
-      let Hreq := fresh "Hstep" in
-      let Ht' := fresh "Hstep" in
+      let Hreq := fresh "Hreq" in
+      let Ht' := fresh "Ht" in
       remember thread as t eqn:eq;
       thread_step Ht Hstep;
       [inversion eq

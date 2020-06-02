@@ -210,35 +210,120 @@ Module ExampleModelDefn.
       rewrite IHInterleaving; auto.
     Qed.
 
-    Ltac unfold_interleaving H :=
+    Ltac destruct_tuple tup a b :=
+      let t0 := fresh "t" in
+      let eq := fresh "Heq" in
+      remember tup as t0 eqn:eq;
+      destruct tup as [a b];
+      subst t0;
+      repeat match goal with
+             | [H : (a,b) = (_,_) |- _] => inversion_clear H
+             | [H : (_,_) = (a,b) |- _] => inversion_clear H
+             end.
+
+    Goal forall {A} (a b : A * A), a = b -> fst a = fst b.
+      intros.
+      destruct_tuple a al ar.
+      destruct_tuple b bl br.
+      easy.
+    Qed.
+
+    Ltac unfold_compose_handler H s s' :=
+      let l := fresh "s__l" in
+      let r := fresh "s__r" in
+      let l' := fresh "s__l" in
+      let r' := fresh "s__r" in
+      let Hcr_l := fresh H "_l" in
+      let Hcr_r := fresh H "_r" in
+      match s with
+      | (_, _) => idtac
+      | _ => destruct_tuple s l r
+      end;
+      destruct_tuple s' l' r';
+      match goal with
+      | [H : (l', r') = ?x |- _] => subst x
+      | [H : ?x = (l', r') |- _] => subst x
+      | _ => idtac
+      end;
+      destruct H as [H];
+      simpl in H;
+      destruct H as [Hcr_l Hcr_r];
+      match type of Hcr_l with
+      | ?x = l' => subst l'; rename Hcr_r into H
+      | _       => subst r'; rename Hcr_l into H
+      end;
+      idtac.
+
+    Ltac handler_step' Hcr :=
+      simpl in Hcr;
+      match type of Hcr with
+      | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
+        unfold_compose_handler Hcr s s'
+      end.
+
+    Ltac trace_step f :=
+      simpl in f;
+      match type of f with
+      | LongStep _ [] _ =>
+        let s := fresh "s" in
+        let Hx := fresh "Hx" in
+        let Hy := fresh "Hy" in
+        let Hz := fresh "Hz" in
+        inversion f as [s Hx Hy Hz|];
+        subst s; clear f; clear Hy
+      | LongStep _ (_ :: _) _ =>
+        let s' := fresh "s" in
+        let te := fresh "te" in
+        let tail := fresh "tail" in
+        let Hcr := fresh "Hcr" in
+        let Htl := fresh "Htl" in
+        inversion_clear f as [|? s' ? te tail Hcr Htl];
+        rename Htl into f;
+        repeat handler_step' Hcr;
+        auto with handlers
+      end.
+
+    Goal {{ h_initial_state Handler }}
+           [true @ I <~ grab; false @ I <~ grab; true @ I <~ grab]
+         {{ fun s => False }}.
+    Proof.
+      unfold_ht.
+      trace_step Hls.
+      trace_step Hls.
+    Qed.
+
+    Ltac unfold_interleaving H Hls :=
+      simpl in H;
       match type of H with
       | Interleaving [] _ _ =>
         apply interleaving_nil in H;
-        rewrite <-H in *; clear H
+        rewrite <-H in *; clear H;
+        repeat trace_step Hls
       | Interleaving _ [] _ =>
         apply interleaving_symm, interleaving_nil in H;
         rewrite <-H in *; clear H
       | Interleaving ?tl ?tr ?t =>
-        (* let tl0 := fresh "tl" in *)
-        (* let Htl0 := fresh "Heql"  in *)
-        (* let tr0 := fresh "tr" in *)
-        (* let Htr0 := fresh "Heqr" in *)
-        (* let te := fresh "te" in *)
-        (* let tl' := fresh "tl" in *)
-        (* let tr' := fresh "tr" in *)
-        (* let t := fresh "t" in *)
-        (* remember tl as tl0 eqn:Htl0; *)
-        (* remember tr as tr0 eqn:Htr0; *)
-        (* destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl' ]; *)
-        (* repeat (match goal with *)
-        (*         | [H : _ :: _ = _ |- _] => *)
-        (*           inversion H; subst; clear H *)
-        (*         end); *)
-        (* discriminate || unfold_interleaving H *)
-        idtac tl tr t
+        let tl0 := fresh "tl" in
+        let Htl0 := fresh "Heql"  in
+        let tr0 := fresh "tr" in
+        let Htr0 := fresh "Heqr" in
+        let te := fresh "te" in
+        let tl' := fresh "tl" in
+        let tr' := fresh "tr" in
+        let t := fresh "t" in
+        remember tl as tl0 eqn:Htl0;
+        remember tr as tr0 eqn:Htr0;
+        destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl'];
+        repeat (match goal with
+                | [H : _ :: _ = _ |- _] =>
+                  inversion H; subst; clear H
+                end);
+        discriminate || (try subst te;
+                        trace_step Hls;
+                        unfold_interleaving H Hls)
       end.
 
-    Ltac bruteforce Ht :=
+    Ltac bruteforce Ht Hls :=
       try lazy in Ht;
       match type of Ht with
       | ThreadGenerator _ _ _ =>
@@ -251,80 +336,15 @@ Module ExampleModelDefn.
         let t := fresh "t" in
         let Hint := fresh "Hint_" t in
         destruct Ht as [t1 t2 t H1 H2 Hint];
-        bruteforce H1; subst; bruteforce H2;
-        unfold_interleaving Hint
+        bruteforce H1 Hls; subst; bruteforce H2 Hls;
+        unfold_interleaving Hint Hls
       end.
-
-    Ltac trace_step f :=
-      simpl in f;
-      match type of f with
-      | LongStep _ [] _ =>
-        let s := fresh "s" in
-        let Hx := fresh "Hx" in
-        let Hy := fresh "Hy" in
-        let Hz := fresh "Hz" in
-        inversion f as [s Hx Hy Hz|];
-        subst s; clear f; clear Hy;
-        match type of Hz with
-        | ?s = _ => subst s
-        end
-      | LongStep _ (_ :: _) _ =>
-        let s' := fresh "s" in
-        let te := fresh "te" in
-        let tail := fresh "tail" in
-        let Hcr := fresh "Hcr" in
-        let Htl := fresh "Htl" in
-        inversion_clear f as [|? s' ? te tail Hcr Htl];
-        rename Htl into f
-      end.
-
-    Ltac handler_step' Hcr :=
-      simpl in Hcr;
-      match type of Hcr with
-      | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
-        let s0 := fresh "s_" in
-        let s'0 := fresh "s'_" in
-        let l := fresh "l" in
-        let r := fresh "r" in
-        let l' := fresh "l" in
-        let r' := fresh "r" in
-        let Hcr_l := fresh Hcr "_l" in
-        let Hcr_r := fresh Hcr "_r" in
-        remember s' as s'0;
-        destruct s as [l r];
-        destruct s' as [l' r'];
-        inversion Hcr as [Hcr_l];
-        simpl in Hcr_l
-        (* subst s0; *)
-        (* subst s'0 *)
-        (* destruct Hcr_l as [Hcr_l Hcr_r] *)
-        (* match type of Hcr_l with *)
-        (* | l = l' => try (subst l'); rename Hcr_r into Hcr *)
-        (* | _      => try (subst r'); rename Hcr_l into Hcr *)
-        (* end(* ; *) *)
-        (* handler_step' Hcr *)
-      (* | _ => *)
-      (*   try (inversion Hcr; [idtac]) *)
-      end.
-
-
-    Goal {{ h_initial_state Handler }}
-           [true @ I <~ grab; false @ I <~ grab]
-         {{ fun s => fst s = 2 }}.
-    Proof.
-      unfold_ht.
-      trace_step Hls.
-      trace_step Hls.
-      trace_step Hls.
-      handler_step' Hcr.
-      handler_step' Hcr0.  subst.
-      firstorder.
-      subst.
-    Abort.
-
 
     Goal -{{ h_initial_state Handler }} PairEnsemble {{ fun s => fst s = 2 }}.
     Proof.
+      intros t Ht.
+      unfold_ht.
+      bruteforce Ht Hls.
     Abort.
 
     Let counter_invariant (sys : Model) : Prop :=

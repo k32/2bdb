@@ -69,3 +69,11 @@ Section defs.
     discriminate.
   Qed.
 End defs.
+
+Ltac mutex_contradiction :=
+  match goal with
+    [H1 : mutex_chain_rule _ ?s1 ?s2 _, H2 : mutex_chain_rule _ ?s2 ?s3 _ |- _] =>
+      inversion H1; inversion H2; subst; discriminate
+  end.
+
+Hint Extern 4 => mutex_contradiction : handlers.
