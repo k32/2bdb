@@ -107,10 +107,58 @@ Module Model.
     @t PID SUT h.
 End Model.
 
+Ltac unfold_interleaving H Hls :=
+  simpl in H;
+  lazymatch type of H with
+  | Interleaving [] _ _ =>
+    apply interleaving_nil in H;
+    rewrite <-H in *; clear H;
+    repeat trace_step Hls
+  | Interleaving _ [] _ =>
+    apply interleaving_symm, interleaving_nil in H;
+    rewrite <-H in *; clear H;
+    repeat trace_step Hls
+  | Interleaving ?tl ?tr ?t =>
+    let te := fresh "te" in
+    let tl' := fresh "tl" in
+    let tr' := fresh "tr" in
+    let t := fresh "t" in
+    (* stuff that we need in order to eliminate wrong hypotheses *)
+    let tl0 := fresh "tl" in let Htl0 := fresh "Heql" in remember tl as tl0 eqn:Htl0;
+    let tr0 := fresh "tr" in let Htr0 := fresh "Heqr" in remember tr as tr0 eqn:Htr0;
+    destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl'];
+    repeat (match goal with
+            | [H : _ :: _ = _ |- _] =>
+              inversion H; subst; clear H
+            end);
+    try discriminate;
+    subst;
+    trace_step Hls;
+    unfold_interleaving H Hls
+  end.
+
+Ltac bruteforce Ht Hls :=
+  try lazy in Ht;
+  match type of Ht with
+  | ThreadGenerator _ _ _ =>
+    unfold_thread Ht
+  | Parallel ?e1 ?e2 ?t =>
+    let t1 := fresh "t_l" in
+    let t2 := fresh "t_r" in
+    let H1 := fresh "H" t1 in
+    let H2 := fresh "H" t2 in
+    let t := fresh "t" in
+    let Hint := fresh "Hint_" t in
+    destruct Ht as [t1 t2 t H1 H2 Hint];
+    bruteforce H1 Hls; subst; bruteforce H2 Hls;
+    unfold_interleaving Hint Hls
+  end.
+
+Require Import
+        Handlers.Mutex
+        Handlers.Mutable.
+
 Module ExampleModelDefn.
-  Require Import
-          Handlers.Mutex
-          Handlers.Mutable.
 
   Import Model.
 
@@ -200,85 +248,6 @@ Module ExampleModelDefn.
       repeat (constructor; try easy).
     Qed.
 
-    Lemma interleaving_nil : forall {ctx} t1 t2,
-        @Interleaving ctx [] t1 t2 ->
-        t1 = t2.
-    Proof.
-      intros.
-      remember [] as t.
-      induction H; subst; try easy.
-      rewrite IHInterleaving; auto.
-    Qed.
-
-    Ltac destruct_tuple tup a b :=
-      let t0 := fresh "t" in
-      let eq := fresh "Heq" in
-      remember tup as t0 eqn:eq;
-      destruct tup as [a b];
-      subst t0;
-      repeat match goal with
-             | [H : (a,b) = (_,_) |- _] => inversion_clear H
-             | [H : (_,_) = (a,b) |- _] => inversion_clear H
-             end.
-
-    Goal forall {A} (a b : A * A), a = b -> fst a = fst b.
-      intros.
-      destruct_tuple a al ar.
-      destruct_tuple b bl br.
-      easy.
-    Qed.
-
-    Ltac unfold_compose_handler H s s' :=
-      let l := fresh "s__l" in
-      let r := fresh "s__r" in
-      let l' := fresh "s__l" in
-      let r' := fresh "s__r" in
-      let Hcr_l := fresh H "_l" in
-      let Hcr_r := fresh H "_r" in
-      match s with
-      | (_, _) => idtac
-      | _ => destruct_tuple s l r
-      end;
-      destruct_tuple s' l' r';
-      destruct H as [H];
-      simpl in H;
-      destruct H as [Hcr_l Hcr_r];
-      lazymatch type of Hcr_l with
-      | ?x = l' => subst l'
-      | ?x = r' => subst r'
-      end;
-      rename Hcr_r into H;
-      idtac.
-
-    Ltac handler_step' Hcr :=
-      lazy in Hcr;
-      lazymatch type of Hcr with
-      | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
-        repeat unfold_compose_handler Hcr s s'
-      end.
-
-    Ltac trace_step f :=
-      lazy in f;
-      lazymatch type of f with
-      | LongStep _ [] _ =>
-        let s := fresh "s" in
-        let Hx := fresh "Hx" in
-        let Hy := fresh "Hy" in
-        let Hz := fresh "Hz" in
-        inversion f as [s Hx Hy Hz|];
-        subst s; clear f; clear Hy
-      | LongStep _ (_ :: _) _ =>
-        let s' := fresh "s" in
-        let te := fresh "te" in
-        let tail := fresh "tail" in
-        let Hcr := fresh "Hcr" in
-        let Htl := fresh "Htl" in
-        inversion_clear f as [|? s' ? te tail Hcr Htl];
-        rename Htl into f;
-        repeat handler_step' Hcr;
-        auto with handlers
-      end.
-
     Goal forall v1 v2,
       {{ h_initial_state Handler }}
         [true @ v1 <~ get;
@@ -292,53 +261,6 @@ Module ExampleModelDefn.
       unfold_ht.
       repeat trace_step Hls.
     Qed.
-
-    Ltac unfold_interleaving H Hls :=
-      simpl in H;
-      lazymatch type of H with
-      | Interleaving [] _ _ =>
-        apply interleaving_nil in H;
-        rewrite <-H in *; clear H;
-        repeat trace_step Hls
-      | Interleaving _ [] _ =>
-        apply interleaving_symm, interleaving_nil in H;
-        rewrite <-H in *; clear H;
-        repeat trace_step Hls
-      | Interleaving ?tl ?tr ?t =>
-        let te := fresh "te" in
-        let tl' := fresh "tl" in
-        let tr' := fresh "tr" in
-        let t := fresh "t" in
-        (* stuff that we need in order to eliminate wrong hypotheses *)
-        let tl0 := fresh "tl" in let Htl0 := fresh "Heql" in remember tl as tl0 eqn:Htl0;
-        let tr0 := fresh "tr" in let Htr0 := fresh "Heqr" in remember tr as tr0 eqn:Htr0;
-        destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl'];
-        repeat (match goal with
-                | [H : _ :: _ = _ |- _] =>
-                  inversion H; subst; clear H
-                end);
-        try discriminate;
-        subst;
-        trace_step Hls;
-        unfold_interleaving H Hls
-      end.
-
-    Ltac bruteforce Ht Hls :=
-      try lazy in Ht;
-      match type of Ht with
-      | ThreadGenerator _ _ _ =>
-        unfold_thread Ht
-      | Parallel ?e1 ?e2 ?t =>
-        let t1 := fresh "t_l" in
-        let t2 := fresh "t_r" in
-        let H1 := fresh "H" t1 in
-        let H2 := fresh "H" t2 in
-        let t := fresh "t" in
-        let Hint := fresh "Hint_" t in
-        destruct Ht as [t1 t2 t H1 H2 Hint];
-        bruteforce H1 Hls; subst; bruteforce H2 Hls;
-        unfold_interleaving Hint Hls
-      end.
 
     Goal -{{ h_initial_state Handler }} PairEnsemble {{ fun s => fst s = 2 }}.
     Proof.

@@ -75,6 +75,16 @@ Section props.
       induction H0; constructor; auto.
     Qed.
 
+    Lemma interleaving_nil : forall {ctx} t1 t2,
+        @Interleaving ctx [] t1 t2 ->
+        t1 = t2.
+    Proof.
+      intros.
+      remember [] as t.
+      induction H0; subst; try easy.
+      rewrite IHInterleaving; auto.
+    Qed.
+
     (* Lemma interleaving_par_seq : forall (t0 t1 t2 t : list TE), *)
     (*     Interleaving (t1 ++ t2) t0 t -> *)
     (*     exists t_hd t_tl t0_hd t0_tl, *)

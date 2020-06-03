@@ -213,28 +213,77 @@ Section ComposeHandlers.
   Qed.
 End ComposeHandlers.
 
+Ltac destruct_tuple tup a b :=
+  let t0 := fresh "t" in
+  let eq := fresh "Heq" in
+  remember tup as t0 eqn:eq;
+  destruct tup as [a b];
+  subst t0;
+  repeat match goal with
+         | [H : (a,b) = (_,_) |- _] => inversion_clear H
+         | [H : (_,_) = (a,b) |- _] => inversion_clear H
+         end.
+
+Goal forall {A} (a b : A * A), a = b -> fst a = fst b.
+  intros.
+  destruct_tuple a al ar.
+  destruct_tuple b bl br.
+  easy.
+Qed.
+
+Ltac unfold_compose_handler H s s' :=
+  let l := fresh "s__l" in
+  let r := fresh "s__r" in
+  let l' := fresh "s__l" in
+  let r' := fresh "s__r" in
+  let Hcr_l := fresh H "_l" in
+  let Hcr_r := fresh H "_r" in
+  match s with
+  | (_, _) => idtac
+  | _ => destruct_tuple s l r
+  end;
+  destruct_tuple s' l' r';
+  destruct H as [H];
+  simpl in H;
+  destruct H as [Hcr_l Hcr_r];
+  lazymatch type of Hcr_l with
+  | ?x = l' => subst l'
+  | ?x = r' => subst r'
+  end;
+  rename Hcr_r into H;
+  idtac.
+
 Ltac handler_step Hcr :=
-  simpl in Hcr;
-  match type of Hcr with
+  lazy in Hcr;
+  lazymatch type of Hcr with
   | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
-    let l := fresh "l" in
-    let r := fresh "r" in
-    let l' := fresh "l" in
-    let r' := fresh "r" in
-    let Hcr_l := fresh Hcr "_l" in
-    let Hcr_r := fresh Hcr "_r" in
-    destruct s as [l r];
-      destruct s' as [l' r'];
-      inversion_clear Hcr as [[Hcr_l Hcr_r]];
-      match type of Hcr_l with
-      | l = l' => subst l'; rename Hcr_r into Hcr
-      | _      => subst r'; rename Hcr_l into Hcr
-      end;
-      handler_step Hcr
-  | ?fff =>
-    try (inversion Hcr; [idtac])
+    repeat unfold_compose_handler Hcr s s'
   end.
 
-Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => handler_step x); subst.
+Create HintDb handlers.
+
+Ltac trace_step f :=
+  lazy in f;
+  lazymatch type of f with
+  | LongStep _ [] _ =>
+    let s := fresh "s" in
+    let Hx := fresh "Hx" in
+    let Hy := fresh "Hy" in
+    let Hz := fresh "Hz" in
+    inversion f as [s Hx Hy Hz|];
+    subst s; clear f; clear Hy
+  | LongStep _ (_ :: _) _ =>
+    let s' := fresh "s" in
+    let te := fresh "te" in
+    let tail := fresh "tail" in
+    let Hcr := fresh "Hcr" in
+    let Htl := fresh "Htl" in
+    inversion_clear f as [|? s' ? te tail Hcr Htl];
+    rename Htl into f;
+    repeat handler_step Hcr;
+    auto with handlers
+  end.
+
+Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => inversion x); subst.
 
 Hint Transparent compose_state.

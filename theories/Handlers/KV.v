@@ -71,7 +71,7 @@ Section Properties.
       @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
   Proof.
     split; intros;
-      unfold_trace_deep H;
+    unfold_trace_deep H;
       repeat apply ls_cons with (s' := s4); auto.
   Qed.
 
