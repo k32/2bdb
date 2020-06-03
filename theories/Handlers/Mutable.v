@@ -23,6 +23,8 @@ Section defs.
   Let ctx := mkCtx PID req_t ret_t.
   Let TE := @TraceElem ctx.
 
+  Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
+
   Inductive mut_chain_rule : T -> T -> TE -> Prop :=
   | mut_get : forall s pid,
       mut_chain_rule s s (trace_elem ctx pid get s)
@@ -40,3 +42,11 @@ Section defs.
   Fail Lemma mut_get_comm : forall v pid1 pid2, (*TODO*)
       trace_elems_commute (trace_elem ctx pid1 get v) (trace_elem ctx pid2 get v).
 End defs.
+
+Ltac elim_mut :=
+  repeat match goal with
+           [H: mut_chain_rule _ _ ?s ?s' ?te |- _] =>
+           inversion_clear H;
+           try subst s;
+           try subst s'
+         end.

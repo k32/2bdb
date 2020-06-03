@@ -243,7 +243,6 @@ Module ExampleModelDefn.
       destruct H as [H];
       simpl in H;
       destruct H as [Hcr_l Hcr_r];
-      idtac "simplified H" Hcr_l Hcr_r l' r';
       lazymatch type of Hcr_l with
       | ?x = l' => subst l'
       | ?x = r' => subst r'
@@ -255,7 +254,7 @@ Module ExampleModelDefn.
       lazy in Hcr;
       lazymatch type of Hcr with
       | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
-        unfold_compose_handler Hcr s s'
+        repeat unfold_compose_handler Hcr s s'
       end.
 
     Ltac trace_step f :=
@@ -345,8 +344,13 @@ Module ExampleModelDefn.
     Proof.
       intros t Ht.
       unfold_ht.
-      bruteforce Ht Hls; lazy in Hpre; firstorder.
-      - give_up.
+      bruteforce Ht Hls; clear_mutex; lazy in Hpre; firstorder; simpl.
+      - match goal with
+          [H: mut_chain_rule _ _ ?s ?s' ?te |- _] =>
+          inversion H
+        end.
+        subst.
+        give_up.
       - give_up.
     Abort.
 

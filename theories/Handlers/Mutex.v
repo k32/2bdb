@@ -77,3 +77,8 @@ Ltac mutex_contradiction :=
   end.
 
 Hint Extern 4 => mutex_contradiction : handlers.
+
+Ltac clear_mutex :=
+  repeat match goal with
+           [H: mutex_chain_rule _ _ _ _ |- _] => clear H
+         end.
