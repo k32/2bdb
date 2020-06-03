@@ -307,11 +307,16 @@ Hint Constructors LongStep.
 Hint Resolve trace_elems_commute_symm.
 
 Ltac unfold_ht :=
-  let s := fresh "s_begin" in
-  let s' := fresh "s_end" in
-  let Hls := fresh "Hls" in
-  let Hpre := fresh "Hpre" in
-  intros s s' Hls Hpre.
+  match goal with
+  | [ |- {{?pre}} ?t {{?post}}] =>
+    let s := fresh "s_begin" in
+    let s' := fresh "s_end" in
+    let Hls := fresh "Hls" in
+    let Hpre := fresh "Hpre" in
+    intros s s' Hls Hpre
+  | _ =>
+    fail "Goal does not look like a Hoare triple"
+  end.
 
 Section tests.
   Generalizable Variables ST TE.

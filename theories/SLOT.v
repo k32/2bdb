@@ -148,7 +148,7 @@ Module ExampleModelDefn.
       infinite_loop self.
 
     (* Data race example: *)
-    Definition counter_race (self : PID) : @Thread ctx :=
+    Definition inc (self : PID) : @Thread ctx :=
       do v <- get;
       done put (v + 1).
 
@@ -243,22 +243,22 @@ Module ExampleModelDefn.
       destruct H as [H];
       simpl in H;
       destruct H as [Hcr_l Hcr_r];
-      match type of Hcr_l with
+      lazymatch type of Hcr_l with
       | ?x = l' => subst l'; rename Hcr_r into H
       | _       => subst r'; rename Hcr_l into H
       end;
       idtac.
 
     Ltac handler_step' Hcr :=
-      simpl in Hcr;
-      match type of Hcr with
+      lazy in Hcr;
+      lazymatch type of Hcr with
       | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
         unfold_compose_handler Hcr s s'
       end.
 
     Ltac trace_step f :=
-      simpl in f;
-      match type of f with
+      lazy in f;
+      lazymatch type of f with
       | LongStep _ [] _ =>
         let s := fresh "s" in
         let Hx := fresh "Hx" in
@@ -278,13 +278,18 @@ Module ExampleModelDefn.
         auto with handlers
       end.
 
-    Goal {{ h_initial_state Handler }}
-           [true @ I <~ grab; false @ I <~ grab; true @ I <~ grab]
-         {{ fun s => False }}.
+    Goal forall v1 v2,
+      {{ h_initial_state Handler }}
+        [true @ v1 <~ get;
+         true @ I <~ grab;
+         true @ v2 <~ get;
+         false @ I <~ grab;
+         true @ I <~ grab]
+      {{ fun s => False }}.
     Proof.
+      intros v1 v2.
       unfold_ht.
-      trace_step Hls.
-      trace_step Hls.
+      repeat trace_step Hls.
     Qed.
 
     Ltac unfold_interleaving H Hls :=
@@ -296,26 +301,26 @@ Module ExampleModelDefn.
         repeat trace_step Hls
       | Interleaving _ [] _ =>
         apply interleaving_symm, interleaving_nil in H;
-        rewrite <-H in *; clear H
+        rewrite <-H in *; clear H;
+        repeat trace_step Hls
       | Interleaving ?tl ?tr ?t =>
-        let tl0 := fresh "tl" in
-        let Htl0 := fresh "Heql"  in
-        let tr0 := fresh "tr" in
-        let Htr0 := fresh "Heqr" in
         let te := fresh "te" in
         let tl' := fresh "tl" in
         let tr' := fresh "tr" in
         let t := fresh "t" in
-        remember tl as tl0 eqn:Htl0;
-        remember tr as tr0 eqn:Htr0;
+        (* stuff that we need in order to eliminate wrong hypotheses *)
+        let tl0 := fresh "tl" in let Htl0 := fresh "Heql" in remember tl as tl0 eqn:Htl0;
+        let tr0 := fresh "tr" in let Htr0 := fresh "Heqr" in remember tr as tr0 eqn:Htr0;
         destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl'];
         repeat (match goal with
                 | [H : _ :: _ = _ |- _] =>
                   inversion H; subst; clear H
                 end);
-        discriminate || (try subst te;
-                        trace_step Hls;
-                        unfold_interleaving H Hls)
+        try discriminate;
+        subst;
+        trace_step Hls;
+        unfold_interleaving H Hls;
+        idtac
       end.
 
     Ltac bruteforce Ht Hls :=
