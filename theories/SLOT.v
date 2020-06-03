@@ -243,10 +243,12 @@ Module ExampleModelDefn.
       destruct H as [H];
       simpl in H;
       destruct H as [Hcr_l Hcr_r];
+      idtac "simplified H" Hcr_l Hcr_r l' r';
       lazymatch type of Hcr_l with
-      | ?x = l' => subst l'; rename Hcr_r into H
-      | _       => subst r'; rename Hcr_l into H
+      | ?x = l' => subst l'
+      | ?x = r' => subst r'
       end;
+      rename Hcr_r into H;
       idtac.
 
     Ltac handler_step' Hcr :=
@@ -294,7 +296,7 @@ Module ExampleModelDefn.
 
     Ltac unfold_interleaving H Hls :=
       simpl in H;
-      match type of H with
+      lazymatch type of H with
       | Interleaving [] _ _ =>
         apply interleaving_nil in H;
         rewrite <-H in *; clear H;
@@ -319,8 +321,7 @@ Module ExampleModelDefn.
         try discriminate;
         subst;
         trace_step Hls;
-        unfold_interleaving H Hls;
-        idtac
+        unfold_interleaving H Hls
       end.
 
     Ltac bruteforce Ht Hls :=
@@ -344,7 +345,9 @@ Module ExampleModelDefn.
     Proof.
       intros t Ht.
       unfold_ht.
-      bruteforce Ht Hls.
+      bruteforce Ht Hls; lazy in Hpre; firstorder.
+      - give_up.
+      - give_up.
     Abort.
 
     Let counter_invariant (sys : Model) : Prop :=

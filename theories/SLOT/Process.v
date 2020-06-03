@@ -94,7 +94,6 @@ Proof.
   - simpl in t0. subst. contradiction.
 Qed.
 
-
 Ltac thread_step Ht Hstep :=
   let s0 := fresh "s" in
   let Heq := fresh "Heq" in
@@ -107,7 +106,11 @@ Ltac thread_step Ht Hstep :=
   match type of Ht with
   | ThreadGenerator _ ?thread _ =>
     destruct Ht as [|req ret t t' trace te Hstep Ht];
-    [idtac|simpl in req, ret, te]
+    [idtac
+    |simpl in te;
+     subst te;
+     simpl in req, ret, Hstep, Ht
+    ]
   end.
 
 Ltac unfold_thread Ht :=
