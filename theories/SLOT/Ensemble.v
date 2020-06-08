@@ -53,8 +53,14 @@ Infix "->>" := (TraceEnsembleConcat) (at level 100) : hoare_scope.
 Infix "-||" := (Parallel) (at level 101) : hoare_scope.
 
 Section props.
-  Context {S TE} `{StateSpace S TE}.
+  Context {S TE} `{HsspS : StateSpace S TE}.
   Let T := list TE.
+
+  (* Lemma ensemble_invariant_sublist : forall prop E a b c, *)
+  (*     a ++ b = c -> *)
+  (*     E c -> *)
+  (*     EnsembleInvariant prop E -> *)
+  (*     EnsembleInvariant prop E a. *)
 
   Lemma e_hoare_concat : forall pre mid post e1 e2,
       -{{pre}} e1 {{mid}} ->
@@ -72,7 +78,7 @@ Section props.
       Interleaving t2 t1 t.
     Proof.
       intros.
-      induction H0; constructor; auto.
+      induction H; constructor; auto.
     Qed.
 
     Lemma interleaving_nil : forall {ctx} t1 t2,
@@ -81,24 +87,9 @@ Section props.
     Proof.
       intros.
       remember [] as t.
-      induction H0; subst; try easy.
+      induction H; subst; try easy.
       rewrite IHInterleaving; auto.
     Qed.
-
-    (* Lemma interleaving_par_seq : forall (t0 t1 t2 t : list TE), *)
-    (*     Interleaving (t1 ++ t2) t0 t -> *)
-    (*     exists t_hd t_tl t0_hd t0_tl, *)
-    (*       t_hd ++ t_tl = t /\ t0_hd ++ t0_tl = t0 /\ *)
-    (*       Interleaving t1 t0_hd t_hd /\ Interleaving t2 t0_tl t_tl. *)
-    (* Proof. *)
-    (*   intros t0 t1 t2 t Hint.       *)
-    (*   induction Hint. *)
-    (*   - destruct IHHint as [t_hd [t_tl [t0_hd [t0_tl IH]]]]. *)
-    (*     exists (te :: t_hd). exists t_tl. exists (te :: t0_hd). exists t0_tl. *)
-    (*     firstorder. *)
-    (*     firstorder;  *)
-    (*     + reflexivity. *)
-    (*     + constructor. *)
 
     Lemma interleaving_par_head : forall (t1 t2 t : list TE),
         Interleaving t1 t2 t ->
@@ -125,10 +116,10 @@ Section props.
       -{{P}} e1 ->> e2 {{Q}}.
     Proof.
       intros. intros t Hseq.
-      specialize (H0 t). apply H0. clear H0.
+      specialize (H t). apply H. clear H.
       destruct Hseq as [t1 t2].
       apply ilv_par with (t3 := t1) (t4 := t2); auto.
-      clear H0 H1.
+      clear H H0.
       induction t1; simpl; constructor; easy.
     Qed.
 
@@ -137,11 +128,71 @@ Section props.
         -{{P}} e2 -|| e1 {{Q}}.
     Proof.
       intros. intros t Hpar.
-      specialize (H0 t). apply H0. clear H0.
+      specialize (H t). apply H. clear H.
       destruct Hpar as [t1 t2 t H1 H2 Hint].
       apply interleaving_symm in Hint.
       apply ilv_par with (t3 := t2) (t4 := t1); easy.
     Qed.
+
+    Lemma interl_app_tl : forall (b c__hd c__tl t : list TE),
+        Interleaving b c__tl t ->
+        Interleaving b (c__hd ++ c__tl) (c__hd ++ t).
+    Proof.
+      intros.
+      induction c__hd; auto.
+      simpl. constructor. assumption.
+    Qed.
+
+    Lemma interl_app_hd : forall (a c__hd c__tl t : list TE),
+        Interleaving a c__hd t ->
+        Interleaving a (c__hd ++ c__tl) (t ++ c__tl).
+    Proof.
+      intros.
+      induction H; simpl; try (constructor; assumption).
+      induction t1; simpl; constructor; assumption.
+    Qed.
+
+    Lemma interleaving_nil_r : forall (a b : list TE),
+        Interleaving a b [] ->
+        a = [] /\ b = [].
+    Proof.
+      intros.
+      remember [] as t.
+      destruct H; try discriminate; firstorder.
+    Qed.
+
+    Lemma interleaving_par_seq : forall (a b c t : list TE),
+        Interleaving (a ++ b) c t ->
+        exists c__hd c__tl t__hd t__tl,
+          t__hd ++ t__tl = t /\ c__hd ++ c__tl = c /\
+          Interleaving a c__hd t__hd /\ Interleaving b c__tl t__tl.
+    Proof.
+      (* induction t; intros; simpl in *. *)
+      (* - exists []. exists c. exists []. exists []. *)
+      (*   apply interleaving_nil_r in H. *)
+      (*   destruct H as [Hab Hc]. *)
+      (*   apply app_eq_nil in Hab. *)
+      (*   destruct Hab. subst. *)
+      (*   firstorder; constructor. *)
+      (* -  *)
+
+
+      (*   apply interleaving_nil_r in H. *)
+
+      (*   exists []. exists c. exists []. exists t. firstorder. constructor. *)
+      (* - *)
+      intros.
+      induction H; simpl;
+        try destruct IHInterleaving as [c__hd [c__tl [t__hd [t__tl [Ht [Ht2 [Hint1 Hint2]]]]]]]; subst.
+      { exists (c__hd). exists c__tl. exists (te :: t__hd). exists t__tl.
+        firstorder.
+        give_up.
+      }
+      { exists (te :: c__hd). exists c__tl. exists (te :: t__hd). exists t__tl.
+           firstorder; simpl.
+           constructor. assumption.
+      }
+    Abort.
 
     Lemma e_hoare_inv_par_seq : forall e1 e2 e prop,
         EnsembleInvariant prop (e1 -|| e) ->
@@ -150,16 +201,21 @@ Section props.
     Proof.
       intros.
       intros t Ht.
-      destruct Ht as [t12 t0 t Ht12 Ht0 Hint].
-      destruct Ht12 as [t1 t2 Ht1 Ht2].
-      (* apply interleaving_par_seq in Hint. *)
-      (* destruct Hint as [t1' [t2' [t01 [t02 Hx]]]]. *)
-      (* firstorder. *)
-      (* subst. *)
-      (* unfold EnsembleInvariant in H0, H1. *)
-      (* specialize (H0 t1'). *)
-      (* specialize (H1 t2'). *)
-    Abort.
+      destruct Ht as [t12 c t Ht12 Hc Hint].
+      destruct Ht12 as [a b Ha Hb].
+      apply interleaving_par_seq in Hint.
+      destruct Hint as [c__hd [c__tl [t__hd [t__tl [Ht [Hcc [Hhd Htl]]]]]]].
+      specialize (H (t__hd ++ c__tl)). apply trace_inv_split in H.
+      specialize (H0 (c__hd ++ t__tl)). apply trace_inv_split in H0.
+      subst.
+      apply trace_inv_app; firstorder.
+      - apply ilv_par with (t1 := b) (t2 := c); auto.
+        subst.
+        apply interl_app_tl; assumption.
+      - apply ilv_par with (t1 := a) (t2 := c); auto.
+        subst.
+        apply interl_app_hd; assumption.
+    Qed.
 
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
         (* -{{P}} e1 -|| e {{Q}} -> *)

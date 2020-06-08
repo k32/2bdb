@@ -138,6 +138,16 @@ Section defn.
     try constructor; firstorder.
   Qed.
 
+  Lemma trace_inv_app : forall prop t1 t2,
+      TraceInvariant prop t1 ->
+      TraceInvariant prop t2 ->
+      TraceInvariant prop (t1 ++ t2).
+  Proof.
+    intros.
+    induction t1; simpl in *; auto.
+    inversion_ H.
+  Qed.
+
   Definition trace_elems_commute (te1 te2 : TE) :=
     forall s s',
       LongStep s [te1; te2] s' <-> LongStep s [te2; te1] s'.

@@ -135,6 +135,38 @@ Hoare logic of traces consists of just one rule:
        {\{P\} \bm{t} \{Q\}}
 \end{equation}
 
+\def\grdom{(0,0) circle (1.5cm)}
+\def\grcod{(0:5cm) circle (1.5cm)}
+\def\grpre{(1cm,2cm) circle (1.5cm)}
+\def\grpost{(6cm,2cm) circle (1.5cm)}
+
+\begin{figure}
+  \centering
+  \begin{tikzpicture}
+    \draw \grdom node[below] {$\dom{\bm{t}}$};
+    \draw \grcod node [below] {$\cod{\bm{t}}$};
+    \draw \grpre node [above] {$P$};
+    \draw \grpost node [above] {$Q$};
+
+    \begin{scope}
+      \clip \grdom;
+      \fill[gray] \grpre;
+    \end{scope}
+    \begin{scope}
+      \clip \grpost;
+      \clip \grcod;
+      \fill[lightgray] \grpost;
+    \end{scope}
+
+    \draw [->] (0.0cm,1.1cm) -- (1.7cm, 1.6cm) -- (4.3cm, 1.5cm) -- (5.1cm, 1.2cm)
+    \draw [->] (0.7cm,1.0cm) -- (2.2cm, 1.2cm) -- (4cm, 0.5cm) -- (5.3cm, 1.0cm)
+    \draw [->] (0.4cm,.9cm) -- (1.9cm, -0cm) -- (4.2cm, 0.01cm) -- (6cm, 0.7cm)
+  \end{tikzpicture}
+  \caption{Intuition behind $\{P\}\bm{t}\{Q\}$}
+  \label{fig:hoare}
+\end{figure}
+
+
 \begin{theorem}
   Let $P$, $Q$, $R$ are asserts, $\bm{t_1}$ and $\bm{t_2}$ are traces,
   then from $\{P\}\bm{t_1}\{Q\}$ and $\{Q\}\bm{t_2}\{R\}$ follows

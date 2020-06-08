@@ -138,8 +138,8 @@ Ltac unfold_interleaving H Hls :=
   end.
 
 Ltac bruteforce Ht Hls :=
-  try lazy in Ht;
-  match type of Ht with
+  let Ht' := type of Ht in
+  match eval lazy in Ht' with
   | ThreadGenerator _ _ _ =>
     unfold_thread Ht
   | Parallel ?e1 ?e2 ?t =>
@@ -267,10 +267,12 @@ Module ExampleModelDefn.
       intros t Ht.
       unfold_ht.
       bruteforce Ht Hls; clear_mutex; lazy in Hpre; firstorder; simpl.
-      - match goal with
-          [H: mut_chain_rule _ _ ?s ?s' ?te |- _] =>
-          inversion H
-        end.
+      - simpl in *. inversion Hcr5.
+        destruct_tuple Hz s_end_l s_end_r. subst.
+        repeat match goal with
+                 [H: mut_chain_rule _ _ ?s ?s' ?te |- _] =>
+                 inversion_clear H
+               end. subst.
         subst.
         give_up.
       - give_up.
@@ -290,5 +292,4 @@ Module ExampleModelDefn.
         end
       end.
   End simple.
-
 End ExampleModelDefn.
