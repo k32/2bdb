@@ -68,13 +68,13 @@ effect $t$. Trace is a list of elements of $T$.
   the following rules:
 
   \begin{equation}
-    \text{ls\_nil}: \frac{s : S}{\chain{s}{s}{[]}}
+    \frac{s : S}{\chain{s}{s}{[]}} \text{ls\_nil}
   \end{equation}
   \\
   \begin{equation}
-    \text{ls\_cons}:
     \frac{s\, s' \, s'' : S \quad  t : T \quad \bm{t} : \text{list}\,T \quad \crpred{s}{s'}{t} \quad \chain{s'}{s''}{\bm{t}}}
          {\chain{s}{s''}{t::\bm{t}}}
+    \text{ls\_cons}
   \end{equation}
 \end{definition}
 
@@ -105,67 +105,77 @@ domain of $\bm{t}$ does not necessarily match with the set of valid
 initial states of the system.
 
 \begin{definition}
-Side effects $t_1$ and $t_2$ commute when
+  Side effects $t_1$ and $t_2$ commute when
 
-\begin{equation}
-\comm{t_1}{t_2} \triangleq \forall s\,s', \chain{s}{s'}{[t_1,t_2]} \iff \chain{s}{s'}{[t_2,t_1]}
-\end{equation}
+  \begin{equation}
+  \comm{t_1}{t_2} \triangleq \forall s\,s', \chain{s}{s'}{[t_1,t_2]} \iff \chain{s}{s'}{[t_2,t_1]}
+  \end{equation}
+
+  \begin{figure}[h]
+    \centering
+    \begin{tikzpicture}[node distance=3cm, auto]
+      \node (s) {$s$};
+      \node (s1) [right of=s] {$s_1$};
+      \node (s2) [below of=s] {$s_2$};
+      \node (s') [right of=s2] {$s'$};
+      \draw[->] (s) to node {$t_1$} (s1);
+      \draw[->] (s1) to node {$t_2$} (s');
+      \draw[->] (s) to node {$t_2$} (s2);
+      \draw[->] (s2) to node {$t_1$} (s');
+    \end{tikzpicture}
+    \caption{Paths in state space implied by commutativity of $t_1$ and $t_2$}
+    \label{fig:comm}
+  \end{figure}
 \end{definition}
-\begin{figure}
-  \centering
-  \begin{tikzpicture}[node distance=3cm, auto]
-    \node (s) {$s$};
-    \node (s1) [right of=s] {$s_1$};
-    \node (s2) [below of=s] {$s_2$};
-    \node (s') [right of=s2] {$s'$};
-    \draw[->] (s) to node {$t_1$} (s1);
-    \draw[->] (s1) to node {$t_2$} (s');
-    \draw[->] (s) to node {$t_2$} (s2);
-    \draw[->] (s2) to node {$t_1$} (s');
-  \end{tikzpicture}
-  \caption{Paths in state space implied by commutativity of $t_1$ and $t_2$}
-  \label{fig:comm}
-\end{figure}
 
-Hoare logic of traces consists of just one rule:
+\begin{definition}
+  Let $P$ is a predicate called precondition, $Q$ is a predicate
+  called postcondition and $\bm{t}$ is a trace. Hoare logic of traces
+  consists of just one rule:
 
-\begin{equation}
-  \text{hoare}:
-  \frac{P\, Q: S \to \prop \quad \bm{t} \quad \forall s\,s', \chain{s}{s'}{\bm{t}} \to P s \to Q s'}
-       {\{P\} \bm{t} \{Q\}}
-\end{equation}
+  \begin{equation}
+    \frac{P\, Q: S \to \prop \quad \bm{t} \quad \forall s\,s', \chain{s}{s'}{\bm{t}} \to P s \to Q s'}
+         {\{P\} \bm{t} \{Q\}}
+    \text{hoare}
+  \end{equation}
 
-\def\grdom{(0,0) circle (1.5cm)}
-\def\grcod{(0:5cm) circle (1.5cm)}
-\def\grpre{(1cm,2cm) circle (1.5cm)}
-\def\grpost{(6cm,2cm) circle (1.5cm)}
+  This means that if initial state of the system belongs to the
+  intersection of $\dom{\bm{t}}$ and precondition $P$ (dark gray area
+  on fig.\ref{fig:hoare}), then every possible execution of trace
+  $\bm{t}$ will leave system state on the intersection of
+  $\cod{\fm{t}}$ and $Q$ (light gray area).
 
-\begin{figure}
-  \centering
-  \begin{tikzpicture}
-    \draw \grdom node[below] {$\dom{\bm{t}}$};
-    \draw \grcod node [below] {$\cod{\bm{t}}$};
-    \draw \grpre node [above] {$P$};
-    \draw \grpost node [above] {$Q$};
+  \def\grdom{(0,0) circle (1.5cm)}
+  \def\grcod{(0:5cm) circle (1.5cm)}
+  \def\grpre{(1cm,2cm) circle (1.5cm)}
+  \def\grpost{(6cm,2cm) circle (1.5cm)}
 
-    \begin{scope}
-      \clip \grdom;
-      \fill[gray] \grpre;
-    \end{scope}
-    \begin{scope}
-      \clip \grpost;
-      \clip \grcod;
-      \fill[lightgray] \grpost;
-    \end{scope}
+  \begin{figure}[h]
+    \centering
+    \begin{tikzpicture}
+      \draw \grdom node[below] {$\dom{\bm{t}}$};
+      \draw \grcod node [below] {$\cod{\bm{t}}$};
+      \draw \grpre node [above] {$P$};
+      \draw \grpost node [above] {$Q$};
 
-    \draw [->] (0.0cm,1.1cm) -- (1.7cm, 1.6cm) -- (4.3cm, 1.5cm) -- (5.1cm, 1.2cm)
-    \draw [->] (0.7cm,1.0cm) -- (2.2cm, 1.2cm) -- (4cm, 0.5cm) -- (5.3cm, 1.0cm)
-    \draw [->] (0.4cm,.9cm) -- (1.9cm, -0cm) -- (4.2cm, 0.01cm) -- (6cm, 0.7cm)
-  \end{tikzpicture}
-  \caption{Intuition behind $\{P\}\bm{t}\{Q\}$}
-  \label{fig:hoare}
-\end{figure}
+      \begin{scope}
+        \clip \grdom;
+        \fill[gray] \grpre;
+      \end{scope}
+      \begin{scope}
+        \clip \grpost;
+        \clip \grcod;
+        \fill[lightgray] \grpost;
+      \end{scope}
 
+      \draw [->] (0.0cm,1.1cm) -- (1.7cm, 1.6cm) -- (4.3cm, 1.5cm) -- (5.1cm, 1.2cm)
+      \draw [->] (0.7cm,1.0cm) -- (2.2cm, 1.2cm) -- (4cm, 0.5cm) -- (5.3cm, 1.0cm)
+      \draw [->] (0.7cm,1.0cm) -- (1.9cm, -0cm) -- (4.2cm, 0.01cm) -- (6cm, 0.7cm)
+    \end{tikzpicture}
+    \caption{Intuition behind $\{P\}\bm{t}\{Q\}$}
+    \label{fig:hoare}
+  \end{figure}
+\end{definition}
 
 \begin{theorem}
   Let $P$, $Q$, $R$ are asserts, $\bm{t_1}$ and $\bm{t_2}$ are traces,
