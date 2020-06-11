@@ -163,36 +163,37 @@ Section props.
 
     Lemma interleaving_par_seq : forall (a b c t : list TE),
         Interleaving (a ++ b) c t ->
-        exists c__hd c__tl t__hd t__tl,
-          t__hd ++ t__tl = t /\ c__hd ++ c__tl = c /\
-          Interleaving a c__hd t__hd /\ Interleaving b c__tl t__tl.
+        exists c1 c2 t1 t2,
+          t1 ++ t2 = t /\ c1 ++ c2 = c /\
+          Interleaving a c1 t1 /\ Interleaving b c2 t2.
     Proof.
-      (* induction t; intros; simpl in *. *)
-      (* - exists []. exists c. exists []. exists []. *)
-      (*   apply interleaving_nil_r in H. *)
-      (*   destruct H as [Hab Hc]. *)
-      (*   apply app_eq_nil in Hab. *)
-      (*   destruct Hab. subst. *)
-      (*   firstorder; constructor. *)
-      (* -  *)
-
-
-      (*   apply interleaving_nil_r in H. *)
-
-      (*   exists []. exists c. exists []. exists t. firstorder. constructor. *)
-      (* - *)
       intros.
-      induction H; simpl;
-        try destruct IHInterleaving as [c__hd [c__tl [t__hd [t__tl [Ht [Ht2 [Hint1 Hint2]]]]]]]; subst.
-      { exists (c__hd). exists c__tl. exists (te :: t__hd). exists t__tl.
+      remember (a ++ b) as ab.
+      generalize dependent b.
+      generalize dependent a.
+      induction H as [te ab c t H IH| te ab c t H IH| | ]; intros.
+      - destruct a; [destruct b; inversion_ Heqab | idtac]; simpl in *.
+        + exists []. exists c. exists []. exists (t0 :: t).
+          firstorder; try constructor.
+          assumption.
+        + inversion Heqab. subst.
+          specialize (IH a b eq_refl).
+          destruct IH as [c1 [c2 [t1 [t2 [Ht [Ht2 [Hint1 Hint2]]]]]]]; subst.
+          exists c1. exists c2. exists (t0 :: t1). exists t2.
+          firstorder.
+          constructor. assumption.
+      - specialize (IH a b Heqab).
+        destruct IH as [c1 [c2 [t1 [t2 [Ht [Ht2 [Hint1 Hint2]]]]]]]; subst.
+        exists (te :: c1). exists c2. exists (te :: t1). exists t2.
         firstorder.
-        give_up.
-      }
-      { exists (te :: c__hd). exists c__tl. exists (te :: t__hd). exists t__tl.
-           firstorder; simpl.
-           constructor. assumption.
-      }
-    Abort.
+        constructor. assumption.
+      - symmetry in Heqab. apply app_eq_nil in Heqab.
+        firstorder. subst.
+        exists []. exists t2. exists []. exists t2.
+        firstorder; constructor.
+      - exists []. exists []. exists a. exists b.
+        firstorder; constructor.
+    Qed.
 
     Lemma e_hoare_inv_par_seq : forall e1 e2 e prop,
         EnsembleInvariant prop (e1 -|| e) ->
