@@ -45,6 +45,56 @@
 
 \section{Motivation}
 
+SLOT is based on an observation that in most real-live situations
+state of the system is less important than the observable side effects
+that the system produces. Moreover, given a history of the side
+effects (trace) of the system, its internal state can be partially or
+fully deduced. To illustrate this, let's consider a system that
+consists of a mutex and a 2-bit variable. Overall, state space of this
+system can be describe by 4 bits of information as following:
+
+\pgfdeclarelayer{background}
+\pgfdeclarelayer{foreground}
+\pgfsetlayers{background,main,foreground}
+
+\tikzstyle{state}=[draw, fill=lightgray, rounded corners]
+\tikzstyle{bit}=[draw, circle, fill=lightgray, rounded corners]
+\def \blockdist{2.3}
+\def \edgedist{2.5}
+\necommand{\state}[3]{
+
+}
+
+\begin{figure}[h]
+  \centering
+  \begin{tikzpicture}
+    \node (st) [state] {};
+    % \begin{pgfonlayer}{background}
+    %     % Compute a few helper coordinates
+    % \end{pgfonlayer}
+  \end{tikzpicture}
+\end{figure}
+
+
+The system can perform two operations with the mutex: grab and release
+it. Similarly, the variable can be read, written, or get its least
+significant bit randomized. Every such operation counts as a visible
+side effect, and is traced. Every traced event (or trace element) is a
+tuple with three fields: pid of the process that invoked the
+operation, type of the operation together with input parameters, and
+the return value. Below is an example of such trace (read it from top
+to bottom):
+
+\begin{center}
+  \begin{tabular}{ c c c }
+    pid & operation & return \\
+    \hline
+    1 & read & 1 \\
+    2 & write & 2 \\
+    1 & grab & ()
+  \end{tabular}
+\end{center}
+
 \section{Supporting definitions}
 
 SLOT is based on constructive logic rather than set theory, and relies
@@ -143,7 +193,7 @@ initial states of the system.
   intersection of $\dom{\bm{t}}$ and precondition $P$ (dark gray area
   on fig.\ref{fig:hoare}), then every possible execution of trace
   $\bm{t}$ will leave system state on the intersection of
-  $\cod{\fm{t}}$ and $Q$ (light gray area).
+  $\cod{\bm{t}}$ and $Q$ (light gray area).
 
   \def\grdom{(0,0) circle (1.5cm)}
   \def\grcod{(0:5cm) circle (1.5cm)}
@@ -168,9 +218,9 @@ initial states of the system.
         \fill[lightgray] \grpost;
       \end{scope}
 
-      \draw [->] (0.0cm,1.1cm) -- (1.7cm, 1.6cm) -- (4.3cm, 1.5cm) -- (5.1cm, 1.2cm)
-      \draw [->] (0.7cm,1.0cm) -- (2.2cm, 1.2cm) -- (4cm, 0.5cm) -- (5.3cm, 1.0cm)
-      \draw [->] (0.7cm,1.0cm) -- (1.9cm, -0cm) -- (4.2cm, 0.01cm) -- (6cm, 0.7cm)
+      \draw [->] (0.0cm,1.1cm) -- (1.7cm, 1.6cm) -- (4.3cm, 1.5cm) -- (5.1cm, 1.2cm);
+      \draw [->] (0.7cm,1.0cm) -- (2.2cm, 1.2cm) -- (4cm, 0.5cm) -- (5.3cm, 1.0cm);
+      \draw [->] (0.7cm,1.0cm) -- (1.9cm, -0cm) -- (4.2cm, 0.01cm) -- (6cm, 0.7cm);
     \end{tikzpicture}
     \caption{Intuition behind $\{P\}\bm{t}\{Q\}$}
     \label{fig:hoare}

@@ -48,6 +48,8 @@ Section defn.
     forall (t : T), E t -> TraceInvariant prop t.
 End defn.
 
+Hint Constructors Interleaving Parallel.
+
 Notation "'-{{' a '}}' t '{{' b '}}'" := (EHoareTriple a t b)(at level 40) : hoare_scope.
 Infix "->>" := (TraceEnsembleConcat) (at level 100) : hoare_scope.
 Infix "-||" := (Parallel) (at level 101) : hoare_scope.
@@ -95,20 +97,15 @@ Section props.
         Interleaving t1 t2 t ->
         exists t' t1_hd t1_tl,
           t = t1_hd ++ t' /\ t1 = t1_hd ++ t1_tl /\ Interleaving t1_tl t2 t'.
-    Proof.
+    Proof with firstorder.
       intros *. intros Hint.
       induction Hint.
       - destruct IHHint as [t' [t1_hd [t1_tl IH]]].
         exists t'. exists (te :: t1_hd). exists (t1_tl).
         firstorder; subst; reflexivity.
-      - exists (te :: t). exists []. exists t1.
-        firstorder. subst.
-        constructor.
-        assumption.
-      - exists t2. exists []. exists [].
-        firstorder. constructor.
-      - exists t1. exists []. exists t1.
-        firstorder. constructor.
+      - exists (te :: t). exists []. exists t1...
+      - exists t2. exists []. exists []...
+      - exists t1. exists []. exists t1...
     Qed.
 
     Lemma e_hoare_par_ergo_seq : forall e1 e2 P Q,
@@ -120,7 +117,7 @@ Section props.
       destruct Hseq as [t1 t2].
       apply ilv_par with (t3 := t1) (t4 := t2); auto.
       clear H H0.
-      induction t1; simpl; constructor; easy.
+      induction t1; simpl; auto.
     Qed.
 
     Lemma e_hoare_par_symm : forall e1 e2 P Q,
@@ -139,17 +136,16 @@ Section props.
         Interleaving b (c__hd ++ c__tl) (c__hd ++ t).
     Proof.
       intros.
-      induction c__hd; auto.
-      simpl. constructor. assumption.
+      induction c__hd; simpl; auto.
     Qed.
 
     Lemma interl_app_hd : forall (a c__hd c__tl t : list TE),
         Interleaving a c__hd t ->
         Interleaving a (c__hd ++ c__tl) (t ++ c__tl).
-    Proof.
+    Proof with simpl; auto.
       intros.
-      induction H; simpl; try (constructor; assumption).
-      induction t1; simpl; constructor; assumption.
+      induction H...
+      induction t1...
     Qed.
 
     Lemma interleaving_nil_r : forall (a b : list TE),
@@ -166,33 +162,25 @@ Section props.
         exists c1 c2 t1 t2,
           t1 ++ t2 = t /\ c1 ++ c2 = c /\
           Interleaving a c1 t1 /\ Interleaving b c2 t2.
-    Proof.
+    Proof with firstorder.
       intros.
       remember (a ++ b) as ab.
       generalize dependent b.
       generalize dependent a.
       induction H as [te ab c t H IH| te ab c t H IH| | ]; intros.
       - destruct a; [destruct b; inversion_ Heqab | idtac]; simpl in *.
-        + exists []. exists c. exists []. exists (t0 :: t).
-          firstorder; try constructor.
-          assumption.
+        + exists []. exists c. exists []. exists (t0 :: t)...
         + inversion Heqab. subst.
           specialize (IH a b eq_refl).
           destruct IH as [c1 [c2 [t1 [t2 [Ht [Ht2 [Hint1 Hint2]]]]]]]; subst.
-          exists c1. exists c2. exists (t0 :: t1). exists t2.
-          firstorder.
-          constructor. assumption.
+          exists c1. exists c2. exists (t0 :: t1). exists t2...
       - specialize (IH a b Heqab).
         destruct IH as [c1 [c2 [t1 [t2 [Ht [Ht2 [Hint1 Hint2]]]]]]]; subst.
-        exists (te :: c1). exists c2. exists (te :: t1). exists t2.
-        firstorder.
-        constructor. assumption.
-      - symmetry in Heqab. apply app_eq_nil in Heqab.
-        firstorder. subst.
-        exists []. exists t2. exists []. exists t2.
-        firstorder; constructor.
-      - exists []. exists []. exists a. exists b.
-        firstorder; constructor.
+        exists (te :: c1). exists c2. exists (te :: t1). exists t2...
+      - symmetry in Heqab. apply app_eq_nil in Heqab...
+        subst.
+        exists []. exists t2. exists []. exists t2...
+      - exists []. exists []. exists a. exists b...
     Qed.
 
     Lemma e_hoare_inv_par_seq : forall e1 e2 e prop,
@@ -217,6 +205,12 @@ Section props.
         subst.
         apply interl_app_hd; assumption.
     Qed.
+
+    Lemma e_hoare_inv_par_par : forall e1 e2 e prop,
+        EnsembleInvariant prop (e1 -|| e) ->
+        EnsembleInvariant prop (e2 -|| e) ->
+        EnsembleInvariant prop ((e1 -|| e2) -|| e).
+    Abort.
 
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
         (* -{{P}} e1 -|| e {{Q}} -> *)
