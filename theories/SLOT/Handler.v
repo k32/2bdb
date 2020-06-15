@@ -254,7 +254,7 @@ Ltac unfold_compose_handler H s s' :=
   idtac.
 
 Ltac handler_step Hcr :=
-  lazy in Hcr;
+  cbn in Hcr;
   lazymatch type of Hcr with
   | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
     repeat unfold_compose_handler Hcr s s'
@@ -263,7 +263,7 @@ Ltac handler_step Hcr :=
 Create HintDb handlers.
 
 Ltac trace_step f :=
-  lazy in f;
+  cbn in f;
   lazymatch type of f with
   | LongStep _ [] _ =>
     let s := fresh "s" in

@@ -266,17 +266,12 @@ Module ExampleModelDefn.
     Proof.
       intros t Ht.
       unfold_ht.
-      bruteforce Ht Hls; clear_mutex; lazy in Hpre; firstorder; simpl.
-      - simpl in *. inversion Hcr5.
-        destruct_tuple Hz s_end_l s_end_r. subst.
-        repeat match goal with
-                 [H: mut_chain_rule _ _ ?s ?s' ?te |- _] =>
-                 inversion_clear H
-               end. subst.
-        subst.
-        give_up.
-      - give_up.
-    Abort.
+      cbn in Hpre.
+      bruteforce Ht Hls; clear_mutex;
+        firstorder;
+        cbn in *; repeat (elim_mut; subst);
+        reflexivity.
+    Qed.
 
     Let counter_invariant (sys : Model) : Prop :=
       match sys with
