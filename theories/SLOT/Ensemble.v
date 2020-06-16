@@ -157,6 +157,35 @@ Section props.
       destruct H; try discriminate; firstorder.
     Qed.
 
+    Lemma e_hoare_inv_par : forall e1 e2 prop,
+        EnsembleInvariant prop e1 ->
+        EnsembleInvariant prop e2 ->
+        EnsembleInvariant prop (e1 -|| e2).
+    Proof with constructor; auto.
+      intros e1 e2 prop He1 He2.
+      intros t [t1 t2 t12 Ht1 Ht2 Hint].
+      specialize (He1 t1 Ht1). clear Ht1.
+      specialize (He2 t2 Ht2). clear Ht2.
+      induction Hint; try assumption.
+      - inversion_ He1...
+      - inversion_ He2...
+    Qed.
+
+    Lemma e_hoare_inv_seq : forall e1 e2 prop,
+        EnsembleInvariant prop e1 ->
+        EnsembleInvariant prop e2 ->
+        EnsembleInvariant prop (e1 ->> e2).
+    Proof.
+      intros e1 e2 prop He1 He2.
+      intros t [t1 t2 Ht1 Ht2].
+      specialize (He1 t1 Ht1). clear Ht1.
+      specialize (He2 t2 Ht2). clear Ht2.
+      induction t1.
+      - easy.
+      - inversion He1.
+        constructor; auto.
+    Qed.
+
     Lemma interleaving_par_seq : forall (a b c t : list TE),
         Interleaving (a ++ b) c t ->
         exists c1 c2 t1 t2,
@@ -181,29 +210,6 @@ Section props.
         subst.
         exists []. exists t2. exists []. exists t2...
       - exists []. exists []. exists a. exists b...
-    Qed.
-
-    Lemma e_hoare_inv_par_seq : forall e1 e2 e prop,
-        EnsembleInvariant prop (e1 -|| e) ->
-        EnsembleInvariant prop (e2 -|| e) ->
-        EnsembleInvariant prop (e1 ->> e2 -|| e).
-    Proof.
-      intros.
-      intros t Ht.
-      destruct Ht as [t12 c t Ht12 Hc Hint].
-      destruct Ht12 as [a b Ha Hb].
-      apply interleaving_par_seq in Hint.
-      destruct Hint as [c__hd [c__tl [t__hd [t__tl [Ht [Hcc [Hhd Htl]]]]]]].
-      specialize (H (t__hd ++ c__tl)). apply trace_inv_split in H.
-      specialize (H0 (c__hd ++ t__tl)). apply trace_inv_split in H0.
-      subst.
-      apply trace_inv_app; firstorder.
-      - apply ilv_par with (t1 := b) (t2 := c); auto.
-        subst.
-        now apply interl_app_tl.
-      - apply ilv_par with (t1 := a) (t2 := c); auto.
-        subst.
-        now apply interl_app_hd.
     Qed.
 
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
@@ -277,34 +283,23 @@ Section props.
   Context {S TE} `{HsspS : StateSpace S TE}.
   Let T := list TE.
 
-  (* Note: this example is valid, but it took ~5 min and 12G of RAM to prove.
-  Goal forall prop x11 x12 x21 x22 x31 x32 t12 t23 t13 t123,
-      let t1 := [x11; x12] in
-      let t2 := [x21; x22] in
-      let t3 := [x31; x32] in
-      Interleaving t1 t2 t12 -> TraceInvariant prop t12 ->
-      Interleaving t2 t3 t23 -> TraceInvariant prop t23 ->
-      Interleaving t1 t3 t13 -> TraceInvariant prop t13 ->
+  Goal forall P Q R (x11 x12 x21 x22 x31 x32 : TE) (t12 t23 t13 t123 : list TE),
+      let t1 := [x11(* ; x12 *)] in
+      let t2 := [x21(* ; x22 *)] in
+      let t3 := [x31(* ; x32 *)] in
+      Interleaving t1 t2 t12 ->
+      Interleaving t1 t3 t13 ->
+      {{P}} t12 {{Q}} ->
+      {{Q}} t13 {{R}} ->
       Interleaving t12 t3 t123 ->
-      TraceInvariant prop t123.
+      {{P}} t123 {{Q}}.
   Proof.
     intros.
+    unfold_ht.
     repeat match goal with
            | [H : Interleaving _ _ _ |- _] => unfold_interleaving H
-           | [H : TraceInvariant _ _ |- _] => inversion_clear H
+           (* | [H : {{_}} ?t {{_}} |- _] => unfold_ht H *)
            end;
-      repeat constructor; auto.
-  Qed.*)
-
-  Lemma e_hoare_inv_par_par : forall e1 e2 e3 prop,
-      EnsembleInvariant prop (e1 -|| e2) ->
-      EnsembleInvariant prop (e1 -|| e3) ->
-      EnsembleInvariant prop (e2 -|| e3) ->
-      EnsembleInvariant prop ((e1 -|| e2) -|| e3).
-  Proof with constructor; auto.
-    intros e1 e2 e3 prop Hinv12 Hinv1 Hinv2 t Ht.
-    destruct Ht as [t12 t3 t He H3 Hint123].
-    specialize (Hinv12 t12 He).
-    destruct He as [t1 t2 t12 H1 H2 Hint12].
+      subst t1 t2 t3.
   Abort.
 End props.
