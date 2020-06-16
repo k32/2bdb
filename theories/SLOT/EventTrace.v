@@ -1,15 +1,5 @@
 From Coq Require Import
-     List
-     Logic.EqdepFacts.
-
-From Equations Require Import
-     Equations.
-
-Let transp {A} {B : A -> Type} {x y : A} (e : x = y) : B x -> B y :=
-  fun bx => eq_rect x B bx y e.
-
-Let ap {A B} (f : A -> B) {x y : A} : x = y -> f x = f y.
-Proof. now intros ->. Defined.
+     List.
 
 Reserved Notation "pid '@' req '<~' ret" (at level 30).
 
@@ -24,13 +14,29 @@ Record TraceElem {ctx : Ctx} : Set :=
                te_req : ctx_req_t ctx;
                te_ret : (ctx_ret_t ctx) te_req;
              }.
-Derive NoConfusionHom for TraceElem.
 
 Definition Trace {ctx : Ctx} := list (@TraceElem ctx).
 
 Notation "pid '@' req '<~' ret" := (trace_elem _ pid req ret).
 
-Lemma te_ret_eq : forall ctx pid req ret1 ret2,
-    trace_elem ctx pid req ret1 = trace_elem ctx pid req ret2 ->
-    ret1 = ret2.
-Admitted. (* TODO *)
+Require Import ssreflect ssrfun.
+
+Section props.
+  Context {ctx : Ctx}.
+  Let ret_t := ctx_ret_t ctx.
+
+  Lemma te_ret_dual_elim pid (P : forall req, ret_t req -> Prop) req1 (ret1 : ret_t req1) req2 (ret2 : ret_t req2) :
+      trace_elem ctx pid req1 ret1 = trace_elem ctx pid req2 ret2 ->
+      P req1 ret1 ->
+      P req2 ret2.
+  Proof.
+    by rewrite -[ret2]/(te_ret (trace_elem ctx pid req2 ret2))
+               -[req2]/(te_req (trace_elem ctx pid req2 ret2));
+      case: _ /.
+  Qed.
+
+  Lemma te_ret_eq : forall pid req ret1 ret2,
+      trace_elem ctx pid req ret1 = trace_elem ctx pid req ret2 ->
+      ret1 = ret2.
+  Admitted.
+End props.

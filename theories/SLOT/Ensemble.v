@@ -200,17 +200,11 @@ Section props.
       apply trace_inv_app; firstorder.
       - apply ilv_par with (t1 := b) (t2 := c); auto.
         subst.
-        apply interl_app_tl; assumption.
+        now apply interl_app_tl.
       - apply ilv_par with (t1 := a) (t2 := c); auto.
         subst.
-        apply interl_app_hd; assumption.
+        now apply interl_app_hd.
     Qed.
-
-    Lemma e_hoare_inv_par_par : forall e1 e2 e prop,
-        EnsembleInvariant prop (e1 -|| e) ->
-        EnsembleInvariant prop (e2 -|| e) ->
-        EnsembleInvariant prop ((e1 -|| e2) -|| e).
-    Abort.
 
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
         (* -{{P}} e1 -|| e {{Q}} -> *)
@@ -239,4 +233,78 @@ Section props.
       destruct Ht as [t1 t2 t Ht1 Ht2 Hint].
     Abort. (* This is wrong? *)
   End perm_props.
+End props.
+
+Ltac unfold_interleaving H tac :=
+  simpl in H;
+  lazymatch type of H with
+  | Interleaving [] _ _ =>
+    apply interleaving_nil in H;
+    rewrite <-H in *; clear H;
+    repeat tac
+  | Interleaving _ [] _ =>
+    apply interleaving_symm, interleaving_nil in H;
+    rewrite <-H in *; clear H;
+    repeat tac
+  | Interleaving ?tl ?tr ?t =>
+    let te := fresh "te" in
+    let tl' := fresh "tl" in
+    let tr' := fresh "tr" in
+    let t := fresh "t" in
+    (* stuff that we need in order to eliminate wrong hypotheses *)
+    let tl0 := fresh "tl" in let Htl0 := fresh "Heql" in remember tl as tl0 eqn:Htl0;
+    let tr0 := fresh "tr" in let Htr0 := fresh "Heqr" in remember tr as tr0 eqn:Htr0;
+    destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl'];
+    repeat (match goal with
+            | [H : _ :: _ = _ |- _] =>
+              inversion H; subst; clear H
+            end);
+    try discriminate;
+    subst;
+    tac;
+    unfold_interleaving H tac
+  | ?err =>
+    fail "Not an unfoldable interleaving" err
+  end.
+
+Tactic Notation "unfold_interleaving" ident(H) "with" tactic(tac) :=
+  unfold_interleaving H tac.
+
+Tactic Notation "unfold_interleaving" ident(H) :=
+  unfold_interleaving H with idtac.
+
+Section props.
+  Context {S TE} `{HsspS : StateSpace S TE}.
+  Let T := list TE.
+
+  (* Note: this example is valid, but it took ~5 min and 12G of RAM to prove.
+  Goal forall prop x11 x12 x21 x22 x31 x32 t12 t23 t13 t123,
+      let t1 := [x11; x12] in
+      let t2 := [x21; x22] in
+      let t3 := [x31; x32] in
+      Interleaving t1 t2 t12 -> TraceInvariant prop t12 ->
+      Interleaving t2 t3 t23 -> TraceInvariant prop t23 ->
+      Interleaving t1 t3 t13 -> TraceInvariant prop t13 ->
+      Interleaving t12 t3 t123 ->
+      TraceInvariant prop t123.
+  Proof.
+    intros.
+    repeat match goal with
+           | [H : Interleaving _ _ _ |- _] => unfold_interleaving H
+           | [H : TraceInvariant _ _ |- _] => inversion_clear H
+           end;
+      repeat constructor; auto.
+  Qed.*)
+
+  Lemma e_hoare_inv_par_par : forall e1 e2 e3 prop,
+      EnsembleInvariant prop (e1 -|| e2) ->
+      EnsembleInvariant prop (e1 -|| e3) ->
+      EnsembleInvariant prop (e2 -|| e3) ->
+      EnsembleInvariant prop ((e1 -|| e2) -|| e3).
+  Proof with constructor; auto.
+    intros e1 e2 e3 prop Hinv12 Hinv1 Hinv2 t Ht.
+    destruct Ht as [t12 t3 t He H3 Hint123].
+    specialize (Hinv12 t12 He).
+    destruct He as [t1 t2 t12 H1 H2 Hint12].
+  Abort.
 End props.

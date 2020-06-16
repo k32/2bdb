@@ -107,36 +107,6 @@ Module Model.
     @t PID SUT h.
 End Model.
 
-Ltac unfold_interleaving H Hls :=
-  simpl in H;
-  lazymatch type of H with
-  | Interleaving [] _ _ =>
-    apply interleaving_nil in H;
-    rewrite <-H in *; clear H;
-    repeat trace_step Hls
-  | Interleaving _ [] _ =>
-    apply interleaving_symm, interleaving_nil in H;
-    rewrite <-H in *; clear H;
-    repeat trace_step Hls
-  | Interleaving ?tl ?tr ?t =>
-    let te := fresh "te" in
-    let tl' := fresh "tl" in
-    let tr' := fresh "tr" in
-    let t := fresh "t" in
-    (* stuff that we need in order to eliminate wrong hypotheses *)
-    let tl0 := fresh "tl" in let Htl0 := fresh "Heql" in remember tl as tl0 eqn:Htl0;
-    let tr0 := fresh "tr" in let Htr0 := fresh "Heqr" in remember tr as tr0 eqn:Htr0;
-    destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl'];
-    repeat (match goal with
-            | [H : _ :: _ = _ |- _] =>
-              inversion H; subst; clear H
-            end);
-    try discriminate;
-    subst;
-    trace_step Hls;
-    unfold_interleaving H Hls
-  end.
-
 Ltac bruteforce Ht Hls :=
   let Ht' := type of Ht in
   match eval lazy in Ht' with
@@ -151,7 +121,7 @@ Ltac bruteforce Ht Hls :=
     let Hint := fresh "Hint_" t in
     destruct Ht as [t1 t2 t H1 H2 Hint];
     bruteforce H1 Hls; subst; bruteforce H2 Hls;
-    unfold_interleaving Hint Hls
+    unfold_interleaving Hint with trace_step Hls
   end.
 
 Require Import
