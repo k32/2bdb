@@ -197,25 +197,25 @@ Module ExampleModelDefn.
     Let SingletonEnsemble := mk_counter true.
     Let PairEnsemble := (mk_counter true) -|| (mk_counter false).
     Let NopEnsemble := @ThreadGenerator ctx true (nop true).
+    Let InfLoopEnsemble := @ThreadGenerator ctx true (infinite_loop true).
 
     Goal forall t, NopEnsemble t -> True.
       intros t Ht.
-      unfold_thread Ht.
-      easy.
+      now unfold_thread Ht.
     Qed.
 
     Goal EnsembleInvariant (fun _ => True) SingletonEnsemble.
     Proof.
       intros t Ht.
       unfold_thread Ht. subst.
-      repeat (constructor; try easy).
+      now repeat constructor.
     Qed.
 
     Goal EnsembleInvariant (fun _ => True) SingletonEnsemble.
     Proof.
       intros t Ht.
       unfold_thread Ht. subst.
-      repeat (constructor; try easy).
+      now repeat constructor.
     Qed.
 
     Goal forall v1 v2,
@@ -239,8 +239,7 @@ Module ExampleModelDefn.
       cbn in Hpre.
       bruteforce Ht Hls; clear_mutex;
         firstorder;
-        cbn in *; repeat (elim_mut; subst);
-        reflexivity.
+        cbn in *; now repeat (elim_mut; subst).
     Qed.
 
     Let counter_invariant (sys : Model) : Prop :=

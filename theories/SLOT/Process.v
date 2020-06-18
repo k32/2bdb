@@ -94,7 +94,7 @@ Proof.
   - simpl in t0. subst. contradiction.
 Qed.
 
-Ltac thread_step Ht Hstep :=
+Ltac unfold_cont Ht Hstep :=
   let s0 := fresh "s" in
   let Heq := fresh "Heq" in
   let req := fresh "req" in
@@ -113,10 +113,13 @@ Ltac thread_step Ht Hstep :=
     ]
   end.
 
-Ltac unfold_thread Ht :=
-  try lazy in Ht;
+Ltac thread_step Ht :=
+  lazy in Ht;
   match type of Ht with
-    ThreadGenerator ?pid ?thread ?trace =>
+  | ThreadGenerator _ (match ?var with _ => _ end) _ =>
+    destruct var;
+    thread_step Ht
+  | ThreadGenerator ?pid ?thread ?trace =>
     match eval lazy in thread with
     | t_dead =>
       apply dead_thread in Ht;
@@ -128,13 +131,103 @@ Ltac unfold_thread Ht :=
       let Hreq := fresh "Hreq" in
       let Ht' := fresh "Ht" in
       remember thread as t eqn:eq;
-      thread_step Ht Hstep;
+      unfold_cont Ht Hstep;
       [inversion eq
       |rewrite eq in Hstep;
        destruct Hstep as [Hreq Ht'];
        rewrite Ht' in Ht; clear Ht';
-       (* rewrite Hreq in *; clear Hreq *)
-       unfold_thread Ht
+       match type of Hreq with
+       | ?req = ?val => subst req
+       end
       ]
     end
+  | ?wut =>
+    fail 1 "I don't know how to unfold" wut
   end.
+
+Ltac unfold_thread Ht stop_tac :=
+  thread_step Ht;
+  try first [ stop_tac Ht | unfold_thread Ht stop_tac].
+
+Tactic Notation "unfold_thread" ident(Ht) "until" tactic3(stop_tac) :=
+  unfold_thread Ht stop_tac.
+
+Tactic Notation "unfold_thread" ident(Ht) :=
+  let Ht_t0 := type of Ht in
+  let Ht_t := eval compute in Ht_t0 in
+  unfold_thread Ht until
+                (fun Ht' =>
+                   let Ht'_t := type of Ht' in
+                   match eval compute in (Ht'_t = Ht_t) with
+                         | ?a = ?a => idtac "Loop detected: " Ht_t "Stopping."
+                         end).
+
+Section tests.
+  Inductive req_t :=
+  | foo : req_t
+  | bar : nat -> req_t.
+
+  Let ret_t := fun x => match x with
+                     | foo => bool
+                     | bar _ => nat
+                     end.
+  Let pid_t := nat.
+  Let ctx := mkCtx pid_t req_t ret_t.
+
+  Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
+                                    (at level 100, C at next level, V ident, right associativity).
+
+  Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
+                           (at level 100, right associativity).
+
+  Notation "a '<~' b" := (trace_elem ctx 1 b a)(at level 100).
+
+  (* Regular linear code: *)
+  Let regular : @Thread ctx :=
+    do x <- bar 1;
+    done bar x.
+
+  Goal forall t,
+      (@ThreadGenerator ctx 1 regular) t ->
+      exists x y, t = [x <~ bar 1;
+                  y <~ bar x].
+  Proof.
+    intros.
+    unfold_thread H.
+    exists ret. exists ret0.
+    reflexivity.
+  Qed.
+
+  (* Branching: *)
+
+  Let branching1 : @Thread ctx :=
+    do x <- bar 1;
+    match x with
+    | 0 =>
+      do _ <- bar (x + 1);
+      done foo
+    | _ =>
+      done foo
+    end.
+
+  Goal forall t,
+      (@ThreadGenerator ctx 1 branching1) t ->
+      (exists x y, t = [0 <~ bar 1;
+                   x <~ bar 1;
+                   y <~ foo]) \/
+      (exists x y, t = [S x <~ bar 1;
+                   y <~ foo]).
+  Proof.
+    intros.
+    unfold_thread H; [left|right]; exists ret; now exists ret0.
+  Qed.
+
+  (* Loops: *)
+  Local CoFixpoint infinite_loop (self : pid_t) : @Thread ctx :=
+    (* do _ <- foo; *)
+    do _ <- bar 1;
+    infinite_loop self.
+
+  Let InfLoopEnsemble := @ThreadGenerator ctx 1 (infinite_loop 1).
+
+End tests.

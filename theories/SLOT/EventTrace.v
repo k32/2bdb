@@ -17,7 +17,7 @@ Record TraceElem {ctx : Ctx} : Set :=
 
 Definition Trace {ctx : Ctx} := list (@TraceElem ctx).
 
-Notation "pid '@' req '<~' ret" := (trace_elem _ pid req ret).
+Notation "pid '@' req '<~' ret" := (trace_elem _ pid ret req).
 
 Require Import ssreflect ssrfun.
 
@@ -35,7 +35,7 @@ Section props.
       case: _ /.
   Qed.
 
-  Lemma te_ret_eq : forall pid req ret1 ret2,
+  Lemma te_ret_eq pid req ret1 ret2 :
       trace_elem ctx pid req ret1 = trace_elem ctx pid req ret2 ->
       ret1 = ret2.
   Admitted.
