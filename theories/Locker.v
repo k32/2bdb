@@ -7,58 +7,75 @@ From Coq Require Import
 
 Import ListNotations.
 
-From LibTx Require Import
+From LibTx Require
      Storage
      EqDec
-     FoldIn.
+     FoldIn
+     Handler
+     Handlers.MQ
+     Handlers.Mutable
+     Handlers.KV.
 
-Extraction Language Haskell.
+Import Storage EqDec FoldIn Handler.
 
-Module Unbounded (S : Storage.Interface).
+Section defs.
+  Definition Offset := MQ.Offset.
 
-Definition Offset := nat.
+  Context {PID Key Value St1 St2 : Set}
+          `{HStore1 : @Storage Key Value St1}
+          `{HStore2: @Storage Key Offset St2}
+          `{HKeq_dec : EqDec Key}.
 
-Variable Key : Keq_dec.
-Variable Value : Set.
-Variable TxPayload : Set.
+  (** Transaction log entry *)
+  Record Tx :=
+    mkTx
+      { tx_tlogn : Offset;
+        reads : list (Key * Offset);
+        writes : list (Key * Offset);
+        commit : bool;
+        payload : list (Key * Value);
+      }.
 
-(** Transaction log entry *)
-Record Tx :=
-  mkTx
-    { last_imported_offset : Offset;
-      reads : list (KT Key * Offset);
-      writes : list (KT Key * Offset);
-      commit : bool;
-      payload : TxPayload;
-    }.
+  (** IO handler: *)
+  Definition Handler := compose (compose (Mutable.t PID MQ.Offset (fun o => o = 0))
+                                         (@MQ.t PID Tx))
+                                (compose (@KV.t PID Key Value St1 _)
+                                         (@KV.t PID Key Offset St2 _)).
+  Definition ctx := hToCtx Handler.
+  Let req_t := ctx_req_t ctx.
 
-Definition Tlog := list Tx.
+  (** Syscalls: *)
+  Definition get_tlogn : req_t :=
+    inl (inl (Mutable.get)).
 
-Definition Seqno : Set := Offset.
+  Definition update_tlogn n : req_t :=
+    inl (inl (Mutable.put n)).
 
-Definition Seqnos := S.t Key Seqno.
+  Definition pull_tx offset : req_t :=
+    inl (inr (MQ.fetch offset)).
 
-(** State of the locker process *)
-Record State :=
-  mkState
-    { sync_window_size : nat;
-      my_tlogn : Offset;
-      seqnos : Seqnos;
-    }.
+  Definition push_tx tx : req_t :=
+    inl (inr (MQ.produce tx)).
 
-Definition get_seqno (k : KT Key) (s : State) : Offset :=
-  match S.get k (seqnos s) with
-  | Some v => v
-  | None   => 0
-  end.
+  Definition get_seqno key : req_t :=
+    inr (inl (KV.read key)).
 
-Definition validate_seqnos (tx : Tx) (s : State) : bool :=
-  let f x := match x with
-             | (k, v) => Nat.eqb v (get_seqno k s)
-             end in
-  match tx with
-  | {| reads := r; writes := w |} => forallb f r && forallb f w
-  end.
+  Definition update_seqno key n : req_t :=
+    inr (inl (KV.write key n)).
+
+  Definition read_d key : req_t :=
+    inr (inr (KV.read key)).
+
+  Definition write_d key val : req_t :=
+    inr (inr (KV.write key val)).
+
+  Definition validate_seqnos (tx : Tx) (s : State) : bool :=
+    let f x := match x with
+               | (k, v) => Nat.eqb v (get_seqno k s)
+               end in
+    match tx with
+    | {| reads := r; writes := w |} => forallb f r && forallb f w
+    end.
 
 Definition check_tx (s : State) (offset : Offset) (tx : Tx) : bool :=
   match s with

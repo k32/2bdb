@@ -8,17 +8,19 @@ From LibTx Require Import
      SLOT.Handler.
 
 Section defs.
-  Context (PID T : Set) (initial_state : T -> Prop).
+  Context {PID T : Set}.
 
   Definition Offset := nat.
 
   Inductive req_t :=
+  | poll : Offset -> req_t
   | fetch : Offset -> req_t
   | produce : T -> req_t.
 
   Local Definition ret_t (req : req_t) : Set :=
     match req with
-    | fetch _ => option T
+    | poll _ => option T
+    | fetch _ => T
     | produce _ => option Offset
     end.
 
@@ -29,8 +31,11 @@ Section defs.
   Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
   Inductive mq_chain_rule : S -> S -> TE -> Prop :=
-  | mq_fetch : forall s pid offset,
-      mq_chain_rule s s (pid @ nth_error s offset <~ fetch offset)
+  | mq_poll : forall s pid offset,
+      mq_chain_rule s s (pid @ nth_error s offset <~ poll offset)
+  | mq_fetch : forall s pid offset val,
+      nth_error s offset = Some val ->
+      mq_chain_rule s s (pid @ val <~ fetch offset)
   | mq_produce : forall s pid val,
       mq_chain_rule s (val :: s) (pid @ Some (length s) <~ produce val)
   | mq_produce_lost_resp : forall s pid val, (* Response is lost *)
