@@ -2,7 +2,7 @@
 
     This IO handler implements a generic "message queue" service
     similar to Apache Kafka. Every published message gets an integer
-    offset, and can later be fetched using offset as an index.
+    offset, and can later be fetched using the offset as a key.
 *)
 From Coq Require Import
      List.

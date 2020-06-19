@@ -1,3 +1,10 @@
+(** * Ensembles of traces
+
+    Trace ensembles play one of central roles in SLOT, because from
+    SLOT point of view any system is nothing but a collection of event
+    traces that it can produce.
+
+ *)
 From Coq Require Import
      List.
 
@@ -19,13 +26,18 @@ Section defn.
     { unfolds_to : A -> TraceEnsemble;
     }.
 
+  (** Hoare logic of trace ensembles consists of a single rule: *)
   Definition EHoareTriple (pre : S -> Prop) (g : TraceEnsemble) (post : S -> Prop) :=
     forall t, g t ->
          {{ pre }} t {{ post}}.
 
+  (** Concatenation of trace ensembles represents systems that run
+  sequentially: *)
   Inductive TraceEnsembleConcat (e1 e2 : TraceEnsemble) : TraceEnsemble :=
   | et_concat : forall t1 t2, e1 t1 -> e2 t2 -> TraceEnsembleConcat e1 e2 (t1 ++ t2).
 
+  (** Set of all possible interleaving of two traces is a trace
+  ensemble: *)
   Inductive Interleaving : T -> T -> TraceEnsemble :=
   | ilv_cons_l : forall te t1 t2 t,
       Interleaving t1 t2 t ->
@@ -38,6 +50,8 @@ Section defn.
   | ilv_nil_r : forall t1,
       Interleaving t1 [] t1.
 
+  (** Two systems running in parallel are represented by interleaving
+  of all possible traces that could be produced by these systems: *)
   Inductive Parallel (e1 e2 : TraceEnsemble) : TraceEnsemble :=
   | ilv_par : forall t1 t2 t,
       e1 t1 -> e2 t2 ->
@@ -157,7 +171,7 @@ Section props.
       destruct H; try discriminate; firstorder.
     Qed.
 
-    Lemma e_hoare_inv_par : forall e1 e2 prop,
+    Theorem e_hoare_inv_par : forall e1 e2 prop,
         EnsembleInvariant prop e1 ->
         EnsembleInvariant prop e2 ->
         EnsembleInvariant prop (e1 -|| e2).

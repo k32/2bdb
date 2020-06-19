@@ -18,9 +18,9 @@ From LibTx Require
 
 Import Storage EqDec FoldIn Handler.
 
-Section defs.
-  Definition Offset := MQ.Offset.
+Definition Offset := MQ.Offset.
 
+Section SingleNode.
   Context {PID Key Value St1 St2 : Set}
           `{HStore1 : @Storage Key Value St1}
           `{HStore2: @Storage Key Offset St2}
@@ -37,35 +37,45 @@ Section defs.
       }.
 
   (** IO handler: *)
-  Definition Handler := compose (compose (Mutable.t PID MQ.Offset (fun o => o = 0))
-                                         (@MQ.t PID Tx))
-                                (compose (@KV.t PID Key Value St1 _)
-                                         (@KV.t PID Key Offset St2 _)).
+  Let initial_tlogn o := o = 0.
+
+  Definition Handler := (Mutable.t PID MQ.Offset initial_tlogn <+> @MQ.t PID Tx) <+>
+                        (@KV.t PID Key Value St1 _ <+> @KV.t PID Key Offset St2 _).
   Definition ctx := hToCtx Handler.
   Let req_t := ctx_req_t ctx.
 
-  (** Syscalls: *)
+  (** ** Syscalls: *)
+  (** Get offset of the last imported transaction: *)
   Definition get_tlogn : req_t :=
     inl (inl (Mutable.get)).
 
+  (** Update offset of the last imported transaction (only the
+  importer process is supposed to call this): *)
   Definition update_tlogn n : req_t :=
     inl (inl (Mutable.put n)).
 
+  (** Fetch a transaction from a distributed log (blocking call): *)
   Definition pull_tx offset : req_t :=
     inl (inr (MQ.fetch offset)).
 
+  (** Try to push a transaction to the distributed log (may fail): *)
   Definition push_tx tx : req_t :=
     inl (inr (MQ.produce tx)).
 
-  Definition get_seqno key : req_t :=
+  (** Get seqno of a key: *)
+  Definition try_get_seqno key : req_t :=
     inr (inl (KV.read key)).
 
+  (** Update seqno of a key: *)
   Definition update_seqno key n : req_t :=
     inr (inl (KV.write key n)).
 
+  (** Dirty read: *)
   Definition read_d key : req_t :=
     inr (inr (KV.read key)).
 
+  (** Dirty write (only the importer process is supposed to call
+  this): *)
   Definition write_d key val : req_t :=
     inr (inr (KV.write key val)).
 

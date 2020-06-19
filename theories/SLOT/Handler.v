@@ -213,6 +213,8 @@ Section ComposeHandlers.
   Qed.
 End ComposeHandlers.
 
+Infix "<+>" := (compose)(at level 100).
+
 Ltac destruct_tuple tup a b :=
   let t0 := fresh "t" in
   let eq := fresh "Heq" in

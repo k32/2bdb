@@ -9,6 +9,7 @@ theories/SLOT/Ensemble.v
 theories/SLOT/Handler.v
 theories/SLOT/Process.v
 theories/SLOT.v
+theories/Handlers/Deterministic.v
 theories/Handlers/KV.v
 theories/Handlers/Mutable.v
 theories/Handlers/Mutex.v
