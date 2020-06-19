@@ -1,4 +1,4 @@
-(*** Storage interface *)
+(** * Storage interface *)
 (** This module defines a "black box" storage engine *)
 From Coq Require Import
      String

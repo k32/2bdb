@@ -1,9 +1,9 @@
+(** * Reliable Key-Value storage handler *)
 From LibTx Require Import
      SLOT.Handler
      EqDec
      Storage.
 
-(** Reliable key-value storage IO handler *)
 (* Record KV : Type := *)
 (*   makeKV *)
 (*     { key_t : Set; *)
@@ -14,6 +14,12 @@ From LibTx Require Import
 (*     }.  *)
 
 Section defn.
+  (** Parameters:
+  - [PID] type of process id
+  - [K] type of keys
+  - [V] type of values
+  - [S] intance of storage container that should implement [Storage] interface
+  *)
   Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
 
   (* Context {PID : Set} {kv : KV}. *)
@@ -22,12 +28,14 @@ Section defn.
   (* Let S := backend kv. *)
   (* Let HStore := store_t kv. *)
 
+  (** ** Syscall types: *)
   Inductive req_t :=
   | read : K -> req_t
   | delete : K -> req_t
   | write : K -> V -> req_t
   | snapshot : req_t.
 
+  (** *** Syscall return types: *)
   Definition ret_t (req : req_t) : Set :=
     match req with
     | read _ => option V
@@ -39,6 +47,7 @@ Section defn.
   Let ctx := mkCtx PID req_t ret_t.
   Let TE := @TraceElem ctx.
 
+  (** Chain rule is deterministic: *)
   Inductive kv_chain_rule : S -> S -> TE -> Prop :=
   | kv_read : forall pid s k,
       kv_chain_rule s s (trace_elem ctx pid (read k) (get k s))
@@ -59,6 +68,7 @@ End defn.
 
 Hint Constructors kv_chain_rule.
 
+(** * Properties *)
 Section Properties.
   Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
 
@@ -67,6 +77,7 @@ Section Properties.
 
   Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
+  (** Two read syscalls always commute: *)
   Lemma kv_rr_comm : forall p1 p2 k1 k2 v1 v2,
       @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
   Proof.
@@ -75,6 +86,7 @@ Section Properties.
       repeat apply ls_cons with (s' := s4); auto.
   Qed.
 
+  (** Read and snapshot syscalls always commute: *)
   Lemma kv_rs_comm : forall p1 p2 k v s,
       @trace_elems_commute_h _ t (p1 @ v <~ read k) (p2 @ s <~ snapshot).
   Proof.
@@ -96,6 +108,7 @@ Section Properties.
   (*   replace v with (te_ret te) by reflexivity. *)
   (* Abort. *)
 
+  (** Read and write syscalls commute when performed on different keys: *)
   Lemma kv_rw_comm : forall p1 p2 k1 k2 v1 v2,
       k1 <> k2 ->
       @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
@@ -117,6 +130,7 @@ Section Properties.
       apply ls_cons with (s' := put k2 v2 s); auto.
   Qed.
 
+  (** Read and delete syscalls commute when performed on different keys: *)
   Lemma kv_rd_comm : forall p1 p2 k1 k2 v1,
       k1 <> k2 ->
       @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
@@ -138,7 +152,7 @@ Section Properties.
       apply ls_cons with (s' := Storage.delete k2 s); auto.
   Qed.
 
-  (* These operations don't commute in the general case! *)
+  (** Write syscalls on different keys generally _don't_ commute! *)
   Example kv_ww_comm : forall p1 p2 k1 k2 v1 v2,
       k1 <> k2 ->
       @trace_elems_commute_h _ t (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
