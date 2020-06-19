@@ -1,9 +1,6 @@
 From Coq Require Import
      List.
 
-From Equations Require Import
-     Equations.
-
 Import ListNotations.
 
 From LibTx Require Import

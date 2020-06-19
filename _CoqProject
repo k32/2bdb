@@ -12,3 +12,4 @@ theories/SLOT.v
 theories/Handlers/KV.v
 theories/Handlers/Mutable.v
 theories/Handlers/Mutex.v
+theories/Handlers/MQ.v

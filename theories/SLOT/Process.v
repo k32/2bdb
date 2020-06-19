@@ -7,14 +7,6 @@ Import String.
 Import List.
 Import List.ListNotations.
 
-From Containers Require
-     OrderedType
-     MapInterface
-     MapFacts
-     MapAVLInstance.
-
-Module Map := MapInterface.
-
 From LibTx Require Import
      FoldIn
      SLOT.Hoare
@@ -29,8 +21,6 @@ Section defn.
   Let PID := ctx_pid_t ctx.
   Let Req := ctx_req_t ctx.
   Let Ret := ctx_ret_t ctx.
-
-  Context `{Hord : OrderedType.OrderedType PID}.
 
   Let TE := @TraceElem ctx.
   Let T := @Trace ctx.
@@ -219,7 +209,7 @@ Section tests.
                    y <~ foo]).
   Proof.
     intros.
-    unfold_thread H; [left|right]; exists ret; now exists ret0.
+    now unfold_thread H; [left|right]; exists ret; exists ret0.
   Qed.
 
   (* Loops: *)

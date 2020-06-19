@@ -17,7 +17,7 @@ Record TraceElem {ctx : Ctx} : Set :=
 
 Definition Trace {ctx : Ctx} := list (@TraceElem ctx).
 
-Notation "pid '@' req '<~' ret" := (trace_elem _ pid ret req).
+Notation "pid '@' ret '<~' req" := (trace_elem _ pid req ret).
 
 Require Import ssreflect ssrfun.
 

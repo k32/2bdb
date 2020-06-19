@@ -8,12 +8,12 @@ From Coq Require
      Vector
      List.
 
-From Containers Require Import
-     OrderedType
-     OrderedTypeEx
-     MapInterface
-     MapFacts
-     MapAVLInstance.
+(* From Containers Require Import *)
+(*      OrderedType *)
+(*      OrderedTypeEx *)
+(*      MapInterface *)
+(*      MapFacts *)
+(*      MapAVLInstance. *)
 
 Import List ListNotations Omega.
 Module Vec := Vector.
@@ -91,16 +91,16 @@ Definition seq_vec : forall (N : nat), Vec.t (Fin.t N) N.
     apply (Vec.cons _ aid N (Vec.map Fin.FS IHN)).
 Defined.
 
-Definition find' {K V} `{OrderedType K} (k : K) (m : Map[K,V]) (HIn : MapInterface.In k m) : V.
-  refine (
-      let v := MapInterface.find k m in
-      (match v as v' return v = v' -> V with
-       | Some v => fun _ => v
-       | None   => _
-       end) eq_refl).
-  intros.
-  exfalso.
-  subst v.
-  apply in_find_iff in HIn.
-  contradiction.
-Qed.
+(* Definition find' {K V} `{OrderedType K} (k : K) (m : Map[K,V]) (HIn : MapInterface.In k m) : V. *)
+(*   refine ( *)
+(*       let v := MapInterface.find k m in *)
+(*       (match v as v' return v = v' -> V with *)
+(*        | Some v => fun _ => v *)
+(*        | None   => _ *)
+(*        end) eq_refl). *)
+(*   intros. *)
+(*   exfalso. *)
+(*   subst v. *)
+(*   apply in_find_iff in HIn. *)
+(*   contradiction. *)
+(* Qed. *)

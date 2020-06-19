@@ -244,7 +244,7 @@ Module ExampleModelDefn.
 
     Let counter_invariant (sys : Model) : Prop :=
       match sys with
-        {| model_sut := sut; model_handler := (M, l) |} =>
+        mkModel sut (M, l) =>
         match l with
         | Some _ => True
         | None =>
