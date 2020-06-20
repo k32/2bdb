@@ -89,17 +89,6 @@ Module Model.
 
     Global Instance modelStateSpace : StateSpace t (@TraceElem ctx) :=
       {| chain_rule := model_chain_rule; |}.
-
-    Definition initial_state (sut0 : SUT) :=
-      fun m =>
-        match m with
-        | {| model_sut := sut; model_handler := h |} =>
-          sut = sut0 /\ h_initial_state Handler h
-        end.
-
-    Definition SystemInvariant (prop : t -> Prop) (sut : SUT) :=
-      @SystemInvariant t _ modelStateSpace prop (initial_state sut).
-
   End defn.
 
   (* Helper function for infering type of model: *)
@@ -126,17 +115,15 @@ Ltac bruteforce Ht Hls :=
 
 Require Import
         Handlers.Mutex
-        Handlers.Mutable.
+        Handlers.Deterministic.
 
 Module ExampleModelDefn.
-
   Import Model.
 
   Section defns.
     Context {PID : Set}.
 
-    Definition Handler := compose (Mutable.t PID nat (fun a => a = 0))
-                                  (Mutex.t PID).
+    Definition Handler := @AtomicVar.t PID nat _ <+> Mutex.t PID.
 
     Definition ctx := hToCtx Handler.
     Definition TE := @TraceElem ctx.
@@ -148,10 +135,10 @@ Module ExampleModelDefn.
                              (at level 100, right associativity).
 
     Definition put (val : nat) : Handler.(h_req) :=
-      inl (Mutable.put val).
+      inl (AtomicVar.write val).
 
     Definition get : h_req Handler :=
-      inl (Mutable.get).
+      inl (AtomicVar.read).
 
     Definition grab : h_req Handler :=
       inr (Mutex.grab).
@@ -219,7 +206,7 @@ Module ExampleModelDefn.
     Qed.
 
     Goal forall v1 v2,
-      {{ h_initial_state Handler }}
+      {{ fun s => True }}
         [true @ v1 <~ get;
          true @ I <~ grab;
          true @ v2 <~ get;
@@ -232,14 +219,14 @@ Module ExampleModelDefn.
       repeat trace_step Hls.
     Qed.
 
-    Goal -{{ h_initial_state Handler }} PairEnsemble {{ fun s => fst s = 2 }}.
+    Goal -{{ fun (s : h_state Handler)  => fst s = 0 }} PairEnsemble {{ fun s => fst s = 2 }}.
     Proof.
       intros t Ht.
       unfold_ht.
       cbn in Hpre.
       bruteforce Ht Hls; clear_mutex;
         firstorder;
-        cbn in *; now repeat (elim_mut; subst).
+        cbn in *; now subst.
     Qed.
 
     Let counter_invariant (sys : Model) : Prop :=

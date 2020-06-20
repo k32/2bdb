@@ -15,7 +15,6 @@ Section IOHandler.
       h_state         : Set;
       h_req           : Set;
       h_ret           : h_req -> Set;
-      h_initial_state : Nondeterministic h_state;
       h_chain_rule    : h_state -> h_state -> @TraceElem (mkCtx PID h_req h_ret) -> Prop
     }.
 
@@ -61,11 +60,6 @@ Section ComposeHandlers.
   Definition compose_req : Set := Q_l + Q_r.
   Let Q := compose_req.
 
-  Definition compose_initial_state state :=
-    h_l.(h_initial_state) (fst state) /\ h_r.(h_initial_state) (snd state).
-
-  Hint Transparent compose_initial_state.
-
   Definition compose_ret (req : Q) : Set :=
     match req with
     | inl l => h_l.(h_ret) l
@@ -108,7 +102,6 @@ Section ComposeHandlers.
     {| h_state         := compose_state;
        h_req           := compose_req;
        h_ret           := compose_ret;
-       h_initial_state := compose_initial_state;
        h_chain_rule    := ComposeChainRule;
     |}.
 

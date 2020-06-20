@@ -40,7 +40,6 @@ Section defs.
     {|
       h_state         := state_t;
       h_req           := req_t;
-      h_initial_state := fun s0 => s0 = None;
       h_chain_rule    := mutex_chain_rule
     |}.
 

@@ -35,8 +35,8 @@ Section props.
       case: _ /.
   Qed.
 
-  Lemma te_ret_eq pid req ret1 ret2 :
-      trace_elem ctx pid req ret1 = trace_elem ctx pid req ret2 ->
-      ret1 = ret2.
-  Admitted.
+  (* Lemma te_ret_eq pid req ret1 ret2 : *)
+  (*     trace_elem ctx pid req ret1 = trace_elem ctx pid req ret2 -> *)
+  (*     ret1 = ret2. *)
+  (* Admitted. *)
 End props.

@@ -74,7 +74,6 @@ Section defs.
     {|
       h_state := S;
       h_req := req_t;
-      h_initial_state := fun s => s = [];
       h_chain_rule := mq_chain_rule;
     |}.
 End defs.

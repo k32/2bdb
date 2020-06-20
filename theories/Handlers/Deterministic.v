@@ -25,7 +25,6 @@ Section defs.
     {|
       h_state := S;
       h_req := req_t;
-      h_initial_state := initial_state;
       h_chain_rule := det_chain_rule;
     |}.
 End defs.
@@ -48,7 +47,7 @@ Module AtomicVar.
   Import EquivDec Peano_dec.
 
   Section defs.
-    Context {PID T : Set} `{@EqDec T eq eq_equivalence} (init_state : T -> Prop).
+    Context {PID T : Set} `{@EqDec T eq eq_equivalence}.
 
     Inductive req_t : Set :=
     | read : req_t
@@ -73,13 +72,13 @@ Module AtomicVar.
           (s, false)
       end.
 
-    Definition t := mkHandler PID T req_t ret_t init_state step.
+    Definition t := mkHandler PID T req_t ret_t step.
   End defs.
 
   Section tests.
     Let S := nat.
     Let PID := True.
-    Let Handler := @t PID S eq_nat_dec (fun s => s = 0).
+    Let Handler := @t PID S eq_nat_dec.
     Let ctx := hToCtx Handler.
     Notation "pid '@' ret '<~' req" := (trace_elem ctx pid req ret).
 
@@ -106,8 +105,7 @@ Module KV.
     - [V] type of values
     - [S] intance of storage container that should implement [Storage] interface
     *)
-    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}
-            (init_state : S -> Prop).
+    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
 
     (** ** Syscall types: *)
     Inductive req_t :=
@@ -136,7 +134,7 @@ Module KV.
       | snapshot => (s, s)
       end.
 
-    Definition t := mkHandler PID S req_t ret_t init_state step.
+    Definition t := mkHandler PID S req_t ret_t step.
   End defn.
 
   (** * Properties *)
@@ -151,7 +149,7 @@ Module KV.
 
     (** Two read syscalls always commute: *)
     Lemma kv_rr_comm : forall p1 p2 k1 k2 v1 v2,
-        @trace_elems_commute_h _ (t init_state) (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
+        @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
     Proof.
       split; intros;
       repeat trace_step H; subst;
@@ -161,7 +159,7 @@ Module KV.
 
     (** Read and snapshot syscalls always commute: *)
     Lemma kv_rs_comm : forall p1 p2 k v s,
-        @trace_elems_commute_h _ (t init_state) (p1 @ v <~ read k) (p2 @ s <~ snapshot).
+        @trace_elems_commute_h _ t (p1 @ v <~ read k) (p2 @ s <~ snapshot).
     Proof.
       split; intros;
       repeat trace_step H; subst;
@@ -169,7 +167,7 @@ Module KV.
       repeat constructor.
     Qed.
 
-    Lemma kv_read_get : forall pid (s : h_state (t init_state)) k v,
+    Lemma kv_read_get : forall pid (s : h_state t) k v,
         s ~[pid @ v <~ read k]~> s ->
         v = get k s.
     Proof.
@@ -182,7 +180,7 @@ Module KV.
     (** Read and write syscalls commute when performed on different keys: *)
     Lemma kv_rw_comm : forall p1 p2 k1 k2 v1 v2,
         k1 <> k2 ->
-        @trace_elems_commute_h _ (t init_state) (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
+        @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
     Proof with firstorder.
       split; intros; repeat trace_step H0.
       - forward (put k2 v2 s)...
@@ -196,7 +194,7 @@ Module KV.
     (** Read and delete syscalls commute when performed on different keys: *)
     Lemma kv_rd_comm : forall p1 p2 k1 k2 v1,
         k1 <> k2 ->
-        @trace_elems_commute_h _ (t init_state) (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
+        @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
     Proof with firstorder.
       split; intros; repeat trace_step H0.
       - forward (Storage.delete k2 s)...
@@ -210,7 +208,7 @@ Module KV.
     (** Write syscalls on different keys generally _don't_ commute! *)
     Example kv_ww_comm : forall p1 p2 k1 k2 v1 v2,
         k1 <> k2 ->
-        @trace_elems_commute_h _ (t init_state) (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
+        @trace_elems_commute_h _ t (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
     Abort.
   End Properties.
 End KV.
