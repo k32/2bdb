@@ -134,6 +134,10 @@ Module ExampleModelDefn.
     Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
                              (at level 100, right associativity).
 
+    Notation "'call' V '<-' I ; C" := (I C)
+                                     (at level 100, right associativity).
+
+
     Definition put (val : nat) : Handler.(h_req) :=
       inl (AtomicVar.write val).
 
@@ -153,16 +157,15 @@ Module ExampleModelDefn.
       infinite_loop self.
 
     (* Data race example: *)
-    Definition inc (self : PID) : @Thread ctx :=
+    Definition inc (_ : nat) cont : @Thread ctx :=
       do v <- get;
-      done put (v + 1).
+      do _ <- put (v + 1);
+      cont.
 
     (* Fixed example: *)
     Definition counter_correct (self : PID) : @Thread ctx :=
       do _ <- grab;
-      do v <- get;
-      let v' := v + 1 in
-      do _ <- put v';
+      call _ <- inc 42;
       done release.
 
     Definition nop (self : PID) :=
@@ -224,7 +227,7 @@ Module ExampleModelDefn.
       intros t Ht.
       unfold_ht.
       cbn in Hpre.
-      bruteforce Ht Hls; clear_mutex;
+      bruteforce Ht Hls;
         firstorder;
         cbn in *; now subst.
     Qed.
