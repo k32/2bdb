@@ -11,14 +11,18 @@ KNOWNFILES   := Makefile _CoqProject
 CoqMakefile: Makefile _CoqProject
 	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
-invoke-coqmakefile: CoqMakefile
+invoke-coqmakefile: CoqMakefile record-update
 	$(MAKE) --no-print-directory -f CoqMakefile $(filter-out $(KNOWNTARGETS),$(MAKECMDGOALS))
 
-.PHONY: invoke-coqmakefile $(KNOWNFILES)
+.PHONY: invoke-coqmakefile record-update $(KNOWNFILES)
 
 ####################################################################
 ##                      Your targets here                         ##
 ####################################################################
+
+record-update:
+	git submodule sync
+	$(MAKE) -C coq-record-update
 
 # This should be the last rule, to handle any targets not declared above
 %: invoke-coqmakefile

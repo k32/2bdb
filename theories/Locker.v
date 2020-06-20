@@ -7,16 +7,17 @@ From Coq Require Import
 
 Import ListNotations.
 
-From LibTx Require
+From LibTx Require Import
      Storage
      EqDec
      FoldIn
+     Process
      Handler
      Handlers.MQ
-     Handlers.Mutable
      Handlers.Deterministic.
 
-Import Storage EqDec FoldIn Handler.
+From RecordUpdate Require Import
+     RecordSet.
 
 Definition Offset := MQ.Offset.
 
@@ -29,33 +30,35 @@ Section SingleNode.
   (** Transaction log entry *)
   Record Tx :=
     mkTx
-      { tx_tlogn : Offset;
-        reads : list (Key * Offset);
-        writes : list (Key * Offset);
-        commit : bool;
-        payload : list (Key * Value);
+      { tx_ws : Offset;
+        tx_tlogn : Offset;
+        tx_reads : list (Key * Offset);
+        tx_writes : list (Key * Offset);
+        (* tx_commit : bool;  TODO: later *)
+        tx_payload : list (Key * Value);
       }.
+  Instance etaTx : Settable _ := settable! mkTx <tx_ws; tx_tlogn; tx_reads; tx_writes; (* tx_commit; *) tx_payload>.
 
   (** IO handler: *)
   Let initial_tlogn o := o = 0.
   Let initial_kv (s : St1) := s = Storage.new.
   Let initial_seqnos (s : St2) := s = Storage.new.
 
-  Definition Handler := (Mutable.t PID MQ.Offset initial_tlogn <+> @MQ.t PID Tx) <+>
-                        (@Deterministic.KV.t PID Key Value St1 _ initial_kv <+>
-                         @Deterministic.KV.t PID Key Offset St2 _ initial_seqnos).
+  Definition Handler := (@Deterministic.AtomicVar.t PID MQ.Offset _ <+> @MQ.t PID Tx) <+>
+                        (@Deterministic.KV.t PID Key Offset St2 _ <+>
+                         @Deterministic.KV.t PID Key Value St1 _).
   Definition ctx := hToCtx Handler.
   Let req_t := ctx_req_t ctx.
 
   (** ** Syscalls: *)
   (** Get offset of the last imported transaction: *)
   Definition get_tlogn : req_t :=
-    inl (inl (Mutable.get)).
+    inl (inl (AtomicVar.read)).
 
   (** Update offset of the last imported transaction (only the
   importer process is supposed to call this): *)
   Definition update_tlogn n : req_t :=
-    inl (inl (Mutable.put n)).
+    inl (inl (AtomicVar.write n)).
 
   (** Fetch a transaction from a distributed log (blocking call): *)
   Definition pull_tx offset : req_t :=
@@ -82,11 +85,46 @@ Section SingleNode.
   Definition write_d key val : req_t :=
     inr (inr (Deterministic.KV.write key val)).
 
-
   (** Dirty detele (only the importer process is supposed to call
   this): *)
   Definition delete_d key : req_t :=
     inr (inr (Deterministic.KV.delete key)).
+
+  Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
+                                    (at level 100, C at next level, V ident, right associativity).
+
+  Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
+                           (at level 100, right associativity).
+
+  Notation "'call' V '<-' I ; C" := (I (fun V => C))
+                                      (at level 100, C at next level, V ident, right associativity).
+
+
+  Definition get_seqno key tx_context cont :=
+    do v0 <- try_get_seqno key;
+    match v0 with
+    | Some v =>
+        cont v
+    | None =>
+        do tlogn <- get_tlogn;
+        cont (tlogn - tx_context.(tx_ws))
+    end.
+
+  Definition read_t key tx_context cont :=
+    match tx_context with
+    | {| tx_reads := rr |} =>
+      call seqno <- get_seqno key tx_context;
+      do val <- read_d key;
+      cont (val, tx_context)
+    end.
+
+  Definition write_t key value tx_context cont :=
+    call seqno <- get_seqno key tx_context;
+    cont (I, tx_context).
+
+  Definition validate_seqnos (tx : Tx) cont :=
+    match
+    done try_get_seqno 1.
 
   Definition validate_seqnos (tx : Tx) (s : State) : bool :=
     let f x := match x with

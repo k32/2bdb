@@ -134,8 +134,8 @@ Module ExampleModelDefn.
     Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
                              (at level 100, right associativity).
 
-    Notation "'call' V '<-' I ; C" := (I C)
-                                     (at level 100, right associativity).
+    Notation "'call' V '<-' I ; C" := (I (fun V => C))
+                                     (at level 100, C at next level, V ident, right associativity).
 
 
     Definition put (val : nat) : Handler.(h_req) :=
@@ -152,20 +152,20 @@ Module ExampleModelDefn.
 
     (* Just a demonstration how to define a program that loops
     indefinitely, as long as it does IO: *)
-    Local CoFixpoint infinite_loop (self : PID) : @Thread ctx :=
+    Local CoFixpoint infinite_loop (self : PID) :=
       do _ <- put 0;
       infinite_loop self.
 
     (* Data race example: *)
-    Definition inc (_ : nat) cont : @Thread ctx :=
+    Definition inc (n : nat) cont :=
       do v <- get;
-      do _ <- put (v + 1);
-      cont.
+      do _ <- put (v + n);
+      cont (v + n).
 
     (* Fixed example: *)
-    Definition counter_correct (self : PID) : @Thread ctx :=
+    Definition counter_correct (self : PID) :=
       do _ <- grab;
-      call _ <- inc 42;
+      call x <- inc 1;
       done release.
 
     Definition nop (self : PID) :=
