@@ -285,6 +285,11 @@ End defn.
 
 Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b) : hoare_scope.
 
+Check ls_cons.
+
+Ltac forward s' :=
+  apply (ls_cons _ s' _ _ _).
+
 Ltac unfold_trace f tac :=
   match type of f with
   | LongStep ?s1 [] ?s2 =>

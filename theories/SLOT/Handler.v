@@ -173,7 +173,7 @@ Section ComposeHandlers.
   Qed.
 
   Lemma local_l_chain_rule : @ChainRuleLocality PID compose te_subset_l.
-  Proof.
+  Proof with firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
     destruct te1 as [pid1 req1 ret1];
@@ -186,14 +186,14 @@ Section ComposeHandlers.
       unfold compose_chain_rule in *;
       firstorder; subst;
       unfold eq_rec_r in *; simpl in *.
-    - apply ls_cons with (s' := (l, r')); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
-    - apply ls_cons with (s' := (l', r)); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
+    - forward (l, r')...
+      forward (l', r')...
+    - forward (l', r)...
+      forward (l', r')...
   Qed.
 
   Lemma local_r_chain_rule : @ChainRuleLocality PID compose te_subset_r.
-  Proof.
+  Proof with firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
     destruct te1 as [pid1 req1 ret1];
@@ -206,10 +206,10 @@ Section ComposeHandlers.
       unfold compose_chain_rule in *;
       firstorder; subst;
       unfold eq_rec_r in *; simpl in *.
-    - apply ls_cons with (s' := (l', r)); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
-    - apply ls_cons with (s' := (l, r')); firstorder.
-      apply ls_cons with (s' := (l', r')); firstorder.
+    - forward (l', r)...
+      forward (l', r')...
+    - forward (l, r')...
+      forward (l', r')...
   Qed.
 End ComposeHandlers.
 
@@ -256,10 +256,18 @@ Ltac unfold_compose_handler H s s' :=
   idtac.
 
 Ltac handler_step Hcr :=
-  cbn in Hcr;
   lazymatch type of Hcr with
   | ComposeChainRule ?Hl ?Hr ?s ?s' ?te =>
     repeat unfold_compose_handler Hcr s s'
+  (* TODO: figure out how to move this tactic to Handlers.Mutable where
+     it belongs: *)
+  | ?s = ?s' /\ ?ret = ?ret' =>
+    let Hs := fresh "Hs" in
+    let Hret := fresh "Hret" in
+    destruct Hcr as [Hret Hs];
+    try (rewrite Hret in *; clear Hret);
+    try (rewrite Hs in *; clear Hs);
+    try clear Hcr
   end.
 
 Create HintDb handlers.
@@ -282,7 +290,8 @@ Ltac trace_step f :=
     let Htl := fresh "Htl" in
     inversion_clear f as [|? s' ? te tail Hcr Htl];
     rename Htl into f;
-    repeat handler_step Hcr;
+    cbn in Hcr;
+    handler_step Hcr;
     auto with handlers
   end.
 

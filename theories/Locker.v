@@ -14,7 +14,7 @@ From LibTx Require
      Handler
      Handlers.MQ
      Handlers.Mutable
-     Handlers.KV.
+     Handlers.Deterministic.
 
 Import Storage EqDec FoldIn Handler.
 
@@ -38,9 +38,12 @@ Section SingleNode.
 
   (** IO handler: *)
   Let initial_tlogn o := o = 0.
+  Let initial_kv (s : St1) := s = Storage.new.
+  Let initial_seqnos (s : St2) := s = Storage.new.
 
   Definition Handler := (Mutable.t PID MQ.Offset initial_tlogn <+> @MQ.t PID Tx) <+>
-                        (@KV.t PID Key Value St1 _ <+> @KV.t PID Key Offset St2 _).
+                        (@Deterministic.KV.t PID Key Value St1 _ initial_kv <+>
+                         @Deterministic.KV.t PID Key Offset St2 _ initial_seqnos).
   Definition ctx := hToCtx Handler.
   Let req_t := ctx_req_t ctx.
 
@@ -64,20 +67,26 @@ Section SingleNode.
 
   (** Get seqno of a key: *)
   Definition try_get_seqno key : req_t :=
-    inr (inl (KV.read key)).
+    inr (inl (Deterministic.KV.read key)).
 
   (** Update seqno of a key: *)
   Definition update_seqno key n : req_t :=
-    inr (inl (KV.write key n)).
+    inr (inl (Deterministic.KV.write key n)).
 
   (** Dirty read: *)
   Definition read_d key : req_t :=
-    inr (inr (KV.read key)).
+    inr (inr (Deterministic.KV.read key)).
 
   (** Dirty write (only the importer process is supposed to call
   this): *)
   Definition write_d key val : req_t :=
-    inr (inr (KV.write key val)).
+    inr (inr (Deterministic.KV.write key val)).
+
+
+  (** Dirty detele (only the importer process is supposed to call
+  this): *)
+  Definition delete_d key : req_t :=
+    inr (inr (Deterministic.KV.delete key)).
 
   Definition validate_seqnos (tx : Tx) (s : State) : bool :=
     let f x := match x with
