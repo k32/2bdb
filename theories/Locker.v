@@ -101,7 +101,6 @@ Section defs.
   Definition write_d key val : req_t :=
     inr (Deterministic.KV.write key val).
 
-
   (** Dirty delete (only the importer process is supposed to call this): *)
   Definition delete_d key : req_t :=
     inr (Deterministic.KV.delete key).
@@ -187,13 +186,13 @@ Section defs.
       end.
 
     Definition update_state (s : ImporterState) (tx : Tx) :=
-      let lit := imp_lit s in
+      let tlogn := imp_tlogn s in
       let cells := tx_cells tx in
       let keys := keys cells in
       let seqnos := imp_seqnos s in
       let seqnos' := foldl' keys (fun key Hin acc =>
                                     match getT key cells Hin with
-                                    | {| cell_write := Some _ |} => put key lit acc
+                                    | {| cell_write := Some _ |} => put key tlogn acc
                                     | _                          => seqnos
                                     end) seqnos in
       s <| imp_seqnos := seqnos' |> <| imp_lit := imp_tlogn s |>.
@@ -203,14 +202,12 @@ Section defs.
              (fun key Hin cont =>
                 match getT key cells Hin with
                 | {| cell_write := Some (Some val) |} =>
-                    do _ <- write_d key val;
-                    cont
+                  do _ <- write_d key val; cont
                 | {| cell_write := Some None |} =>
-                    do _ <- delete_d key;
-                    cont
+                  do _ <- delete_d key; cont
                 | _ =>
-                    cont
-                end) (cont I).
+                  cont
+                end) cont.
 
     Definition importer_step cont :=
       do s <- get_importer_state;
@@ -218,9 +215,9 @@ Section defs.
       let s' := s <| imp_tlogn := tlogn |> in
       do tx <- pull_tx tlogn;
       if validate_tx s' tx then
-        call _ <- import_ops (tx_cells tx);
+        import_ops (tx_cells tx) (
         do _ <- update_importer_state (update_state s' tx);
-        cont I
+        cont I)
       else
         do _ <- update_importer_state s';
         cont I.
