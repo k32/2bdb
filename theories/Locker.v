@@ -18,6 +18,7 @@ From LibTx Require Import
 
 From RecordUpdate Require Import
      RecordSet.
+Import RecordSetNotations.
 
 Definition Offset := MQ.Offset.
 
@@ -27,23 +28,26 @@ Section SingleNode.
           `{HStore2: @Storage Key Offset St2}
           `{HKeq_dec : EqDec Key}.
 
+  (** Encapsulate updates to a single key: *)
+  Record Cell : Set :=
+    mkCell
+      { cell_seqno : Offset;
+        cell_write : option (option Value);
+      }.
+  Instance etaCall : Settable _ := settable! mkCell <cell_seqno; cell_write>.
+
+  Context {CellStore : Set} `{HStoreCell: @Storage Key Cell CellStore}.
+
   (** Transaction log entry *)
-  Record Tx :=
+  Record Tx : Set :=
     mkTx
       { tx_ws : Offset;
         tx_tlogn : Offset;
-        tx_reads : list (Key * Offset);
-        tx_writes : list (Key * Offset);
-        (* tx_commit : bool;  TODO: later *)
-        tx_payload : list (Key * Value);
+        tx_cells : CellStore;
       }.
-  Instance etaTx : Settable _ := settable! mkTx <tx_ws; tx_tlogn; tx_reads; tx_writes; (* tx_commit; *) tx_payload>.
+  Instance etaTx : Settable _ := settable! mkTx <tx_ws; tx_tlogn; tx_cells>.
 
   (** IO handler: *)
-  Let initial_tlogn o := o = 0.
-  Let initial_kv (s : St1) := s = Storage.new.
-  Let initial_seqnos (s : St2) := s = Storage.new.
-
   Definition Handler := (@Deterministic.AtomicVar.t PID MQ.Offset _ <+> @MQ.t PID Tx) <+>
                         (@Deterministic.KV.t PID Key Offset St2 _ <+>
                          @Deterministic.KV.t PID Key Value St1 _).
@@ -80,13 +84,11 @@ Section SingleNode.
   Definition read_d key : req_t :=
     inr (inr (Deterministic.KV.read key)).
 
-  (** Dirty write (only the importer process is supposed to call
-  this): *)
+  (** Dirty write (only the importer process is supposed to call this): *)
   Definition write_d key val : req_t :=
     inr (inr (Deterministic.KV.write key val)).
 
-  (** Dirty detele (only the importer process is supposed to call
-  this): *)
+  (** Dirty detele (only the importer process is supposed to call this): *)
   Definition delete_d key : req_t :=
     inr (inr (Deterministic.KV.delete key)).
 
@@ -110,21 +112,31 @@ Section SingleNode.
         cont (tlogn - tx_context.(tx_ws))
     end.
 
-  Definition read_t key tx_context cont :=
-    match tx_context with
-    | {| tx_reads := rr |} =>
-      call seqno <- get_seqno key tx_context;
-      do val <- read_d key;
-      cont (val, tx_context)
+  Definition get_cell key tx_context cont :=
+    match Storage.get key tx_context.(tx_cells) with
+    | Some x =>
+        cont x
+    | None =>
+        call seqno <- get_seqno key tx_context;
+        cont {| cell_seqno := seqno; cell_write := None |}
     end.
 
-  Definition write_t key value tx_context cont :=
-    call seqno <- get_seqno key tx_context;
-    cont (I, tx_context).
+  Definition read_t key tx_context cont :=
+    call cell <- get_cell key tx_context;
+    match cell.(cell_write) with
+    | Some v =>
+        cont (v, tx_context)
+    | None =>
+        do v <- read_d key;
+        let tx_context' := set tx_cells (put key cell) tx_context in
+        cont (v, tx_context')
+    end.
 
-  Definition validate_seqnos (tx : Tx) cont :=
-    match
-    done try_get_seqno 1.
+  Definition write_t key val tx_context cont :=
+    call cell <- get_cell key tx_context;
+    let cell' := cell <|cell_write := Some (Some val)|> in
+    let tx_context' := set tx_cells (put key cell') tx_context in
+    cont (I, tx_context).
 
   Definition validate_seqnos (tx : Tx) (s : State) : bool :=
     let f x := match x with

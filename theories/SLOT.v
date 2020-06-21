@@ -1,4 +1,4 @@
-(*** Separation Logic of Traces *)
+(** * Separation Logic of Traces *)
 (** This module defines the model of distributed system used in the
 rest of the project. Whether you trust the LibTx depends on whether
 you trust the below definitions.
@@ -136,7 +136,6 @@ Module ExampleModelDefn.
 
     Notation "'call' V '<-' I ; C" := (I (fun V => C))
                                      (at level 100, C at next level, V ident, right associativity).
-
 
     Definition put (val : nat) : Handler.(h_req) :=
       inl (AtomicVar.write val).
