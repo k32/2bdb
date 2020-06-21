@@ -43,6 +43,30 @@ Ltac elim_det H :=
     clear H
   end.
 
+Module Var.
+  Section defs.
+    Context {PID T : Set}.
+
+    Inductive req_t : Set :=
+    | read : req_t
+    | write : T -> req_t.
+
+    Definition ret_t req : Set :=
+      match req with
+      | read => T
+      | write _ => True
+      end.
+
+    Definition step s req : T * ret_t req :=
+      match req with
+      | read => (s, s)
+      | write new => (new, I)
+      end.
+
+    Definition t := mkHandler PID T req_t ret_t step.
+  End defs.
+End Var.
+
 Module AtomicVar.
   Import EquivDec Peano_dec.
 

@@ -22,13 +22,13 @@ Import RecordSetNotations.
 
 Definition Offset := MQ.Offset.
 
-Section SingleNode.
-  Context {PID Key Value St1 St2 : Set}
-          `{HStore1 : @Storage Key Value St1}
-          `{HStore2: @Storage Key Offset St2}
+Section defs.
+  Context {PID Key Value KVStore SeqnoStore : Set}
+          `{HStore1 : @Storage Key Value KVStore}
+          `{HStore2: @Storage Key Offset SeqnoStore}
           `{HKeq_dec : EqDec Key}.
 
-  (** Encapsulate updates to a single key: *)
+  (** Encapsulate updates to a single value: *)
   Record Cell : Set :=
     mkCell
       { cell_seqno : Offset;
@@ -41,28 +41,49 @@ Section SingleNode.
   (** Transaction log entry *)
   Record Tx : Set :=
     mkTx
-      { tx_ws : Offset;
+      { tx_id : PID;
+        tx_ws : Offset;
         tx_tlogn : Offset;
         tx_cells : CellStore;
       }.
-  Instance etaTx : Settable _ := settable! mkTx <tx_ws; tx_tlogn; tx_cells>.
+  Instance etaTx : Settable _ := settable! mkTx <tx_id; tx_ws; tx_tlogn; tx_cells>.
+
+  Record ImporterState : Set :=
+    mkImpState
+      { imp_ws : Offset;
+        imp_tlogn : Offset;
+        imp_lit : Offset;
+        imp_seqnos : SeqnoStore;
+      }.
+  Instance etaImpSt : Settable _ := settable! mkImpState <imp_ws; imp_tlogn; imp_lit; imp_seqnos>.
 
   (** IO handler: *)
-  Definition Handler := (@Deterministic.AtomicVar.t PID MQ.Offset _ <+> @MQ.t PID Tx) <+>
-                        (@Deterministic.KV.t PID Key Offset St2 _ <+>
-                         @Deterministic.KV.t PID Key Value St1 _).
+  Definition Handler := (@Deterministic.Var.t PID ImporterState <+> @MQ.t PID Tx) <+>
+                        @Deterministic.KV.t PID Key Value KVStore _.
+
   Definition ctx := hToCtx Handler.
   Let req_t := ctx_req_t ctx.
 
+
+  Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
+                                    (at level 100, C at next level, V ident, right associativity).
+
+  Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
+                           (at level 100, right associativity).
+
+  Notation "'call' V '<-' I ; C" := (I (fun V => C))
+                                      (at level 100, C at next level, V ident,
+                                       right associativity, only parsing).
+
   (** ** Syscalls: *)
   (** Get offset of the last imported transaction: *)
-  Definition get_tlogn : req_t :=
-    inl (inl (AtomicVar.read)).
+  Definition get_importer_state : req_t :=
+    inl (inl (Var.read)).
 
   (** Update offset of the last imported transaction (only the
   importer process is supposed to call this): *)
-  Definition update_tlogn n : req_t :=
-    inl (inl (AtomicVar.write n)).
+  Definition update_importer_state new_state : req_t :=
+    inl (inl (Var.write new_state)).
 
   (** Fetch a transaction from a distributed log (blocking call): *)
   Definition pull_tx offset : req_t :=
@@ -72,250 +93,271 @@ Section SingleNode.
   Definition push_tx tx : req_t :=
     inl (inr (MQ.produce tx)).
 
-  (** Get seqno of a key: *)
-  Definition try_get_seqno key : req_t :=
-    inr (inl (Deterministic.KV.read key)).
-
-  (** Update seqno of a key: *)
-  Definition update_seqno key n : req_t :=
-    inr (inl (Deterministic.KV.write key n)).
-
   (** Dirty read: *)
   Definition read_d key : req_t :=
-    inr (inr (Deterministic.KV.read key)).
+    inr (Deterministic.KV.read key).
 
   (** Dirty write (only the importer process is supposed to call this): *)
   Definition write_d key val : req_t :=
-    inr (inr (Deterministic.KV.write key val)).
+    inr (Deterministic.KV.write key val).
 
-  (** Dirty detele (only the importer process is supposed to call this): *)
+
+  (** Dirty delete (only the importer process is supposed to call this): *)
   Definition delete_d key : req_t :=
-    inr (inr (Deterministic.KV.delete key)).
+    inr (Deterministic.KV.delete key).
 
-  Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
-                                    (at level 100, C at next level, V ident, right associativity).
+  Section TransactionProc.
+    (** Get seqno of a key: *)
+    Definition get_seqno_ key s :=
+      match s with
+        {| imp_seqnos := s; imp_lit := tlogn; imp_ws := ws |} =>
+        match Storage.get key s with
+        | Some seqno => seqno
+        | None => tlogn - ws
+        end
+      end.
 
-  Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
-                           (at level 100, right associativity).
+    Definition get_seqno key cont : Thread :=
+      do s <- get_importer_state;
+      cont (get_seqno_ key s).
 
-  Notation "'call' V '<-' I ; C" := (I (fun V => C))
-                                      (at level 100, C at next level, V ident, right associativity).
+    Definition get_cell key tx_context cont :=
+      match Storage.get key tx_context.(tx_cells) with
+      | Some x =>
+          cont x
+      | None =>
+          call seqno <- get_seqno key;
+          cont {| cell_seqno := seqno; cell_write := None |}
+      end.
 
+    Definition read_t key tx_context cont :=
+      call cell <- get_cell key tx_context;
+      match cell.(cell_write) with
+      | Some v =>
+          cont (v, tx_context)
+      | None =>
+          do v <- read_d key;
+          let tx_context' := set tx_cells (put key cell) tx_context in
+          cont (v, tx_context')
+      end.
 
-  Definition get_seqno key tx_context cont :=
-    do v0 <- try_get_seqno key;
-    match v0 with
-    | Some v =>
-        cont v
-    | None =>
-        do tlogn <- get_tlogn;
-        cont (tlogn - tx_context.(tx_ws))
-    end.
+    Definition write_t key val tx_context cont :=
+      call cell <- get_cell key tx_context;
+      let cell' := cell <|cell_write := Some (Some val)|> in
+      let tx_context' := set tx_cells (put key cell') tx_context in
+      cont (I, tx_context).
 
-  Definition get_cell key tx_context cont :=
-    match Storage.get key tx_context.(tx_cells) with
-    | Some x =>
-        cont x
-    | None =>
-        call seqno <- get_seqno key tx_context;
-        cont {| cell_seqno := seqno; cell_write := None |}
-    end.
+    Definition start_tx self cont :=
+      do s <- get_importer_state;
+      cont {| tx_id := self;
+              tx_ws := s.(imp_ws);
+              tx_tlogn := s.(imp_lit);
+              tx_cells := Storage.new
+           |}.
 
-  Definition read_t key tx_context cont :=
-    call cell <- get_cell key tx_context;
-    match cell.(cell_write) with
-    | Some v =>
-        cont (v, tx_context)
-    | None =>
-        do v <- read_d key;
-        let tx_context' := set tx_cells (put key cell) tx_context in
-        cont (v, tx_context')
-    end.
+    CoFixpoint pre_commit tx_context cont :=
+      do ret <- push_tx tx_context;
+      match ret with
+      | Some offset =>
+          cont offset
+      | None =>
+          pre_commit tx_context cont
+      end.
 
-  Definition write_t key val tx_context cont :=
-    call cell <- get_cell key tx_context;
-    let cell' := cell <|cell_write := Some (Some val)|> in
-    let tx_context' := set tx_cells (put key cell') tx_context in
-    cont (I, tx_context).
+    CoFixpoint transaction self (tx_fun : Tx -> (Tx -> Thread) -> Thread) cont :=
+      call tx_context <- start_tx self;
+      call tx_context' <- tx_fun tx_context;
+      call _ <- pre_commit tx_context;
+      cont I.
+  End TransactionProc.
 
-  Definition validate_seqnos (tx : Tx) (s : State) : bool :=
-    let f x := match x with
-               | (k, v) => Nat.eqb v (get_seqno k s)
-               end in
-    match tx with
-    | {| reads := r; writes := w |} => forallb f r && forallb f w
-    end.
+  Section Importer.
+    Definition validate_seqnos (tx : Tx) (s : ImporterState) : bool :=
+      let seqnos := imp_seqnos s in
+      let cells := tx_cells tx in
+      let keys := keys cells in
+      forallb' keys (fun key Hin =>
+                       let cell := getT key cells Hin in
+                       Nat.eqb (cell_seqno cell) (get_seqno_ key s)).
 
-Definition check_tx (s : State) (offset : Offset) (tx : Tx) : bool :=
-  match s with
-  | {| sync_window_size := ws; seqnos := seqnos |} =>
-    (offset - (last_imported_offset tx) <? ws) && validate_seqnos tx s
-  end.
+    Definition validate_tx (s : ImporterState) (tx : Tx) : bool :=
+      match s with
+      | {| imp_ws := ws; imp_seqnos := seqnos; imp_lit := tlogn |} =>
+        (tlogn - (tx_tlogn tx) <? ws) && validate_seqnos tx s
+      end.
 
-Definition update_seqnos (tx : Tx) (offset : Offset) (seqnos : Seqnos) : Seqnos :=
-  let ww := writes tx in
-  let f acc x := match x with
-                 | (k, v) => S.put k offset acc
-                 end in
-  fold_left f ww seqnos.
+    Definition update_state (s : ImporterState) (tx : Tx) :=
+      let lit := imp_lit s in
+      let cells := tx_cells tx in
+      let keys := keys cells in
+      let seqnos := imp_seqnos s in
+      let seqnos' := foldl' keys (fun key Hin acc =>
+                                    match getT key cells Hin with
+                                    | {| cell_write := Some _ |} => put key lit acc
+                                    | _                          => seqnos
+                                    end) seqnos in
+      s <| imp_seqnos := seqnos' |> <| imp_lit := imp_tlogn s |>.
 
-Definition consume_tx (S : State) (offset : Offset) (tx : Tx) : bool * State :=
-  match S with
-  | {| sync_window_size := ws; seqnos := s |} =>
-    if check_tx S offset tx then
-      (true, mkState ws offset (update_seqnos tx offset s))
-    else
-      (false, S)
-  end.
+    Definition import_ops cells cont : Thread :=
+      foldl' (keys cells)
+             (fun key Hin cont =>
+                match getT key cells Hin with
+                | {| cell_write := Some (Some val) |} =>
+                    do _ <- write_d key val;
+                    cont
+                | {| cell_write := Some None |} =>
+                    do _ <- delete_d key;
+                    cont
+                | _ =>
+                    cont
+                end) (cont I).
 
-(* Fixpoint replay' offset (tlog : Tlog) (s : State) : State := *)
-(*   match tlog with *)
-(*   | tx :: tail => *)
-(*     match check_tx s offset tx with *)
-(*     | (_, s') => replay' (S offset) tail s' *)
-(*     end *)
-(*   | [] => s *)
+    Definition importer_step cont :=
+      do s <- get_importer_state;
+      let tlogn := 1 + (imp_tlogn s) in
+      let s' := s <| imp_tlogn := tlogn |> in
+      do tx <- pull_tx tlogn;
+      if validate_tx s' tx then
+        call _ <- import_ops (tx_cells tx);
+        do _ <- update_importer_state (update_state s' tx);
+        cont I
+      else
+        do _ <- update_importer_state s';
+        cont I.
+
+    Fail CoFixpoint importer : Thread :=
+      call _ <- importer_step;
+      importer. (* TODO *)
+
+  End Importer.
+End defs.
+
+(* Definition tx_keys (tx : Tx) : list (KT L.Key) := *)
+(*   match tx with *)
+(*   | {| reads := rr; writes := ww |} => *)
+(*     map (fun x => match x with (x, _) => x end) (rr ++ ww) *)
 (*   end. *)
 
-(* Definition replay (tlog : Tlog) (s : State) : State := *)
-(*   let start := my_tlogn s in *)
-(*   let tlog' := skipn start tlog in *)
-(*   replay' start tlog' s. *)
+(* (** Prove that importing a valid transaction advances offset of the *)
+(* last imported transaction *) *)
+(* Lemma consume_valid_tx_offset_advance : forall hwm S tx, *)
+(*     let (valid, S') := consume_tx S hwm tx in *)
+(*     valid = true -> *)
+(*     my_tlogn S' = hwm. *)
+(* Proof. *)
+(*   intros. *)
+(*   unfold consume_tx. *)
+(*   destruct (check_tx S hwm tx); destruct S; intros H; easy. *)
+(* Qed. *)
 
-End Unbounded.
+(* (** Key subset equality property: "for each key in [l] the value is *)
+(* the same in [S1] and [S2]": *) *)
+(* Definition subset_s_eq l S1 S2 : Prop := *)
+(*   forall k sn, In (k, sn) l -> *)
+(*           get_seqno k S1 = sn /\ get_seqno k S2 = sn. *)
 
-Module UnboundedSpec (S : Storage.Interface).
+(* Lemma subset_s_eq_comm : forall l S1 S2, subset_s_eq l S1 S2 <-> subset_s_eq l S2 S1. *)
+(* Proof. *)
+(*   intros. *)
+(*   unfold subset_s_eq. split; intros; apply and_comm; auto. *)
+(* Qed. *)
 
-Module L := Unbounded(S). Import L.
-Module SP := Storage.Properties(S). Import SP.
-Module SE := Storage.Equality(S). Import SE.
+(* Lemma subset_s_eq_forallb : forall ws o1 o2 s1 s2 l, *)
+(*     let S1 := mkState ws o1 s1 in *)
+(*     let S2 := mkState ws o2 s2 in *)
+(*     subset_s_eq l S1 S2 -> *)
+(*     forallb *)
+(*       (fun x : KT L.Key * nat => let (k, v) := x in v =? get_seqno k S1) l = *)
+(*     forallb *)
+(*       (fun x : KT L.Key * nat => let (k, v) := x in v =? get_seqno k S2) l. *)
+(* Proof. *)
+(*   intros. *)
+(*   repeat rewrite forallb_forallb'. *)
+(*   subst S1. subst S2. *)
+(*   generalize dependent H. *)
+(*   induction l as [|[k o] l IHl0]. *)
+(*   - easy. *)
+(*   - intros H. *)
+(*     (* First, let's prove premise for the induction hypothesis: *) *)
+(*     assert (IHl : subset_s_eq l {| sync_window_size := ws; my_tlogn := o1; seqnos := s1 |} *)
+(*                                 {| sync_window_size := ws; my_tlogn := o2; seqnos := s2 |}). *)
+(*     { unfold subset_s_eq in *. *)
+(*       intros. *)
+(*       apply H. apply in_cons. assumption. *)
+(*     } *)
+(*     apply IHl0 in IHl. *)
+(*     (* Now let's get rid of the head term: *) *)
+(*     unfold forallb' in *. *)
+(*     unfold subset_s_eq in H. *)
+(*     simpl in *. *)
+(*     repeat rewrite Bool.andb_true_r. *)
+(*     specialize (H k o) as [H1 H2]. *)
+(*     { left. reflexivity. } *)
+(*     rewrite H1, H2. *)
+(*     repeat rewrite <-beq_nat_refl. *)
+(*     (* ...and prove the property for the tail: *) *)
+(*     apply IHl. *)
+(* Qed. *)
 
-Definition tx_keys (tx : Tx) : list (KT L.Key) :=
-  match tx with
-  | {| reads := rr; writes := ww |} =>
-    map (fun x => match x with (x, _) => x end) (rr ++ ww)
-  end.
+(* (** Prove that only the subset of keys affected by the transaction *)
+(* affects the result of lock check *) *)
+(* Lemma check_tx_subset_eq_p : forall hwm S1 S2 tx, *)
+(*     sync_window_size S1 = sync_window_size S2 -> *)
+(*     subset_s_eq (reads tx) S1 S2 -> *)
+(*     subset_s_eq (writes tx) S1 S2 -> *)
+(*     check_tx S1 hwm tx = check_tx S2 hwm tx. *)
+(* Proof. *)
+(*   intros hwm S1 S2 tx Hws Hrl Hwl. *)
+(*   unfold check_tx. *)
+(*   (* Prove a trivial case when transaction is out of replication *)
+(*   window: *) *)
+(*   destruct S1 as [ws o1 s1]. destruct S2 as [ws2 o2 s2]. *)
+(*   destruct tx as [tx_o rl wl tx_commit tx_p]. *)
+(*   simpl in *. rewrite <-Hws in *. *)
+(*   destruct (hwm - tx_o <? ws); try easy. *)
+(*   (* ...Now check seqnos: *) *)
+(*   repeat rewrite Bool.andb_true_l. *)
+(*   rewrite subset_s_eq_forallb with (o2 := o2) (s2 := s2) (l := rl) by assumption. *)
+(*   rewrite subset_s_eq_forallb with (o2 := o2) (s2 := s2) (l := wl) by assumption. *)
+(*   reflexivity. *)
+(* Qed. *)
 
-(** Prove that importing a valid transaction advances offset of the
-last imported transaction *)
-Lemma consume_valid_tx_offset_advance : forall hwm S tx,
-    let (valid, S') := consume_tx S hwm tx in
-    valid = true ->
-    my_tlogn S' = hwm.
-Proof.
-  intros.
-  unfold consume_tx.
-  destruct (check_tx S hwm tx); destruct S; intros H; easy.
-Qed.
-
-(** Key subset equality property: "for each key in [l] the value is
-the same in [S1] and [S2]": *)
-Definition subset_s_eq l S1 S2 : Prop :=
-  forall k sn, In (k, sn) l ->
-          get_seqno k S1 = sn /\ get_seqno k S2 = sn.
-
-Lemma subset_s_eq_comm : forall l S1 S2, subset_s_eq l S1 S2 <-> subset_s_eq l S2 S1.
-Proof.
-  intros.
-  unfold subset_s_eq. split; intros; apply and_comm; auto.
-Qed.
-
-Lemma subset_s_eq_forallb : forall ws o1 o2 s1 s2 l,
-    let S1 := mkState ws o1 s1 in
-    let S2 := mkState ws o2 s2 in
-    subset_s_eq l S1 S2 ->
-    forallb
-      (fun x : KT L.Key * nat => let (k, v) := x in v =? get_seqno k S1) l =
-    forallb
-      (fun x : KT L.Key * nat => let (k, v) := x in v =? get_seqno k S2) l.
-Proof.
-  intros.
-  repeat rewrite forallb_forallb'.
-  subst S1. subst S2.
-  generalize dependent H.
-  induction l as [|[k o] l IHl0].
-  - easy.
-  - intros H.
-    (* First, let's prove premise for the induction hypothesis: *)
-    assert (IHl : subset_s_eq l {| sync_window_size := ws; my_tlogn := o1; seqnos := s1 |}
-                                {| sync_window_size := ws; my_tlogn := o2; seqnos := s2 |}).
-    { unfold subset_s_eq in *.
-      intros.
-      apply H. apply in_cons. assumption.
-    }
-    apply IHl0 in IHl.
-    (* Now let's get rid of the head term: *)
-    unfold forallb' in *.
-    unfold subset_s_eq in H.
-    simpl in *.
-    repeat rewrite Bool.andb_true_r.
-    specialize (H k o) as [H1 H2].
-    { left. reflexivity. }
-    rewrite H1, H2.
-    repeat rewrite <-beq_nat_refl.
-    (* ...and prove the property for the tail: *)
-    apply IHl.
-Qed.
-
-(** Prove that only the subset of keys affected by the transaction
-affects the result of lock check *)
-Lemma check_tx_subset_eq_p : forall hwm S1 S2 tx,
-    sync_window_size S1 = sync_window_size S2 ->
-    subset_s_eq (reads tx) S1 S2 ->
-    subset_s_eq (writes tx) S1 S2 ->
-    check_tx S1 hwm tx = check_tx S2 hwm tx.
-Proof.
-  intros hwm S1 S2 tx Hws Hrl Hwl.
-  unfold check_tx.
-  (* Prove a trivial case when transaction is out of replication
-  window: *)
-  destruct S1 as [ws o1 s1]. destruct S2 as [ws2 o2 s2].
-  destruct tx as [tx_o rl wl tx_commit tx_p].
-  simpl in *. rewrite <-Hws in *.
-  destruct (hwm - tx_o <? ws); try easy.
-  (* ...Now check seqnos: *)
-  repeat rewrite Bool.andb_true_l.
-  rewrite subset_s_eq_forallb with (o2 := o2) (s2 := s2) (l := rl) by assumption.
-  rewrite subset_s_eq_forallb with (o2 := o2) (s2 := s2) (l := wl) by assumption.
-  reflexivity.
-Qed.
-
-Lemma consume_tx_subset_eq_p : forall hwm S1 S2 tx,
-    sync_window_size S1 = sync_window_size S2 ->
-    subset_s_eq (reads tx) S1 S2 ->
-    subset_s_eq (writes tx) S1 S2 ->
-    let (res1, S1') := consume_tx S1 hwm tx in
-    let (res2, S2') := consume_tx S2 hwm tx in
-    res1 = res2 /\ subset_s_eq (reads tx) S1' S2' /\ subset_s_eq (writes tx) S1' S2'.
-Proof.
-  intros hwm S1 S2 tx Hws Hrl Hwl.
-  unfold consume_tx.
-  rewrite (check_tx_subset_eq_p hwm S1 S2 tx).
-  destruct (check_tx S2 hwm tx);
-    destruct S1 as [ws1 o1 s1];
-    destruct S2 as [ws2 o2 s2];
-    destruct tx as [tx_o rl wl tx_commit tx_p];
-    simpl in *;
-    rewrite Hws in *;
-    split; split; try easy.
-  - subst.
-    unfold update_seqnos. simpl in *.
-    (* Here it's beneficial to iterate the list backwards to make a
-    goal closely matching with the inductive hypothesis: *)
-    replace wl with (rev (rev wl)) by apply rev_involutive.
-    induction (rev wl).
-    + simpl. assumption.
-    + simpl. repeat rewrite fold_left_app. simpl.
-      admit.
-  - unfold update_seqnos. simpl in *.
-    (* Here it's beneficial to iterate the list backwards to make a
-    goal closely matching with the inductive hypothesis: *)
-    replace wl with (rev (rev wl)) by apply rev_involutive.
-    induction (rev wl).
-    + easy.
-    + simpl. repeat rewrite fold_left_app. simpl.
-Abort.
-End UnboundedSpec.
+(* Lemma consume_tx_subset_eq_p : forall hwm S1 S2 tx, *)
+(*     sync_window_size S1 = sync_window_size S2 -> *)
+(*     subset_s_eq (reads tx) S1 S2 -> *)
+(*     subset_s_eq (writes tx) S1 S2 -> *)
+(*     let (res1, S1') := consume_tx S1 hwm tx in *)
+(*     let (res2, S2') := consume_tx S2 hwm tx in *)
+(*     res1 = res2 /\ subset_s_eq (reads tx) S1' S2' /\ subset_s_eq (writes tx) S1' S2'. *)
+(* Proof. *)
+(*   intros hwm S1 S2 tx Hws Hrl Hwl. *)
+(*   unfold consume_tx. *)
+(*   rewrite (check_tx_subset_eq_p hwm S1 S2 tx). *)
+(*   destruct (check_tx S2 hwm tx); *)
+(*     destruct S1 as [ws1 o1 s1]; *)
+(*     destruct S2 as [ws2 o2 s2]; *)
+(*     destruct tx as [tx_o rl wl tx_commit tx_p]; *)
+(*     simpl in *; *)
+(*     rewrite Hws in *; *)
+(*     split; split; try easy. *)
+(*   - subst. *)
+(*     unfold update_seqnos. simpl in *. *)
+(*     (* Here it's beneficial to iterate the list backwards to make a *)
+(*     goal closely matching with the inductive hypothesis: *) *)
+(*     replace wl with (rev (rev wl)) by apply rev_involutive. *)
+(*     induction (rev wl). *)
+(*     + simpl. assumption. *)
+(*     + simpl. repeat rewrite fold_left_app. simpl. *)
+(*       admit. *)
+(*   - unfold update_seqnos. simpl in *. *)
+(*     (* Here it's beneficial to iterate the list backwards to make a *)
+(*     goal closely matching with the inductive hypothesis: *) *)
+(*     replace wl with (rev (rev wl)) by apply rev_involutive. *)
+(*     induction (rev wl). *)
+(*     + easy. *)
+(*     + simpl. repeat rewrite fold_left_app. simpl. *)
+(* Abort. *)
+(* End UnboundedSpec. *)
 
 (*   - split; try easy. *)
 (*     split. *)

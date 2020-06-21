@@ -13,3 +13,4 @@ theories/SLOT.v
 theories/Handlers/Deterministic.v
 theories/Handlers/Mutex.v
 theories/Handlers/MQ.v
+theories/Locker.v
