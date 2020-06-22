@@ -36,8 +36,8 @@ Section defs.
   Context {TxId Key Value : Set}.
 
   Inductive Event :=
-  | read : Key -> Value -> TxId -> Event
-  | write : Key -> Value -> TxId -> Event
+  | read : Key -> option Value -> TxId -> Event
+  | write : Key -> option Value -> TxId -> Event
   | commit : TxId -> Event
   | abort : TxId -> Event.
 
@@ -48,7 +48,7 @@ Section defs.
     Exists [[ commit tx ]] history.
 
   Definition read_your_writes history : Prop :=
-    forall tx (key : Key) (val1 val2 val3 : Value),
+    forall tx (key : Key) (val1 val2 val3 : option Value),
       committed tx history ->
       pair [[ write key val1 tx ]]
            [[ read key val2 tx ]]
@@ -57,7 +57,7 @@ Section defs.
       val1 = val2.
 
   Definition monotonic_reads history : Prop :=
-    forall tx (key : Key) (val1 val2 val3 : Value),
+    forall tx (key : Key) (val1 val2 val3 : option Value),
       committed tx history ->
       pair [[ read key val1 tx ]]
            [[ read key val2 tx ]]

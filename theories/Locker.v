@@ -72,7 +72,7 @@ Section defs.
       }.
   Instance etaImpSt : Settable _ := settable! mkImpState <imp_ws; imp_tlogn; imp_lit; imp_seqnos>.
 
-  Let Event := @Event PID Key (option Value).
+  Let Event := @Event PID Key Value.
 
   (** IO handler: *)
   Definition Handler := (@Deterministic.Var.t PID ImporterState <+> @MQ.t PID Tx) <+>
