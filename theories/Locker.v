@@ -11,10 +11,10 @@ From LibTx Require Import
      Storage
      EqDec
      FoldIn
-     Process
-     Handler
      Handlers.MQ
-     Handlers.Deterministic.
+     Handlers.Deterministic
+     ConsistencyLevels
+     SLOT.
 
 From RecordUpdate Require Import
      RecordSet.
@@ -22,9 +22,23 @@ Import RecordSetNotations.
 
 Definition Offset := MQ.Offset.
 
+Record LockerCtx :=
+  { ctx_pid : Set;
+    ctx_key : Set;
+    ctx_value : Set;
+    ctx_kvstore : Set;
+    ctx_seqno_store : Set;
+    ctx_cell_store : Set -> Set;
+  }.
+
 Section defs.
-  Context {PID Key Value KVStore SeqnoStore : Set}
-          `{HStore1 : @Storage Key Value KVStore}
+  Context {lctx : LockerCtx}.
+  Let PID := ctx_pid lctx.
+  Let Key := ctx_key lctx.
+  Let Value := ctx_value lctx.
+  Let KVStore := ctx_kvstore lctx.
+  Let SeqnoStore := ctx_seqno_store lctx.
+  Context `{HStore1 : @Storage Key Value KVStore}
           `{HStore2: @Storage Key Offset SeqnoStore}
           `{HKeq_dec : EqDec Key}.
 
@@ -36,7 +50,8 @@ Section defs.
       }.
   Instance etaCall : Settable _ := settable! mkCell <cell_seqno; cell_write>.
 
-  Context {CellStore : Set} `{HStoreCell: @Storage Key Cell CellStore}.
+  Let CellStore := (ctx_cell_store lctx) Cell.
+  Context {HStoreCell: @Storage Key Cell CellStore}.
 
   (** Transaction log entry *)
   Record Tx : Set :=
@@ -57,13 +72,15 @@ Section defs.
       }.
   Instance etaImpSt : Settable _ := settable! mkImpState <imp_ws; imp_tlogn; imp_lit; imp_seqnos>.
 
+  Let Event := @Event PID Key (option Value).
+
   (** IO handler: *)
   Definition Handler := (@Deterministic.Var.t PID ImporterState <+> @MQ.t PID Tx) <+>
-                        @Deterministic.KV.t PID Key Value KVStore _.
+                        (@Deterministic.KV.t PID Key Value KVStore _ <+>
+                         @Deterministic.History.t PID Event).
 
   Definition ctx := hToCtx Handler.
   Let req_t := ctx_req_t ctx.
-
 
   Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
                                     (at level 100, C at next level, V ident, right associativity).
@@ -95,15 +112,19 @@ Section defs.
 
   (** Dirty read: *)
   Definition read_d key : req_t :=
-    inr (Deterministic.KV.read key).
+    inr (inl (Deterministic.KV.read key)).
 
   (** Dirty write (only the importer process is supposed to call this): *)
   Definition write_d key val : req_t :=
-    inr (Deterministic.KV.write key val).
+    inr (inl (Deterministic.KV.write key val)).
 
   (** Dirty delete (only the importer process is supposed to call this): *)
   Definition delete_d key : req_t :=
-    inr (Deterministic.KV.delete key).
+    inr (inl (Deterministic.KV.delete key)).
+
+  (** Log a transaction event, such as read, write of commit *)
+  Definition log event : req_t :=
+    inr (inr event).
 
   Section TransactionProc.
     (** Get seqno of a key: *)
@@ -133,18 +154,27 @@ Section defs.
       call cell <- get_cell key tx_context;
       match cell.(cell_write) with
       | Some v =>
+          do _ <- log (read key v);
           cont (v, tx_context)
       | None =>
           do v <- read_d key;
           let tx_context' := set tx_cells (put key cell) tx_context in
+          do _ <- log (read key v);
           cont (v, tx_context')
       end.
 
-    Definition write_t key val tx_context cont :=
+    Definition modify_key_t key val tx_context cont :=
       call cell <- get_cell key tx_context;
-      let cell' := cell <|cell_write := Some (Some val)|> in
+      let cell' := cell <|cell_write := Some val|> in
       let tx_context' := set tx_cells (put key cell') tx_context in
+      do _ <- log (write key val);
       cont (I, tx_context).
+
+    Definition write_t key val tx_context cont :=
+      modify_key_t key (Some val) tx_context cont.
+
+    Definition delete_t key tx_context cont :=
+      modify_key_t key None tx_context cont.
 
     Definition start_tx self cont :=
       do s <- get_importer_state;
@@ -217,9 +247,11 @@ Section defs.
       if validate_tx s' tx then
         import_ops (tx_cells tx) (
         do _ <- update_importer_state (update_state s' tx);
+        do _ <- log commit;
         cont I)
       else
         do _ <- update_importer_state s';
+        do _ <- log abort;
         cont I.
 
     Fail CoFixpoint importer : Thread :=
@@ -229,6 +261,34 @@ Section defs.
   End Importer.
 End defs.
 
+Section tests.
+  Import ListStorage.
+  Let lctx :=
+    {| ctx_pid := nat;
+       ctx_key := nat;
+       ctx_value := nat;
+       ctx_kvstore := list (nat * nat);
+       ctx_seqno_store := list (nat * Offset);
+       ctx_cell_store := fun cell => list (nat * cell);
+    |}.
+  Let ctx := @ctx lctx _.
+
+  Definition fin {T : Type} (_ : T) := @t_dead ctx.
+
+  Let TE := @TraceElem ctx.
+
+  (* TODO: do something to these ugly types *)
+  Definition txEnsemble (pid : ctx_pid_t ctx) : @TraceEnsemble TE :=
+    ThreadGenerator pid (transaction pid (fun tx_context cont => cont tx_context) fin).
+
+  Definition importerEnsemble (pid : ctx_pid_t ctx) : @TraceEnsemble TE :=
+    ThreadGenerator pid (importer_step fin).
+
+  Fail Goal forall pid, -{{ fun (s : h_state Handler) => True }}
+                 txEnsemble pid
+               {{ fun s => False }}.
+
+End tests.
 (* Definition tx_keys (tx : Tx) : list (KT L.Key) := *)
 (*   match tx with *)
 (*   | {| reads := rr; writes := ww |} => *)
@@ -247,8 +307,8 @@ End defs.
 (*   destruct (check_tx S hwm tx); destruct S; intros H; easy. *)
 (* Qed. *)
 
-(* (** Key subset equality property: "for each key in [l] the value is *)
-(* the same in [S1] and [S2]": *) *)
+(** Key subset equality property: "for each key in [l] the value is
+    the same in [S1] and [S2]": *)
 (* Definition subset_s_eq l S1 S2 : Prop := *)
 (*   forall k sn, In (k, sn) l -> *)
 (*           get_seqno k S1 = sn /\ get_seqno k S2 = sn. *)

@@ -513,7 +513,7 @@ Module ListStorage.
       }
     Qed.
 
-    Global Instance listStorage : @Storage K V t :=
+    Global Instance listStorage : @Storage K V (list (K * V)) :=
       {| new := [];
          put := list_put;
          get := list_get;

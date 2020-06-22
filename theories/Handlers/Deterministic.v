@@ -3,6 +3,11 @@ From LibTx Require Import
      SLOT.EventTrace
      SLOT.Handler.
 
+From Coq Require Import
+     List.
+
+Import ListNotations.
+
 Section defs.
   Context (PID S req_t : Set)
           (ret_t : req_t -> Set)
@@ -11,12 +16,12 @@ Section defs.
   Definition ctx := mkCtx PID req_t ret_t.
   Let TE := @TraceElem ctx.
 
-  Variable chain_rule : forall (s : S) (req : req_t), S * ret_t req.
+  Variable chain_rule : forall (pid : PID) (s : S) (req : req_t), S * ret_t req.
 
   Definition det_chain_rule (s s' : S) (te : TE) : Prop :=
     match te with
-    | trace_elem _ _ req ret =>
-      match chain_rule s req with
+    | trace_elem _ pid req ret =>
+      match chain_rule pid s req with
       | (s'_, ret_) => s' = s'_ /\ ret = ret_
       end
     end.
@@ -57,7 +62,7 @@ Module Var.
       | write _ => True
       end.
 
-    Definition step s req : T * ret_t req :=
+    Definition step (_ : PID) s req : T * ret_t req :=
       match req with
       | read => (s, s)
       | write new => (new, I)
@@ -85,7 +90,7 @@ Module AtomicVar.
       | CAS _ _ => bool
       end.
 
-    Definition step s req : T * ret_t req :=
+    Definition step (_ : PID) s req : T * ret_t req :=
       match req with
       | read => (s, s)
       | write new => (new, I)
@@ -150,7 +155,7 @@ Module KV.
     Let ctx := mkCtx PID req_t ret_t.
     Let TE := @TraceElem ctx.
 
-    Definition step (s : S) (req : req_t) : S * ret_t req :=
+    Definition step (_ : PID) (s : S) (req : req_t) : S * ret_t req :=
       match req with
       | read k => (s, get k s)
       | write k v => (put k v s, I)
@@ -236,3 +241,17 @@ Module KV.
     Abort.
   End Properties.
 End KV.
+
+Module History.
+  Section defs.
+    Context {PID Event : Set}.
+
+    Definition State : Set := list Event.
+
+    Definition req_t := PID -> Event.
+
+    Definition step (pid : PID) (s : State) (req : req_t) := (req pid :: s, I).
+
+    Definition t := mkHandler PID State req_t (fun _ => True) step.
+  End defs.
+End History.
