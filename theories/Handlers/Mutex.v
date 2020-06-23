@@ -25,16 +25,15 @@ Section defs.
 
   Definition state_t : Set := option PID.
 
-  Let ctx := mkCtx PID req_t ret_t.
-  Let TE := @TraceElem ctx.
+  Let TE := @TraceElem PID req_t ret_t.
 
   Inductive mutex_chain_rule : state_t -> state_t -> TE -> Prop :=
   | mutex_grab : forall pid,
-      mutex_chain_rule None (Some pid) (trace_elem ctx pid grab I)
+      mutex_chain_rule None (Some pid) (trace_elem pid grab I)
   | mutex_release_ok : forall pid,
-      mutex_chain_rule (Some pid) None (trace_elem ctx pid release true)
+      mutex_chain_rule (Some pid) None (trace_elem pid release true)
   | mutex_release_fail : forall pid,
-      mutex_chain_rule None None (trace_elem ctx pid release false).
+      mutex_chain_rule None None (trace_elem pid release false).
 
   Definition t : t :=
     {|
@@ -42,8 +41,6 @@ Section defs.
       h_req           := req_t;
       h_chain_rule    := mutex_chain_rule
     |}.
-
-  Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
   Theorem no_double_grab_0 : forall (a1 a2 : PID),
       ~(@PossibleTrace PID t [a1 @ I <~ grab;

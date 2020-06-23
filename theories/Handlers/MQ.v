@@ -47,11 +47,8 @@ Section defs.
     | produce _ => option Offset
     end.
 
-  Definition ctx := mkCtx PID req_t ret_t.
-  Let TE := @TraceElem ctx.
+  Let TE := @TraceElem PID req_t ret_t.
   Let S := list T.
-
-  Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
   (** ** Possible state space transitions: *)
   Inductive mq_chain_rule : S -> S -> TE -> Prop :=

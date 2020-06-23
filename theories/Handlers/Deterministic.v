@@ -13,14 +13,13 @@ Section defs.
           (ret_t : req_t -> Set)
           (initial_state : S -> Prop).
 
-  Definition ctx := mkCtx PID req_t ret_t.
-  Let TE := @TraceElem ctx.
+  Let TE := @TraceElem PID req_t ret_t.
 
   Variable chain_rule : forall (pid : PID) (s : S) (req : req_t), S * ret_t req.
 
   Definition det_chain_rule (s s' : S) (te : TE) : Prop :=
     match te with
-    | trace_elem _ pid req ret =>
+    | trace_elem pid req ret =>
       match chain_rule pid s req with
       | (s'_, ret_) => s' = s'_ /\ ret = ret_
       end
@@ -105,18 +104,19 @@ Module AtomicVar.
   End defs.
 
   Section tests.
-    Let S := nat.
     Let PID := True.
-    Let Handler := @t PID S eq_nat_dec.
-    Let ctx := hToCtx Handler.
-    Notation "pid '@' ret '<~' req" := (trace_elem ctx pid req ret).
+    Let Handler := @t PID nat eq_nat_dec.
 
-    Goal forall (r1 r2 : S), r1 <> r2 ->
-                        {{fun _ => True}} [I @ r1 <~ read; I @ r2 <~ read] {{fun s => False}}.
-    Proof.
-      intros. unfold_ht.
-      repeat trace_step Hls.
-    Qed.
+    Fail Goal forall (r1 r2 : nat),
+        r1 <> r2 ->
+        {{fun _ => True}}
+          [I @ r1 <~ read;
+           I @ r2 <~ read]
+        {{fun s => False}}.
+    (* Proof. *)
+    (*   intros. unfold_ht. *)
+    (*   repeat trace_step Hls. *)
+    (* Qed. *)
   End tests.
 End AtomicVar.
 
@@ -152,8 +152,7 @@ Module KV.
       | snapshot => S
       end.
 
-    Let ctx := mkCtx PID req_t ret_t.
-    Let TE := @TraceElem ctx.
+    Let TE := @TraceElem PID req_t ret_t.
 
     Definition step (_ : PID) (s : S) (req : req_t) : S * ret_t req :=
       match req with
@@ -168,17 +167,14 @@ Module KV.
 
   (** * Properties *)
   Section Properties.
-    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}
-            {init_state : S -> Prop}.
+    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
 
     Let ctx := mkCtx PID (@req_t K V) (@ret_t K V S).
-    Let TE := @TraceElem ctx.
-
-    Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
+    Let TE := @TraceElem PID (@req_t K V) (@ret_t K V S).
 
     (** Two read syscalls always commute: *)
     Lemma kv_rr_comm : forall p1 p2 k1 k2 v1 v2,
-        @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
+        @trace_elems_commute_h PID t (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
     Proof.
       split; intros;
       repeat trace_step H; subst;
@@ -188,7 +184,7 @@ Module KV.
 
     (** Read and snapshot syscalls always commute: *)
     Lemma kv_rs_comm : forall p1 p2 k v s,
-        @trace_elems_commute_h _ t (p1 @ v <~ read k) (p2 @ s <~ snapshot).
+        @trace_elems_commute_h PID t (p1 @ v <~ read k) (p2 @ s <~ snapshot).
     Proof.
       split; intros;
       repeat trace_step H; subst;
@@ -196,20 +192,20 @@ Module KV.
       repeat constructor.
     Qed.
 
-    Lemma kv_read_get : forall pid (s : h_state t) k v,
-        s ~[pid @ v <~ read k]~> s ->
-        v = get k s.
-    Proof.
-      intros.
-      cbn in H.
-      destruct H.
-      now subst.
-    Qed.
+    (* Lemma kv_read_get : forall (pid : PID) (s : S) (k : K) (v : option V), *)
+    (*     s ~[pid @ v <~ read k]~> s -> *)
+    (*     v = get k s. *)
+    (* Proof. *)
+    (*   intros. *)
+    (*   cbn in H. *)
+    (*   destruct H. *)
+    (*   now subst. *)
+    (* Qed. TODO *)
 
     (** Read and write syscalls commute when performed on different keys: *)
     Lemma kv_rw_comm : forall p1 p2 k1 k2 v1 v2,
         k1 <> k2 ->
-        @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
+        @trace_elems_commute_h PID t (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
     Proof with firstorder.
       split; intros; repeat trace_step H0.
       - forward (put k2 v2 s)...
@@ -223,7 +219,7 @@ Module KV.
     (** Read and delete syscalls commute when performed on different keys: *)
     Lemma kv_rd_comm : forall p1 p2 k1 k2 v1,
         k1 <> k2 ->
-        @trace_elems_commute_h _ t (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
+        @trace_elems_commute_h PID t (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
     Proof with firstorder.
       split; intros; repeat trace_step H0.
       - forward (Storage.delete k2 s)...
@@ -237,7 +233,7 @@ Module KV.
     (** Write syscalls on different keys generally _don't_ commute! *)
     Example kv_ww_comm : forall p1 p2 k1 k2 v1 v2,
         k1 <> k2 ->
-        @trace_elems_commute_h _ t (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
+        @trace_elems_commute_h PID t (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
     Abort.
   End Properties.
 End KV.

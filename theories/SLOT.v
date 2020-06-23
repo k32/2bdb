@@ -68,7 +68,7 @@ From Coq Require Import
      String
      List.
 
-Module Model.
+(*Module Model.
   Section defn.
     Context {PID} {SUT : Type} {Handler : @Handler.t PID}.
     Let ctx := hToCtx Handler.
@@ -79,7 +79,7 @@ Module Model.
           model_handler : h_state Handler;
         }.
 
-    Context `{Runnable ctx SUT}.
+   Context `{Runnable  SUT}.
 
     Definition model_chain_rule m m' te : Prop :=
       match m, m' with
@@ -94,7 +94,7 @@ Module Model.
   (* Helper function for infering type of model: *)
   Definition model_t {SUT} {PID} (sut : SUT) (h : @Handler.t PID) : Type :=
     @t PID SUT h.
-End Model.
+End Model. *)
 
 Ltac bruteforce Ht Hls :=
   let Ht' := type of Ht in
@@ -118,24 +118,14 @@ Require Import
         Handlers.Deterministic.
 
 Module ExampleModelDefn.
-  Import Model.
-
   Section defns.
     Context {PID : Set}.
 
     Definition Handler := @AtomicVar.t PID nat _ <+> Mutex.t PID.
 
-    Definition ctx := hToCtx Handler.
-    Definition TE := @TraceElem ctx.
+    Definition TE := @TraceElem PID (h_req Handler) (h_ret Handler).
 
-    Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
-                                      (at level 100, C at next level, V ident, right associativity).
-
-    Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
-                             (at level 100, right associativity).
-
-    Notation "'call' V '<-' I ; C" := (I (fun V => C))
-                                     (at level 100, C at next level, V ident, right associativity).
+    Let Thread := @Thread (h_req Handler) (h_ret Handler).
 
     Definition put (val : nat) : Handler.(h_req) :=
       inl (AtomicVar.write val).
@@ -151,12 +141,12 @@ Module ExampleModelDefn.
 
     (* Just a demonstration how to define a program that loops
     indefinitely, as long as it does IO: *)
-    Local CoFixpoint infinite_loop (self : PID) :=
+    Local CoFixpoint infinite_loop (self : PID) : Thread :=
       do _ <- put 0;
       infinite_loop self.
 
     (* Data race example: *)
-    Definition inc (n : nat) cont :=
+    Definition inc (n : nat) cont : Thread :=
       do v <- get;
       do _ <- put (v + n);
       cont (v + n).
@@ -167,31 +157,20 @@ Module ExampleModelDefn.
       call x <- inc 1;
       done release.
 
-    Definition nop (self : PID) :=
-      @throw ctx "Exception".
+    (* Definition nop (self : PID) : Thread := *)
+    (*   @throw ctx "Exception".  TODO *)
   End defns.
-
-  Notation "pid '@' ret '<~' req" := (@trace_elem ctx pid req ret).
 
   Section simple.
     Let PID := bool.
-    Let ctx := @ctx PID.
 
     Let SUT := counter_correct I.
     Let Handler := @Handler PID.
 
-    Let Model := model_t SUT Handler.
-
-    Let mk_counter pid := @ThreadGenerator ctx pid (counter_correct pid).
+    Let mk_counter (pid : PID) := ThreadGenerator pid (counter_correct pid).
     Let SingletonEnsemble := mk_counter true.
     Let PairEnsemble := (mk_counter true) -|| (mk_counter false).
-    Let NopEnsemble := @ThreadGenerator ctx true (nop true).
-    Let InfLoopEnsemble := @ThreadGenerator ctx true (infinite_loop true).
-
-    Goal forall t, NopEnsemble t -> True.
-      intros t Ht.
-      now unfold_thread Ht.
-    Qed.
+    Let InfLoopEnsemble := ThreadGenerator true (infinite_loop true).
 
     Goal EnsembleInvariant (fun _ => True) SingletonEnsemble.
     Proof.
@@ -231,7 +210,7 @@ Module ExampleModelDefn.
         cbn in *; now subst.
     Qed.
 
-    Let counter_invariant (sys : Model) : Prop :=
+    (*Let counter_invariant (sys : Model) : Prop :=
       match sys with
         mkModel sut (M, l) =>
         match l with
@@ -243,6 +222,6 @@ Module ExampleModelDefn.
                          end
           in n_alive + M = 1
         end
-      end.
+      end.*)
   End simple.
 End ExampleModelDefn.

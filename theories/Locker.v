@@ -22,6 +22,8 @@ Import RecordSetNotations.
 
 Definition Offset := MQ.Offset.
 
+Generalizable Variables KVStore SeqNoStore CellStore.
+
 Record LockerCtx :=
   { ctx_pid : Set;
     ctx_key : Set;
@@ -32,12 +34,17 @@ Record LockerCtx :=
   }.
 
 Section defs.
-  Context {lctx : LockerCtx}.
+  Context {Key Value KVStore SeqnoStore CellStore : Set}.
+  Inductive PID :=
+  | Importer
+  | TxPid : nat -> PID.
+
+  (* Context {lctx : LockerCtx}.
   Let PID := ctx_pid lctx.
   Let Key := ctx_key lctx.
   Let Value := ctx_value lctx.
   Let KVStore := ctx_kvstore lctx.
-  Let SeqnoStore := ctx_seqno_store lctx.
+  Let SeqnoStore := ctx_seqno_store lctx. *)
   Context `{HStore1 : @Storage Key Value KVStore}
           `{HStore2: @Storage Key Offset SeqnoStore}
           `{HKeq_dec : EqDec Key}.
@@ -50,13 +57,13 @@ Section defs.
       }.
   Instance etaCall : Settable _ := settable! mkCell <cell_seqno; cell_write>.
 
-  Let CellStore := (ctx_cell_store lctx) Cell.
+  (* Let CellStore := (ctx_cell_store lctx) Cell. *)
   Context {HStoreCell: @Storage Key Cell CellStore}.
 
   (** Transaction log entry *)
   Record Tx : Set :=
     mkTx
-      { tx_id : PID;
+      { tx_id : nat;
         tx_ws : Offset;
         tx_tlogn : Offset;
         tx_cells : CellStore;
@@ -79,18 +86,9 @@ Section defs.
                         (@Deterministic.KV.t PID Key Value KVStore _ <+>
                          @Deterministic.History.t PID Event).
 
-  Definition ctx := hToCtx Handler.
-  Let req_t := ctx_req_t ctx.
-
-  Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
-                                    (at level 100, C at next level, V ident, right associativity).
-
-  Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
-                           (at level 100, right associativity).
-
-  Notation "'call' V '<-' I ; C" := (I (fun V => C))
-                                      (at level 100, C at next level, V ident,
-                                       right associativity, only parsing).
+  Let req_t := h_req Handler.
+  Definition TE := @TraceElem PID (h_req Handler) (h_ret Handler).
+  Definition Thread := @Thread (h_req Handler) (h_ret Handler).
 
   (** ** Syscalls: *)
   (** Get offset of the last imported transaction: *)
@@ -125,6 +123,12 @@ Section defs.
   (** Log a transaction event, such as read, write of commit *)
   Definition log event : req_t :=
     inr (inr event).
+
+  (** ** State getters *)
+  Definition s_get_log (s : h_state Handler) : list Event.
+    (* Classy way to find the log among the handlers ^___~ *)
+    simpl in s. now decompose_state.
+  Defined.
 
   Section TransactionProc.
     (** Get seqno of a key: *)
@@ -176,7 +180,7 @@ Section defs.
     Definition delete_t key tx_context cont :=
       modify_key_t key None tx_context cont.
 
-    Definition start_tx self cont :=
+    Definition start_tx self cont : Thread :=
       do s <- get_importer_state;
       cont {| tx_id := self;
               tx_ws := s.(imp_ws);
@@ -184,7 +188,7 @@ Section defs.
               tx_cells := Storage.new
            |}.
 
-    CoFixpoint pre_commit tx_context cont :=
+    CoFixpoint pre_commit tx_context cont : Thread :=
       do ret <- push_tx tx_context;
       match ret with
       | Some offset =>
@@ -198,6 +202,7 @@ Section defs.
       call tx_context' <- tx_fun tx_context;
       call _ <- pre_commit tx_context;
       cont I.
+
   End TransactionProc.
 
   Section Importer.
@@ -259,36 +264,27 @@ Section defs.
       importer. (* TODO *)
 
   End Importer.
+
+  (** * First, let's prove some very humble liveness properties
+    *)
+  Section simple_liveness_props.
+    Definition txEnsemble pid :=
+      ThreadGenerator (TxPid pid) (transaction pid (fun tx_context cont => cont tx_context) finale).
+
+    Definition importerEnsemble  :=
+      ThreadGenerator Importer (importer_step finale).
+
+    Goal forall pid,
+        -{{ fun _ => True }}
+           txEnsemble pid -|| importerEnsemble
+         {{ fun s => committed (TxPid pid) (s_get_log s) }}.
+    Proof.
+      intros. intros t Ht. unfold_ht.
+      Fail bruteforce Ht Hls.
+    Abort.
+  End simple_liveness_props.
 End defs.
 
-Section tests.
-  Import ListStorage.
-  Let lctx :=
-    {| ctx_pid := nat;
-       ctx_key := nat;
-       ctx_value := nat;
-       ctx_kvstore := list (nat * nat);
-       ctx_seqno_store := list (nat * Offset);
-       ctx_cell_store := fun cell => list (nat * cell);
-    |}.
-  Let ctx := @ctx lctx _.
-
-  Definition fin {T : Type} (_ : T) := @t_dead ctx.
-
-  Let TE := @TraceElem ctx.
-
-  (* TODO: do something to these ugly types *)
-  Definition txEnsemble (pid : ctx_pid_t ctx) : @TraceEnsemble TE :=
-    ThreadGenerator pid (transaction pid (fun tx_context cont => cont tx_context) fin).
-
-  Definition importerEnsemble (pid : ctx_pid_t ctx) : @TraceEnsemble TE :=
-    ThreadGenerator pid (importer_step fin).
-
-  Fail Goal forall pid, -{{ fun (s : h_state Handler) => True }}
-                 txEnsemble pid
-               {{ fun s => False }}.
-
-End tests.
 (* Definition tx_keys (tx : Tx) : list (KT L.Key) := *)
 (*   match tx with *)
 (*   | {| reads := rr; writes := ww |} => *)

@@ -15,7 +15,7 @@ Section IOHandler.
       h_state         : Set;
       h_req           : Set;
       h_ret           : h_req -> Set;
-      h_chain_rule    : h_state -> h_state -> @TraceElem (mkCtx PID h_req h_ret) -> Prop
+      h_chain_rule    : h_state -> h_state -> @TraceElem PID h_req h_ret -> Prop
     }.
 
   Definition hToCtx (h : t) := mkCtx PID h.(h_req) h.(h_ret).
@@ -23,27 +23,27 @@ End IOHandler.
 
 Section Hoare.
   (* Here we specialize definitions from Hoare module *)
-  Context {PID : Set} {H : @t PID}.
+  Context `{ctx : EvtContext}.
+  Context {H : @t PID}.
 
   Let S := h_state H.
-  Let ctx := hToCtx H.
-  Let TE := @TraceElem ctx.
+  Let TE := @TraceElem PID Req Ret.
 
-  Global Instance handlerStateSpace : StateSpace S TE :=
+  Global Instance handlerStateSpace : StateSpace (h_state H) TraceElem :=
     {| chain_rule := h_chain_rule H |}.
 
-  Definition HoareTripleH (pre : S -> Prop) (trace : @Trace ctx) (post : S -> Prop) :=
+  Definition HoareTripleH (pre : S -> Prop) (trace : Trace) (post : S -> Prop) :=
     @HoareTriple S TraceElem _ pre trace post.
 
-  Definition Local := @Local S TE _.
+  Definition Local := @Local S _ _.
 
-  Definition ChainRuleLocality := @ChainRuleLocality S TE _.
+  Definition ChainRuleLocality := @ChainRuleLocality S _ _.
 
-  Definition PossibleTrace := @PossibleTrace S TE _.
+  Definition PossibleTrace := @PossibleTrace S _ _.
 
-  Definition trace_elems_commute_h (te1 te2 : TE) :=
-    forall s s',
-      @LongStep S TE _ s [te1; te2] s' <-> LongStep s [te2; te1] s'.
+  Definition trace_elems_commute_h te1 te2 :=
+    forall (s s' : S),
+      LongStep s [te1; te2] s' <-> LongStep s [te2; te1] s'.
 End Hoare.
 
 Section ComposeHandlers.
@@ -67,17 +67,17 @@ Section ComposeHandlers.
     end.
 
   Let ctx := mkCtx PID Q compose_ret.
-  Let TE := @TraceElem ctx.
+  Let TE := @TraceElem PID Q compose_ret.
 
   Inductive compose_chain_rule_i : S -> S -> TE -> Prop :=
   | cmpe_left :
       forall (l l' : S_l) (r : S_r) pid req ret,
-        h_chain_rule h_l l l' (trace_elem _ pid req ret) ->
-        compose_chain_rule_i (l, r) (l', r) (trace_elem ctx pid (inl req) ret)
+        h_chain_rule h_l l l' (trace_elem pid req ret) ->
+        compose_chain_rule_i (l, r) (l', r) (trace_elem pid (inl req) ret)
   | cmpe_right :
       forall (r r' : S_r) (l : S_l) pid req ret,
-        h_chain_rule h_r r r' (trace_elem _ pid req ret) ->
-        compose_chain_rule_i (l, r) (l, r') (trace_elem ctx pid (inr req) ret).
+        h_chain_rule h_r r r' (trace_elem pid req ret) ->
+        compose_chain_rule_i (l, r) (l, r') (trace_elem pid (inr req) ret).
 
   Definition compose_chain_rule (s s' : S) (te : TE) : Prop.
     destruct te as [pid req ret].
@@ -289,5 +289,13 @@ Ltac trace_step f :=
   end.
 
 Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => inversion x); subst.
+
+Ltac decompose_state :=
+  repeat match goal with
+           [H : compose_state _ _ |- _ ] =>
+           let l := fresh "s_l" in
+           let r := fresh "s_r" in
+           destruct H as [l r]; simpl in l,r
+         end.
 
 Hint Transparent compose_state.

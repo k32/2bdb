@@ -16,14 +16,10 @@ From LibTx Require Import
 Open Scope hoare_scope.
 
 Section defn.
-  Context {ctx : Ctx}.
+  Context `{ctx : EvtContext}.
 
-  Let PID := ctx_pid_t ctx.
-  Let Req := ctx_req_t ctx.
-  Let Ret := ctx_ret_t ctx.
-
-  Let TE := @TraceElem ctx.
-  Let T := @Trace ctx.
+  Let TE := @TraceElem PID Req Ret.
+  Let T := @Trace PID Req Ret.
 
   Class Runnable A : Type :=
     { runnable_step : A -> A -> TE -> Prop;
@@ -50,7 +46,7 @@ Section defn.
   Inductive ThreadGenerator pid : Thread -> TraceEnsemble :=
   | tg_nil : ThreadGenerator pid t_dead []
   | tg_cons : forall req ret t t' trace,
-      let te := trace_elem _ pid req ret in
+      let te := trace_elem pid req ret in
       threadStep t t' te ->
       ThreadGenerator pid t' trace ->
       ThreadGenerator pid t (te :: trace).
@@ -68,21 +64,38 @@ Section defn.
   Global Instance runnableGenerator {A} `{Runnable A} : Generator A :=
     {| unfolds_to g t := exists g', LongStep g t g' |}.
 
+  Definition finale {T : Type} (_ : T) := t_dead.
+
   (* Inductive ThreadsStep : Threads -> Threads -> TE -> Prop := *)
   (* | threads_step : forall pid te threads thread' (HIn : MapInterface.In pid threads), *)
   (*     ThreadStep pid (find' pid threads HIn) thread' te -> *)
   (*     ThreadsStep threads (Map.add pid thread' threads) te. *)
 End defn.
 
-Lemma dead_thread : forall ctx t pid,
-    @ThreadGenerator ctx pid t_dead t -> t = [].
-Proof.
-  intros _ctx t pid Ht.
-  remember t_dead as thread.
-  destruct Ht.
-  - reflexivity.
-  - simpl in t0. subst. contradiction.
-Qed.
+Notation "'do' V '<-' I ; C" := (t_cont (I) (fun V => C))
+                                  (at level 100, C at next level, V ident, right associativity).
+
+Notation "'done' I" := (t_cont (I) (fun _ => t_dead))
+                         (at level 100, right associativity).
+
+Notation "'call' V '<-' I ; C" := (I (fun V => C))
+                                   (at level 100, C at next level, V ident,
+                                    right associativity,
+                                    only parsing).
+
+Section props.
+  Context `{ctx : EvtContext}.
+
+  Lemma dead_thread : forall t (pid : PID),
+      @ThreadGenerator PID Req Ret pid t_dead t -> t = [].
+  Proof.
+    intros t pid Ht.
+    remember t_dead as thread.
+    destruct Ht.
+    - reflexivity.
+    - simpl in t0. subst. contradiction.
+  Qed.
+End props.
 
 Ltac unfold_cont Ht Hstep :=
   let s0 := fresh "s" in
@@ -164,23 +177,23 @@ Section tests.
   Let pid_t := nat.
   Let ctx := mkCtx pid_t req_t ret_t.
 
-  Notation "'do' V '<-' I ; C" := (@t_cont ctx (I) (fun V => C))
+  Check t_cont.
+
+  Notation "'do' V '<-' I ; C" := (t_cont (I) (fun V => C))
                                     (at level 100, C at next level, V ident, right associativity).
 
-  Notation "'done' I" := (@t_cont ctx (I) (fun _ => t_dead))
+  Notation "'done' I" := (t_cont (I) (fun _ => t_dead))
                            (at level 100, right associativity).
 
-  Notation "a '<~' b" := (trace_elem ctx 1 b a)(at level 100).
-
   (* Regular linear code: *)
-  Let regular : @Thread ctx :=
+  Let regular : @Thread req_t ret_t :=
     do x <- bar 1;
     done bar x.
 
   Goal forall t,
-      (@ThreadGenerator ctx 1 regular) t ->
-      exists x y, t = [x <~ bar 1;
-                  y <~ bar x].
+      (ThreadGenerator 1 regular) t ->
+      exists x y, t = [1 @ x <~ bar 1;
+                  1 @ y <~ bar x].
   Proof.
     intros.
     unfold_thread H.
@@ -190,7 +203,7 @@ Section tests.
 
   (* Branching: *)
 
-  Let branching1 : @Thread ctx :=
+  Let branching1 : @Thread req_t ret_t :=
     do x <- bar 1;
     match x with
     | 0 =>
@@ -201,23 +214,23 @@ Section tests.
     end.
 
   Goal forall t,
-      (@ThreadGenerator ctx 1 branching1) t ->
-      (exists x y, t = [0 <~ bar 1;
-                   x <~ bar 1;
-                   y <~ foo]) \/
-      (exists x y, t = [S x <~ bar 1;
-                   y <~ foo]).
+      (ThreadGenerator 1 branching1) t ->
+      (exists x y, t = [1 @ 0 <~ bar 1;
+                   1 @ x <~ bar 1;
+                   1 @ y <~ foo]) \/
+      (exists x y, t = [1 @ S x <~ bar 1;
+                   1 @ y <~ foo]).
   Proof.
     intros.
     now unfold_thread H; [left|right]; exists ret; exists ret0.
   Qed.
 
   (* Loops: *)
-  Local CoFixpoint infinite_loop (self : pid_t) : @Thread ctx :=
-    (* do _ <- foo; *)
+  Local CoFixpoint infinite_loop (self : pid_t) : @Thread req_t ret_t :=
+    do _ <- foo;
     do _ <- bar 1;
     infinite_loop self.
 
-  Let InfLoopEnsemble := @ThreadGenerator ctx 1 (infinite_loop 1).
+  Let InfLoopEnsemble := ThreadGenerator 1 (infinite_loop 1).
 
 End tests.
