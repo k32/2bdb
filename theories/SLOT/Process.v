@@ -16,7 +16,7 @@ From LibTx Require Import
 Open Scope hoare_scope.
 
 Section defn.
-  Context `{ctx : EvtContext}.
+  Context {PID Req : Set} {Ret : Req -> Set}.
 
   Let TE := @TraceElem PID Req Ret.
   Let T := @Trace PID Req Ret.
@@ -84,7 +84,8 @@ Notation "'call' V '<-' I ; C" := (I (fun V => C))
                                     only parsing).
 
 Section props.
-  Context `{ctx : EvtContext}.
+  (* Context `{ctx : EvtContext}. *)
+  Context {PID Req : Set} {Ret : Req -> Set}.
 
   Lemma dead_thread : forall t (pid : PID),
       @ThreadGenerator PID Req Ret pid t_dead t -> t = [].
@@ -165,7 +166,7 @@ Tactic Notation "unfold_thread" ident(Ht) :=
                          | ?a = ?a => idtac "Loop detected: " Ht_t "Stopping."
                          end).
 
-Section tests.
+Module tests.
   Inductive req_t :=
   | foo : req_t
   | bar : nat -> req_t.
@@ -175,15 +176,6 @@ Section tests.
                      | bar _ => nat
                      end.
   Let pid_t := nat.
-  Let ctx := mkCtx pid_t req_t ret_t.
-
-  Check t_cont.
-
-  Notation "'do' V '<-' I ; C" := (t_cont (I) (fun V => C))
-                                    (at level 100, C at next level, V ident, right associativity).
-
-  Notation "'done' I" := (t_cont (I) (fun _ => t_dead))
-                           (at level 100, right associativity).
 
   (* Regular linear code: *)
   Let regular : @Thread req_t ret_t :=
@@ -202,7 +194,6 @@ Section tests.
   Qed.
 
   (* Branching: *)
-
   Let branching1 : @Thread req_t ret_t :=
     do x <- bar 1;
     match x with

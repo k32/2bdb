@@ -5,54 +5,25 @@ From LibTx Require Export
      SLOT.EventTrace
      SLOT.Hoare.
 
-Section IOHandler.
-  Context {PID : Set}.
-
-  Local Notation "'Nondeterministic' a" := ((a) -> Prop) (at level 200).
-
-  Record t : Type :=
-    {
-      h_state         : Set;
-      h_req           : Set;
-      h_ret           : h_req -> Set;
-      h_chain_rule    : h_state -> h_state -> @TraceElem PID h_req h_ret -> Prop
+Class Handler {PID Req Ret} : Type :=
+  mkHandler
+    { h_state : Set;
+      h_chain_rule : h_state -> h_state -> @TraceElem PID Req Ret -> Prop;
     }.
 
-  Definition hToCtx (h : t) := mkCtx PID h.(h_req) h.(h_ret).
-End IOHandler.
+Definition h_req {PID Req Ret} `(_ : @Handler PID Req Ret) := Req.
+Definition h_ret {PID Req Ret} `(_ : @Handler PID Req Ret) := Ret.
 
-Section Hoare.
-  (* Here we specialize definitions from Hoare module *)
-  Context `{ctx : EvtContext}.
-  Context {H : @t PID}.
-
-  Let S := h_state H.
-  Let TE := @TraceElem PID Req Ret.
-
-  Global Instance handlerStateSpace : StateSpace (h_state H) TraceElem :=
-    {| chain_rule := h_chain_rule H |}.
-
-  Definition HoareTripleH (pre : S -> Prop) (trace : Trace) (post : S -> Prop) :=
-    @HoareTriple S TraceElem _ pre trace post.
-
-  Definition Local := @Local S _ _.
-
-  Definition ChainRuleLocality := @ChainRuleLocality S _ _.
-
-  Definition PossibleTrace := @PossibleTrace S _ _.
-
-  Definition trace_elems_commute_h te1 te2 :=
-    forall (s s' : S),
-      LongStep s [te1; te2] s' <-> LongStep s [te2; te1] s'.
-End Hoare.
+Global Instance handlerStateSpace `{Handler} : StateSpace h_state TraceElem :=
+  {| chain_rule := h_chain_rule |}.
 
 Section ComposeHandlers.
-  Context {PID : Set} (h_l h_r : @t PID).
+  Context {PID : Set} {Q_l Q_r R_l R_r}
+          (h_l : @Handler PID Q_l R_l)
+          (h_r : @Handler PID Q_r R_r).
 
-  Let S_l := h_state h_l.
-  Let S_r := h_state h_r.
-  Let Q_l := h_req h_l.
-  Let Q_r := h_req h_r.
+  Let S_l := @h_state _ _ _ h_l.
+  Let S_r := @h_state _ _ _ h_r.
 
   Definition compose_state : Set := S_l * S_r.
   Let S := compose_state.
@@ -62,21 +33,21 @@ Section ComposeHandlers.
 
   Definition compose_ret (req : Q) : Set :=
     match req with
-    | inl l => h_l.(h_ret) l
-    | inr r => h_r.(h_ret) r
+    | inl l => R_l l
+    | inr r => R_r r
     end.
 
-  Let ctx := mkCtx PID Q compose_ret.
-  Let TE := @TraceElem PID Q compose_ret.
+  Definition ComposeTE := @TraceElem PID Q compose_ret.
+  Let TE := ComposeTE.
 
   Inductive compose_chain_rule_i : S -> S -> TE -> Prop :=
   | cmpe_left :
       forall (l l' : S_l) (r : S_r) pid req ret,
-        h_chain_rule h_l l l' (trace_elem pid req ret) ->
+        h_chain_rule l l' (trace_elem pid req ret) ->
         compose_chain_rule_i (l, r) (l', r) (trace_elem pid (inl req) ret)
   | cmpe_right :
       forall (r r' : S_r) (l : S_l) pid req ret,
-        h_chain_rule h_r r r' (trace_elem pid req ret) ->
+        h_chain_rule r r' (trace_elem pid req ret) ->
         compose_chain_rule_i (l, r) (l, r') (trace_elem pid (inr req) ret).
 
   Definition compose_chain_rule (s s' : S) (te : TE) : Prop.
@@ -85,8 +56,8 @@ Section ComposeHandlers.
     destruct s' as [l' r'].
     remember req as req0.
     destruct req;
-      [ refine (r = r' /\ (h_chain_rule h_l) l l' _)
-      | refine (l = l' /\ (h_chain_rule h_r) r r' _)
+      [ refine (r = r' /\ h_chain_rule l l' _)
+      | refine (l = l' /\ h_chain_rule r r' _)
       ];
       apply trace_elem with (te_req := q);
       try apply pid;
@@ -98,10 +69,8 @@ Section ComposeHandlers.
   | h_cr_par : compose_chain_rule s s' te ->
                ComposeChainRule s s' te.
 
-  Definition compose : t :=
+  Global Instance compose : @Handler PID Q compose_ret :=
     {| h_state         := compose_state;
-       h_req           := compose_req;
-       h_ret           := compose_ret;
        h_chain_rule    := ComposeChainRule;
     |}.
 
@@ -128,7 +97,7 @@ Section ComposeHandlers.
           end.
 
   Lemma lift_l_local : forall (prop : S_l -> Prop),
-      @Local PID compose te_subset_l (lift_l prop).
+      @Local _ _ handlerStateSpace te_subset_l (lift_l prop).
   Proof.
     unfold Local, HoareTriple.
     intros prop te Hin s s' Hte Hpre.
@@ -147,7 +116,7 @@ Section ComposeHandlers.
   Qed.
 
   Lemma lift_r_local : forall (prop : S_r -> Prop),
-      @Local PID compose te_subset_r (lift_r prop).
+      @Local _ _ handlerStateSpace te_subset_r (lift_r prop).
   Proof.
     unfold Local, HoareTriple.
     intros prop te Hin s s' Hte Hpre.
@@ -165,7 +134,7 @@ Section ComposeHandlers.
     - easy.
   Qed.
 
-  Lemma local_l_chain_rule : @ChainRuleLocality PID compose te_subset_l.
+  Lemma local_l_chain_rule : @ChainRuleLocality _ _ handlerStateSpace te_subset_l.
   Proof with firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
@@ -185,7 +154,7 @@ Section ComposeHandlers.
       forward (l', r')...
   Qed.
 
-  Lemma local_r_chain_rule : @ChainRuleLocality PID compose te_subset_r.
+  Lemma local_r_chain_rule : @ChainRuleLocality _ _ handlerStateSpace te_subset_r.
   Proof with firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
@@ -299,3 +268,6 @@ Ltac decompose_state :=
          end.
 
 Hint Transparent compose_state.
+
+Global Arguments h_state {_} {_} {_}.
+Global Arguments h_chain_rule {_} {_} {_}.

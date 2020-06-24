@@ -35,16 +35,14 @@ Section defs.
   | mutex_release_fail : forall pid,
       mutex_chain_rule None None (trace_elem pid release false).
 
-  Definition t : t :=
-    {|
-      h_state         := state_t;
-      h_req           := req_t;
-      h_chain_rule    := mutex_chain_rule
-    |}.
+  Global Instance mutexHandler : @Handler PID req_t ret_t :=
+    { h_state := state_t;
+      h_chain_rule := mutex_chain_rule;
+    }.
 
   Theorem no_double_grab_0 : forall (a1 a2 : PID),
-      ~(@PossibleTrace PID t [a1 @ I <~ grab;
-                              a2 @ I <~ grab]).
+      ~(PossibleTrace [a1 @ I <~ grab;
+                       a2 @ I <~ grab]).
   Proof.
     intros a1 a2 H.
     destruct H as [s [s' H]].
@@ -52,10 +50,8 @@ Section defs.
     discriminate.
   Qed.
 
-  Let state_space := state_t. Let trace_elem := req_t.
-
   Theorem no_double_grab : forall (a1 a2 : PID),
-      {{ fun (_ : h_state t) => True }}
+      {{ fun _  => True }}
         [a1 @ I <~ grab;
          a2 @ I <~ grab]
       {{ fun _ => False}}.

@@ -8,30 +8,17 @@ From Coq Require Import
 
 Import ListNotations.
 
-Section defs.
-  Context (PID S req_t : Set)
-          (ret_t : req_t -> Set)
-          (initial_state : S -> Prop).
+Class DeterministicHandler {PID : Set} (Req : Set) (Ret : Req -> Set) :=
+  { det_h_state : Set;
+    det_h_chain_rule :  forall (pid : PID) (s : det_h_state) (req : Req), det_h_state * Ret req;
+  }.
 
-  Let TE := @TraceElem PID req_t ret_t.
-
-  Variable chain_rule : forall (pid : PID) (s : S) (req : req_t), S * ret_t req.
-
-  Definition det_chain_rule (s s' : S) (te : TE) : Prop :=
-    match te with
-    | trace_elem pid req ret =>
-      match chain_rule pid s req with
-      | (s'_, ret_) => s' = s'_ /\ ret = ret_
-      end
-    end.
-
-  Definition mkHandler : t :=
-    {|
-      h_state := S;
-      h_req := req_t;
-      h_chain_rule := det_chain_rule;
-    |}.
-End defs.
+Global Instance deterministicHandler `{d : DeterministicHandler} : @Handler PID Req Ret :=
+  { h_chain_rule s s' te :=
+      let (pid, req, ret) := te in
+      let (s'_, ret_) := det_h_chain_rule pid s req in
+      s' = s'_ /\ ret = ret_;
+  }.
 
 From Coq Require
      Classes.EquivDec
@@ -51,23 +38,26 @@ Module Var.
   Section defs.
     Context {PID T : Set}.
 
-    Inductive req_t : Set :=
-    | read : req_t
-    | write : T -> req_t.
+    Inductive var_req_t : Set :=
+    | read
+    | write : T -> var_req_t.
 
-    Definition ret_t req : Set :=
+    Definition var_ret_t req : Set :=
       match req with
       | read => T
       | write _ => True
       end.
 
-    Definition step (_ : PID) s req : T * ret_t req :=
+    Definition var_step (_ : PID) s req : T * var_ret_t req :=
       match req with
       | read => (s, s)
       | write new => (new, I)
       end.
 
-    Definition t := mkHandler PID T req_t ret_t step.
+    Global Instance varHandler : DeterministicHandler var_req_t var_ret_t :=
+      { det_h_state := T;
+        det_h_chain_rule := var_step;
+      }.
   End defs.
 End Var.
 
@@ -77,19 +67,19 @@ Module AtomicVar.
   Section defs.
     Context {PID T : Set} `{@EqDec T eq eq_equivalence}.
 
-    Inductive req_t : Set :=
-    | read : req_t
-    | write : T -> req_t
-    | CAS : T -> T -> req_t.
+    Inductive avar_req_t : Set :=
+    | read
+    | write : T -> avar_req_t
+    | CAS : T -> T -> avar_req_t.
 
-    Definition ret_t req : Set :=
+    Definition avar_ret_t req : Set :=
       match req with
       | read => T
       | write _ => True
       | CAS _ _ => bool
       end.
 
-    Definition step (_ : PID) s req : T * ret_t req :=
+    Definition step (_ : PID) s req : T * avar_ret_t req :=
       match req with
       | read => (s, s)
       | write new => (new, I)
@@ -100,23 +90,23 @@ Module AtomicVar.
           (s, false)
       end.
 
-    Definition t := mkHandler PID T req_t ret_t step.
+    Global Instance atomVarHandler : DeterministicHandler avar_req_t avar_ret_t :=
+      { det_h_state := T;
+        det_h_chain_rule := step;
+      }.
   End defs.
 
   Section tests.
-    Let PID := True.
-    Let Handler := @t PID nat eq_nat_dec.
-
-    Fail Goal forall (r1 r2 : nat),
+    Goal forall (r1 r2 : nat),
         r1 <> r2 ->
         {{fun _ => True}}
           [I @ r1 <~ read;
            I @ r2 <~ read]
         {{fun s => False}}.
-    (* Proof. *)
-    (*   intros. unfold_ht. *)
-    (*   repeat trace_step Hls. *)
-    (* Qed. *)
+    Proof.
+      intros. unfold_ht.
+      repeat trace_step Hls.
+    Qed.
   End tests.
 End AtomicVar.
 
@@ -137,14 +127,14 @@ Module KV.
     Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
 
     (** ** Syscall types: *)
-    Inductive req_t :=
-    | read : K -> req_t
-    | delete : K -> req_t
-    | write : K -> V -> req_t
-    | snapshot : req_t.
+    Inductive kv_req_t :=
+    | read : K -> kv_req_t
+    | delete : K -> kv_req_t
+    | write : K -> V -> kv_req_t
+    | snapshot.
 
     (** *** Syscall return types: *)
-    Definition ret_t (req : req_t) : Set :=
+    Definition kv_ret_t (req : kv_req_t) : Set :=
       match req with
       | read _ => option V
       | delete _ => True
@@ -152,9 +142,9 @@ Module KV.
       | snapshot => S
       end.
 
-    Let TE := @TraceElem PID req_t ret_t.
+    Let TE := @TraceElem PID kv_req_t kv_ret_t.
 
-    Definition step (_ : PID) (s : S) (req : req_t) : S * ret_t req :=
+    Definition step (_ : PID) (s : S) (req : kv_req_t) : S * kv_ret_t req :=
       match req with
       | read k => (s, get k s)
       | write k v => (put k v s, I)
@@ -162,19 +152,23 @@ Module KV.
       | snapshot => (s, s)
       end.
 
-    Definition t := mkHandler PID S req_t ret_t step.
+    Global Instance varHandler : DeterministicHandler kv_req_t kv_ret_t :=
+      { det_h_state := S;
+        det_h_chain_rule := step;
+      }.
   End defn.
 
   (** * Properties *)
   Section Properties.
-    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
+    Context {PID K V S : Set} `{HStore : @Storage K V S}.
+    (* Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}. *)
 
-    Let ctx := mkCtx PID (@req_t K V) (@ret_t K V S).
-    Let TE := @TraceElem PID (@req_t K V) (@ret_t K V S).
+    (* Let ctx := mkCtx PID (@req_t K V) (@ret_t K V S). *)
+    (* Let TE := @TraceElem PID (@req_t K V) (@ret_t K V S). *)
 
     (** Two read syscalls always commute: *)
-    Lemma kv_rr_comm : forall p1 p2 k1 k2 v1 v2,
-        @trace_elems_commute_h PID t (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
+    Lemma kv_rr_comm : forall (p1 p2 : PID) k1 k2 v1 v2,
+        trace_elems_commute (p1 @ v1 <~ read k1) (p2 @ v2 <~ read k2).
     Proof.
       split; intros;
       repeat trace_step H; subst;
@@ -183,8 +177,8 @@ Module KV.
     Qed.
 
     (** Read and snapshot syscalls always commute: *)
-    Lemma kv_rs_comm : forall p1 p2 k v s,
-        @trace_elems_commute_h PID t (p1 @ v <~ read k) (p2 @ s <~ snapshot).
+    Lemma kv_rs_comm : forall (p1 p2 : PID) k v s,
+        trace_elems_commute (p1 @ v <~ read k) (p2 @ s <~ snapshot).
     Proof.
       split; intros;
       repeat trace_step H; subst;
@@ -203,9 +197,9 @@ Module KV.
     (* Qed. TODO *)
 
     (** Read and write syscalls commute when performed on different keys: *)
-    Lemma kv_rw_comm : forall p1 p2 k1 k2 v1 v2,
+    Lemma kv_rw_comm : forall (p1 p2 : PID) k1 k2 v1 v2,
         k1 <> k2 ->
-        @trace_elems_commute_h PID t (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
+        trace_elems_commute (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
     Proof with firstorder.
       split; intros; repeat trace_step H0.
       - forward (put k2 v2 s)...
@@ -217,9 +211,9 @@ Module KV.
     Qed.
 
     (** Read and delete syscalls commute when performed on different keys: *)
-    Lemma kv_rd_comm : forall p1 p2 k1 k2 v1,
+    Lemma kv_rd_comm : forall (p1 p2 : PID) k1 k2 v1,
         k1 <> k2 ->
-        @trace_elems_commute_h PID t (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
+        trace_elems_commute (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
     Proof with firstorder.
       split; intros; repeat trace_step H0.
       - forward (Storage.delete k2 s)...
@@ -231,9 +225,9 @@ Module KV.
     Qed.
 
     (** Write syscalls on different keys generally _don't_ commute! *)
-    Example kv_ww_comm : forall p1 p2 k1 k2 v1 v2,
+    Example kv_ww_comm : forall (p1 p2 : PID) k1 k2 v1 v2,
         k1 <> k2 ->
-        @trace_elems_commute_h PID t (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
+        trace_elems_commute (p1 @ I <~ write k1 v1) (p2 @ I <~ write k2 v2).
     Abort.
   End Properties.
 End KV.
@@ -244,10 +238,15 @@ Module History.
 
     Definition State : Set := list Event.
 
-    Definition req_t := PID -> Event.
+    Definition hist_req_t := PID -> Event.
 
-    Definition step (pid : PID) (s : State) (req : req_t) := (req pid :: s, I).
+    Definition step (pid : PID) (s : State) (req : hist_req_t) := (req pid :: s, I).
 
-    Definition t := mkHandler PID State req_t (fun _ => True) step.
+    Global Instance historyHandler : DeterministicHandler hist_req_t (fun _ => True) :=
+      { det_h_state := list Event;
+        det_h_chain_rule := step;
+      }.
   End defs.
 End History.
+
+Global Arguments deterministicHandler {_} {_} {_}.

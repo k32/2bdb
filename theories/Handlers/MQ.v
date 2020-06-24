@@ -67,10 +67,8 @@ Section defs.
   | mq_produce_lost_msg : forall s pid val,
       mq_chain_rule s s (pid @ None <~ produce val).
 
-  Definition t : t :=
-    {|
-      h_state := S;
-      h_req := req_t;
+  Global Instance MQHandler : @Handler PID req_t ret_t :=
+    { h_state := S;
       h_chain_rule := mq_chain_rule;
-    |}.
+    }.
 End defs.

@@ -71,7 +71,6 @@ From Coq Require Import
 (*Module Model.
   Section defn.
     Context {PID} {SUT : Type} {Handler : @Handler.t PID}.
-    Let ctx := hToCtx Handler.
 
     Record t : Type :=
       mkModel
@@ -117,27 +116,31 @@ Require Import
         Handlers.Mutex
         Handlers.Deterministic.
 
+Import AtomicVar.
+
 Module ExampleModelDefn.
   Section defns.
     Context {PID : Set}.
 
-    Definition Handler := @AtomicVar.t PID nat _ <+> Mutex.t PID.
+    Let var_h := deterministicHandler (@atomVarHandler PID nat _).
+    Definition Handler := var_h <+> mutexHandler PID.
 
-    Definition TE := @TraceElem PID (h_req Handler) (h_ret Handler).
+    Let req := h_req Handler.
+    (* Let req : Set := (@avar_req_t nat + req_t).     *)
 
-    Let Thread := @Thread (h_req Handler) (h_ret Handler).
-
-    Definition put (val : nat) : Handler.(h_req) :=
+    Definition put (val : nat) : req :=
       inl (AtomicVar.write val).
 
-    Definition get : h_req Handler :=
+    Definition get : req :=
       inl (AtomicVar.read).
 
-    Definition grab : h_req Handler :=
+    Definition grab : req :=
       inr (Mutex.grab).
 
-    Definition release : h_req Handler :=
+    Definition release : req :=
       inr (Mutex.release).
+
+    Let Thread := @Thread req (h_ret Handler).
 
     (* Just a demonstration how to define a program that loops
     indefinitely, as long as it does IO: *)
@@ -187,7 +190,7 @@ Module ExampleModelDefn.
     Qed.
 
     Goal forall v1 v2,
-      {{ fun s => True }}
+      {{ fun s  => True }}
         [true @ v1 <~ get;
          true @ I <~ grab;
          true @ v2 <~ get;
@@ -200,7 +203,7 @@ Module ExampleModelDefn.
       repeat trace_step Hls.
     Qed.
 
-    Goal -{{ fun (s : h_state Handler)  => fst s = 0 }} PairEnsemble {{ fun s => fst s = 2 }}.
+    Goal -{{ fun (s : h_state Handler) => fst s = 0 }} PairEnsemble {{ fun s => fst s = 2 }}.
     Proof.
       intros t Ht.
       unfold_ht.

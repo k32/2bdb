@@ -1,8 +1,9 @@
 From Coq Require Import
      List.
 
-Class EvtContext {PID Req : Set} {Ret : Req -> Set} : Type :=
-  mkCtx { }.
+(* Class EvtContext {PID Req : Set} {Ret : Req -> Set} : Type := *)
+(*   mkCtx { }. *)
+
 (* Record Ctx : Type := *)
 (*   mkCtx { ctx_pid_t : Set; *)
 (*           ctx_req_t : Set; *)
@@ -10,7 +11,7 @@ Class EvtContext {PID Req : Set} {Ret : Req -> Set} : Type :=
 (*         }. *)
 
 Section defs.
-  Context `{EvtContext}.
+  Context {PID Req : Set} {Ret : Req -> Set}.
 
   Record TraceElem : Set :=
     trace_elem { te_pid : PID;
