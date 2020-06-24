@@ -22,43 +22,27 @@ Import RecordSetNotations.
 
 Definition Offset := MQ.Offset.
 
-Generalizable Variables KVStore SeqNoStore CellStore.
-
-Record LockerCtx :=
-  { ctx_pid : Set;
-    ctx_key : Set;
-    ctx_value : Set;
-    ctx_kvstore : Set;
-    ctx_seqno_store : Set;
-    ctx_cell_store : Set -> Set;
-  }.
+Class LockerCtx {Key Value KVStore SeqNoStore CellStore : Set}
+      `{HKVStore : Storage Key Value KVStore}
+      `{HKVStore : Storage Key Offset SeqNoStore}
+ := {}.
 
 Section defs.
-  Context {Key Value KVStore SeqnoStore CellStore : Set}.
+  Context `{LockerCtx}.
+
   Inductive PID :=
   | Importer
   | TxPid : nat -> PID.
 
-  (* Context {lctx : LockerCtx}.
-  Let PID := ctx_pid lctx.
-  Let Key := ctx_key lctx.
-  Let Value := ctx_value lctx.
-  Let KVStore := ctx_kvstore lctx.
-  Let SeqnoStore := ctx_seqno_store lctx. *)
-  Context `{HStore1 : @Storage Key Value KVStore}
-          `{HStore2: @Storage Key Offset SeqnoStore}
-          `{HKeq_dec : EqDec Key}.
-
-  (** Encapsulate updates to a single value: *)
-  Record Cell : Set :=
+  (** ** Cell encapsulates operations with a single key (read, write, delete): *)
+  Record Cell: Set :=
     mkCell
       { cell_seqno : Offset;
         cell_write : option (option Value);
       }.
   Instance etaCall : Settable _ := settable! mkCell <cell_seqno; cell_write>.
 
-  (* Let CellStore := (ctx_cell_store lctx) Cell. *)
-  Context {HStoreCell: @Storage Key Cell CellStore}.
+  Context `{Storage Key Cell CellStore}.
 
   (** Transaction log entry *)
   Record Tx : Set :=
@@ -75,20 +59,20 @@ Section defs.
       { imp_ws : Offset;
         imp_tlogn : Offset;
         imp_lit : Offset;
-        imp_seqnos : SeqnoStore;
+        imp_seqnos : SeqNoStore;
       }.
   Instance etaImpSt : Settable _ := settable! mkImpState <imp_ws; imp_tlogn; imp_lit; imp_seqnos>.
 
   Let Event := @Event PID Key Value.
 
   (** IO handler: *)
-  Definition Handler := (@Deterministic.Var.t PID ImporterState <+> @MQ.t PID Tx) <+>
-                        (@Deterministic.KV.t PID Key Value KVStore _ <+>
-                         @Deterministic.History.t PID Event).
+  Definition Handler := (Var.t ImporterState <+> @MQ.t PID Tx) <+>
+                        (KV.t Key Value KVStore <+> History.t Event).
 
-  Let req_t := h_req Handler.
-  Definition TE := @TraceElem PID (h_req Handler) (h_ret Handler).
-  Definition Thread := @Thread (h_req Handler) (h_ret Handler).
+  Let req_t := get_handler_req_pid Handler.
+  Let ret_t := get_handler_ret_pid Handler.
+  Definition TE := @TraceElem PID req_t ret_t.
+  Definition Thread := @Thread req_t ret_t.
 
   (** ** Syscalls: *)
   (** Get offset of the last imported transaction: *)

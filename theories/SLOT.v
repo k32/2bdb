@@ -116,17 +116,19 @@ Require Import
         Handlers.Mutex
         Handlers.Deterministic.
 
-Import AtomicVar.
-
 Module ExampleModelDefn.
-  Section defns.
+  Section handler.
     Context {PID : Set}.
 
-    Let var_h := deterministicHandler (@atomVarHandler PID nat _).
-    Definition Handler := var_h <+> mutexHandler PID.
+    Definition Handler := AtomicVar.t nat <+> mutexHandler PID.
+  End handler.
 
-    Let req := h_req Handler.
+  Let req := get_handler_req (@Handler).
+  Let ret := get_handler_ret (@Handler).
+
+  Section defs.
     (* Let req : Set := (@avar_req_t nat + req_t).     *)
+    Context {PID : Set}.
 
     Definition put (val : nat) : req :=
       inl (AtomicVar.write val).
@@ -140,10 +142,11 @@ Module ExampleModelDefn.
     Definition release : req :=
       inr (Mutex.release).
 
-    Let Thread := @Thread req (h_ret Handler).
+    Let Thread := @Thread req ret.
 
     (* Just a demonstration how to define a program that loops
     indefinitely, as long as it does IO: *)
+
     Local CoFixpoint infinite_loop (self : PID) : Thread :=
       do _ <- put 0;
       infinite_loop self.
@@ -162,7 +165,7 @@ Module ExampleModelDefn.
 
     (* Definition nop (self : PID) : Thread := *)
     (*   @throw ctx "Exception".  TODO *)
-  End defns.
+  End defs.
 
   Section simple.
     Let PID := bool.

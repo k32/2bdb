@@ -20,6 +20,8 @@ Global Instance deterministicHandler `{d : DeterministicHandler} : @Handler PID 
       s' = s'_ /\ ret = ret_;
   }.
 
+Global Arguments deterministicHandler {_} {_} {_}.
+
 From Coq Require
      Classes.EquivDec
      Arith.Peano_dec.
@@ -54,11 +56,13 @@ Module Var.
       | write new => (new, I)
       end.
 
-    Global Instance varHandler : DeterministicHandler var_req_t var_ret_t :=
+    Global Instance varDetHandler : DeterministicHandler var_req_t var_ret_t :=
       { det_h_state := T;
         det_h_chain_rule := var_step;
       }.
   End defs.
+
+  Definition t {PID} T := deterministicHandler (@varDetHandler PID T).
 End Var.
 
 Module AtomicVar.
@@ -90,11 +94,13 @@ Module AtomicVar.
           (s, false)
       end.
 
-    Global Instance atomVarHandler : DeterministicHandler avar_req_t avar_ret_t :=
+    Global Instance atomVarDetHandler : DeterministicHandler avar_req_t avar_ret_t :=
       { det_h_state := T;
         det_h_chain_rule := step;
       }.
   End defs.
+
+  Definition t {PID} T {H} := deterministicHandler (@atomVarDetHandler PID T H).
 
   Section tests.
     Goal forall (r1 r2 : nat),
@@ -124,7 +130,7 @@ Module KV.
     - [V] type of values
     - [S] intance of storage container that should implement [Storage] interface
     *)
-    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}.
+    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S}.
 
     (** ** Syscall types: *)
     Inductive kv_req_t :=
@@ -152,11 +158,13 @@ Module KV.
       | snapshot => (s, s)
       end.
 
-    Global Instance varHandler : DeterministicHandler kv_req_t kv_ret_t :=
+    Global Instance kvDetHandler : DeterministicHandler kv_req_t kv_ret_t :=
       { det_h_state := S;
         det_h_chain_rule := step;
       }.
   End defn.
+
+  Definition t {PID} K V S {HS} := deterministicHandler (@kvDetHandler PID K V S HS).
 
   (** * Properties *)
   Section Properties.
@@ -242,11 +250,11 @@ Module History.
 
     Definition step (pid : PID) (s : State) (req : hist_req_t) := (req pid :: s, I).
 
-    Global Instance historyHandler : DeterministicHandler hist_req_t (fun _ => True) :=
+    Global Instance historyDetHandler : DeterministicHandler hist_req_t (fun _ => True) :=
       { det_h_state := list Event;
         det_h_chain_rule := step;
       }.
   End defs.
-End History.
 
-Global Arguments deterministicHandler {_} {_} {_}.
+  Definition t {PID} Event := deterministicHandler (@historyDetHandler PID Event).
+End History.

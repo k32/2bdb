@@ -11,8 +11,13 @@ Class Handler {PID Req Ret} : Type :=
       h_chain_rule : h_state -> h_state -> @TraceElem PID Req Ret -> Prop;
     }.
 
-Definition h_req {PID Req Ret} `(_ : @Handler PID Req Ret) := Req.
-Definition h_ret {PID Req Ret} `(_ : @Handler PID Req Ret) := Ret.
+(** * Helper functions for getting request and result types of the handler
+    ** In case handler does not depend on PID: *)
+Definition get_handler_req {Req Ret} `(_ : forall PID, @Handler PID Req Ret) := Req.
+Definition get_handler_ret {Req Ret} `(_ : forall PID, @Handler PID Req Ret) := Ret.
+(** ** In case it depends on PID: *)
+Definition get_handler_req_pid {PID Req Ret} `(_ : @Handler PID Req Ret) := Req.
+Definition get_handler_ret_pid {PID Req Ret} `(_ : @Handler PID Req Ret) := Ret.
 
 Global Instance handlerStateSpace `{Handler} : StateSpace h_state TraceElem :=
   {| chain_rule := h_chain_rule |}.
