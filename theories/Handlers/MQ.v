@@ -17,7 +17,7 @@ Section defs.
   (** Parameters:
       - [PID] type of process ids
       - [T] type of message *)
-  Context {PID T : Set}.
+  Context {PID T : Type}.
 
   Definition Offset := nat.
 
@@ -40,7 +40,7 @@ Section defs.
        lost in transition. The caller gets [None] *)
   | produce : T -> req_t.
 
-  Local Definition ret_t (req : req_t) : Set :=
+  Local Definition ret_t (req : req_t) : Type :=
     match req with
     | poll _ => option T
     | fetch _ => T

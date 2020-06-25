@@ -21,9 +21,9 @@ Section defs.
     | release => bool
     end.
 
-  Variable PID : Set.
+  Variable PID : Type.
 
-  Definition state_t : Set := option PID.
+  Definition state_t := option PID.
 
   Let TE := @TraceElem PID req_t ret_t.
 

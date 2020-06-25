@@ -7,6 +7,9 @@ From Coq Require Import
 
 Import ListNotations.
 
+From stdpp Require Import
+     fin_maps.
+
 From LibTx Require Import
      Storage
      EqDec
@@ -22,39 +25,40 @@ Import RecordSetNotations.
 
 Definition Offset := MQ.Offset.
 
-Class LockerCtx {Key Value KVStore SeqNoStore CellStore : Set}
-      `{HKVStore : Storage Key Value KVStore}
-      `{HKVStore : Storage Key Offset SeqNoStore}
+Inductive PID :=
+| Importer
+| TxPid : nat -> PID.
+
+Class LockerCtx {Key Value KVStore : Set}
+      `{Storage Key Value KVStore}
+      `{FinMap Key KeyMap} `{FinMap PID PidMap}
  := {}.
 
 Section defs.
   Context `{LockerCtx}.
 
-  Inductive PID :=
-  | Importer
-  | TxPid : nat -> PID.
-
   (** ** Cell encapsulates operations with a single key (read, write, delete): *)
-  Record Cell: Set :=
+  Record Cell : Set :=
     mkCell
       { cell_seqno : Offset;
         cell_write : option (option Value);
       }.
   Instance etaCall : Settable _ := settable! mkCell <cell_seqno; cell_write>.
 
-  Context `{Storage Key Cell CellStore}.
+  Definition CellStore := KeyMap Cell.
+  Definition SeqNoStore := KeyMap Offset.
 
   (** Transaction log entry *)
-  Record Tx : Set :=
+  Record Tx :=
     mkTx
-      { tx_id : nat;
+      { tx_id : PID;
         tx_ws : Offset;
         tx_tlogn : Offset;
         tx_cells : CellStore;
       }.
   Instance etaTx : Settable _ := settable! mkTx <tx_id; tx_ws; tx_tlogn; tx_cells>.
 
-  Record ImporterState : Set :=
+  Record ImporterState :=
     mkImpState
       { imp_ws : Offset;
         imp_tlogn : Offset;
@@ -67,7 +71,8 @@ Section defs.
 
   (** IO handler: *)
   Definition Handler := Var.t ImporterState <+> @MQ.t PID Tx <+>
-                        KV.t Key Value KVStore <+> History.t Event.
+                        KV.t Key Value KVStore <+> History.t Event <+>
+                        ProcessDictionary.t Tx PidMap _ _ <+> Self.t.
 
   Let req_t := get_handler_req_pid Handler.
   Let ret_t := get_handler_ret_pid Handler.
@@ -86,7 +91,7 @@ Section defs.
     lift (Var.write new_state).
   Defined.
 
-  (** Fetch a transaction from a distributed log (blocking call): *)
+  (** Fetch a transaction from the distributed log (blocking call): *)
   Definition pull_tx (offset : Offset) : req_t.
     lift (@MQ.fetch Tx offset).
   Defined.
@@ -116,6 +121,20 @@ Section defs.
     lift (event).
   Defined.
 
+  (** Log a transaction event, such as read, write of commit *)
+  Definition pd_get : req_t.
+    lift (ProcessDictionary.pd_get (Val := Tx)).
+  Defined.
+
+  (** Log a transaction event, such as read, write of commit *)
+  Definition pd_set (tx : Tx) : req_t.
+    lift (ProcessDictionary.pd_put tx).
+  Defined.
+
+  Definition self : req_t.
+    lift (Self.self).
+  Defined.
+
   (** ** State getters *)
   Definition s_get_log (s : h_state Handler) : list Event.
     simpl in s. now decompose_state.
@@ -130,11 +149,27 @@ Section defs.
   Defined.
 
   Section TransactionProc.
+    (** Get or create transaction context of a process *)
+    Definition get_tx_context cont : Thread :=
+      do ctx <- pd_get;
+      match ctx with
+      | Some ctx =>
+          cont ctx
+      | None =>
+          do s <- get_importer_state;
+          do txId <- self;
+          cont {| tx_id := txId;
+                  tx_ws := s.(imp_ws);
+                  tx_tlogn := s.(imp_lit);
+                  tx_cells := empty
+               |}
+      end.
+
     (** Get seqno of a key: *)
     Definition get_seqno_ key s :=
       match s with
         {| imp_seqnos := s; imp_lit := tlogn; imp_ws := ws |} =>
-        match Storage.get key s with
+        match s !! key with
         | Some seqno => seqno
         | None => tlogn - ws
         end
@@ -145,7 +180,7 @@ Section defs.
       cont (get_seqno_ key s).
 
     Definition get_cell key tx_context cont :=
-      match Storage.get key tx_context.(tx_cells) with
+      match tx_context.(tx_cells) !! key with
       | Some x =>
           cont x
       | None =>
@@ -153,54 +188,53 @@ Section defs.
           cont {| cell_seqno := seqno; cell_write := None |}
       end.
 
-    Definition read_t key tx_context cont :=
+    Definition read_t key cont : Thread :=
+      call tx_context <- get_tx_context;
       call cell <- get_cell key tx_context;
       match cell.(cell_write) with
       | Some v =>
           do _ <- log (read key v);
-          cont (v, tx_context)
+          cont v
       | None =>
           do v <- read_d key;
-          let tx_context' := set tx_cells (put key cell) tx_context in
+          let tx_context' := set tx_cells <[key := cell]> tx_context in
+          do _ <- pd_set tx_context';
           do _ <- log (read key v);
-          cont (v, tx_context')
+          cont v
       end.
 
-    Definition modify_key_t key val tx_context cont :=
+    Definition modify_key_t key val cont :=
+      call tx_context <- get_tx_context;
       call cell <- get_cell key tx_context;
       let cell' := cell <|cell_write := Some val|> in
-      let tx_context' := set tx_cells (put key cell') tx_context in
+      let tx_context' := set tx_cells <[key := cell']> tx_context in
+      do _ <- pd_set tx_context';
       do _ <- log (write key val);
-      cont (I, tx_context).
+      cont I.
 
-    Definition write_t key val tx_context cont :=
-      modify_key_t key (Some val) tx_context cont.
+    Definition write_t key val cont :=
+      modify_key_t key (Some val) cont.
 
-    Definition delete_t key tx_context cont :=
-      modify_key_t key None tx_context cont.
+    Definition delete_t key cont :=
+      modify_key_t key None cont.
 
-    Definition start_tx self cont : Thread :=
-      do s <- get_importer_state;
-      cont {| tx_id := self;
-              tx_ws := s.(imp_ws);
-              tx_tlogn := s.(imp_lit);
-              tx_cells := Storage.new
-           |}.
-
-    CoFixpoint pre_commit tx_context cont : Thread :=
+    Fixpoint pre_commit (n_retry : nat) cont : Thread :=
+      call tx_context <- get_tx_context;
       do ret <- push_tx tx_context;
-      match ret with
-      | Some offset =>
-          cont offset
-      | None =>
-          pre_commit tx_context cont
+      match ret, n_retry with
+      | Some offset, _ =>
+          cont (Some offset)
+      | None, S n_retry =>
+          pre_commit n_retry cont
+      | _, _ =>
+          do _ <- log abort;
+          cont None
       end.
 
-    Definition transaction self (tx_fun : Tx -> (Tx -> Thread) -> Thread) cont :=
-      call tx_context <- start_tx self;
-      call tx_context' <- tx_fun tx_context;
-      (* call _ <- pre_commit tx_context; *)
-      do _ <- push_tx tx_context;
+    Definition transaction {ret} (tx_fun : (ret -> Thread) -> Thread) cont :=
+      call ret <- tx_fun;
+      call _ <- pre_commit 1;
+      (* TODO: wait for confirmation from the importer *)
       cont I.
 
   End TransactionProc.
@@ -208,11 +242,10 @@ Section defs.
   Section Importer.
     Definition validate_seqnos (tx : Tx) (s : ImporterState) : bool :=
       let seqnos := imp_seqnos s in
-      let cells := tx_cells tx in
-      let keys := keys cells in
-      forallb' keys (fun key Hin =>
-                       let cell := getT key cells Hin in
-                       Nat.eqb (cell_seqno cell) (get_seqno_ key s)).
+      let cells := map_to_list (tx_cells tx) in
+      forallb (fun it => match it with
+                        (key, cell) => Nat.eqb (cell_seqno cell) (get_seqno_ key s)
+                      end) cells.
 
     Definition validate_tx (s : ImporterState) (tx : Tx) : bool :=
       match s with
@@ -221,28 +254,27 @@ Section defs.
       end.
 
     Definition update_state (s : ImporterState) (tx : Tx) :=
-      let tlogn := imp_tlogn s in
-      let cells := tx_cells tx in
-      let keys := keys cells in
       let seqnos := imp_seqnos s in
-      let seqnos' := foldl' keys (fun key Hin acc =>
-                                    match getT key cells Hin with
-                                    | {| cell_write := Some _ |} => put key tlogn acc
-                                    | _                          => seqnos
-                                    end) seqnos in
+      let tlogn := imp_tlogn s in
+      let cells := map_to_list (tx_cells tx) in
+      let seqnos' := fold_left
+                       (fun acc it =>
+                          match it with
+                          | (key, {| cell_write := Some _ |}) => <[key := tlogn]> acc
+                          | _                                 => acc
+                          end) cells seqnos in
       s <| imp_seqnos := seqnos' |> <| imp_lit := imp_tlogn s |>.
 
-    Definition import_ops cells cont : Thread :=
-      foldl' (keys cells)
-             (fun key Hin cont =>
-                match getT key cells Hin with
-                | {| cell_write := Some (Some val) |} =>
-                  do _ <- write_d key val; cont
-                | {| cell_write := Some None |} =>
-                  do _ <- delete_d key; cont
-                | _ =>
-                  cont
-                end) cont.
+    Definition import_ops (cells : CellStore) (cont0 : Thread) : Thread :=
+      fold_left (fun cont it =>
+                   match it with
+                   | (key, {| cell_write := Some (Some val) |}) =>
+                     do _ <- write_d key val; cont
+                   | (key, {| cell_write := Some None |}) =>
+                     do _ <- delete_d key; cont
+                   | _ =>
+                     cont
+                   end) (map_to_list cells) cont0.
 
     Definition importer_step cont :=
       do s <- get_importer_state;
@@ -268,24 +300,25 @@ Section defs.
   (** * First, let's prove some very humble liveness properties
     *)
   Section simple_liveness_props.
-    Definition readTxEnsemble pid :=
+    Definition readonlyTxEnsemble pid key :=
       ThreadGenerator (TxPid pid)
-                      (transaction pid (fun tx_context cont =>
-                                          cont tx_context)
+                      (transaction (fun cont =>
+                                      call _ <- read_t key;
+                                      cont I)
                                    finale).
 
     Definition importerEnsemble  :=
       ThreadGenerator Importer (importer_step finale).
 
-    Goal forall pid,
+    Goal forall pid key,
         -{{ fun s => s_get_mq s = [] /\ imp_tlogn (s_get_imp s) = 1}}
-           readTxEnsemble pid (* -|| importerEnsemble *)
+           readonlyTxEnsemble pid key (* -|| importerEnsemble *)
          {{ fun s => committed (TxPid pid) (s_get_log s) }}.
     Proof.
       intros. intros t Ht. unfold_ht.
-      bruteforce Ht Hls. subst.
-      repeat trace_step Hls.
-      subst.
+(*       bruteforce Ht Hls. subst. *)
+      (* repeat trace_step Hls. *)
+      (* subst. *)
     Abort.
   End simple_liveness_props.
 End defs.

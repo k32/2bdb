@@ -118,7 +118,7 @@ Require Import
 
 Module ExampleModelDefn.
   Section handler.
-    Context {PID : Set}.
+    Context {PID : Type}.
 
     Definition Handler := AtomicVar.t nat <+> mutexHandler PID.
   End handler.
@@ -127,8 +127,8 @@ Module ExampleModelDefn.
   Let ret := get_handler_ret (@Handler).
 
   Section defs.
-    (* Let req : Set := (@avar_req_t nat + req_t).     *)
-    Context {PID : Set}.
+    (* Let req : Type := (@avar_req_t nat + req_t).     *)
+    Context {PID : Type}.
 
     Definition put (val : nat) : req :=
       inl (AtomicVar.write val).
@@ -212,8 +212,9 @@ Module ExampleModelDefn.
       unfold_ht.
       cbn in Hpre.
       bruteforce Ht Hls;
-        firstorder;
-        cbn in *; now subst.
+      cbn in *; repeat match goal with
+                         [ H : _ /\ _ |- _] => destruct H
+                       end; subst; auto.
     Qed.
 
     (*Let counter_invariant (sys : Model) : Prop :=

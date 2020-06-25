@@ -1,15 +1,18 @@
 (** * Generic total deterministic IO handler *)
+From Coq Require Import
+     List.
+
+From stdpp Require Import
+     fin_maps.
+
 From LibTx Require Import
      SLOT.EventTrace
      SLOT.Handler.
 
-From Coq Require Import
-     List.
-
 Import ListNotations.
 
-Class DeterministicHandler {PID : Set} (Req : Set) (Ret : Req -> Set) :=
-  { det_h_state : Set;
+Class DeterministicHandler {PID : Type} (Req : Type) (Ret : Req -> Type) :=
+  { det_h_state : Type;
     det_h_chain_rule :  forall (pid : PID) (s : det_h_state) (req : Req), det_h_state * Ret req;
   }.
 
@@ -38,13 +41,13 @@ Ltac elim_det H :=
 
 Module Var.
   Section defs.
-    Context {PID T : Set}.
+    Context {PID T : Type}.
 
-    Inductive var_req_t : Set :=
+    Inductive var_req_t :=
     | read
     | write : T -> var_req_t.
 
-    Definition var_ret_t req : Set :=
+    Definition var_ret_t req :=
       match req with
       | read => T
       | write _ => True
@@ -69,14 +72,14 @@ Module AtomicVar.
   Import EquivDec Peano_dec.
 
   Section defs.
-    Context {PID T : Set} `{@EqDec T eq eq_equivalence}.
+    Context {PID T : Type} `{@EqDec T eq eq_equivalence}.
 
-    Inductive avar_req_t : Set :=
+    Inductive avar_req_t :=
     | read
     | write : T -> avar_req_t
     | CAS : T -> T -> avar_req_t.
 
-    Definition avar_ret_t req : Set :=
+    Definition avar_ret_t req :=
       match req with
       | read => T
       | write _ => True
@@ -130,7 +133,7 @@ Module KV.
     - [V] type of values
     - [S] intance of storage container that should implement [Storage] interface
     *)
-    Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S}.
+    Context {PID K V S : Type} `{HStore : @Storage K V S}.
 
     (** ** Syscall types: *)
     Inductive kv_req_t :=
@@ -140,7 +143,7 @@ Module KV.
     | snapshot.
 
     (** *** Syscall return types: *)
-    Definition kv_ret_t (req : kv_req_t) : Set :=
+    Definition kv_ret_t (req : kv_req_t) : Type :=
       match req with
       | read _ => option V
       | delete _ => True
@@ -168,8 +171,8 @@ Module KV.
 
   (** * Properties *)
   Section Properties.
-    Context {PID K V S : Set} `{HStore : @Storage K V S}.
-    (* Context {PID K V : Set} {S : Set} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}. *)
+    Context {PID K V S : Type} `{HStore : @Storage K V S}.
+    (* Context {PID K V : Type} {S : Type} `{HStore : @Storage K V S} `{HKeq_dec : EqDec K}. *)
 
     (* Let ctx := mkCtx PID (@req_t K V) (@ret_t K V S). *)
     (* Let TE := @TraceElem PID (@req_t K V) (@ret_t K V S). *)
@@ -242,9 +245,9 @@ End KV.
 
 Module History.
   Section defs.
-    Context {PID Event : Set}.
+    Context {PID Event : Type}.
 
-    Definition State : Set := list Event.
+    Definition State : Type := list Event.
 
     Definition hist_req_t := PID -> Event.
 
@@ -258,3 +261,54 @@ Module History.
 
   Definition t {PID} Event := deterministicHandler (@historyDetHandler PID Event).
 End History.
+
+Module ProcessDictionary.
+  Section defs.
+    Context {PID Val : Type} `{FinMap PID Map}.
+
+    Inductive req_t : Type :=
+    | pd_get
+    | pd_erase
+    | pd_put : Val -> req_t.
+
+    Definition ret_t req : Type :=
+      match req with
+      | pd_get => option Val
+      | pd_put _ => True
+      | pd_erase => True
+      end.
+
+    Definition State := Map Val.
+
+    Definition step (pid : PID) (s : State) (req : req_t) : State * ret_t req :=
+      match req with
+      | pd_get => (s, s !! pid)
+      | pd_put new_val => (<[pid := new_val]> s, I)
+      | pd_erase => (delete pid s, I)
+      end.
+
+    Global Instance processDictDetHandler : DeterministicHandler req_t ret_t :=
+      { det_h_state := State;
+        det_h_chain_rule := step;
+      }.
+
+    Definition t := deterministicHandler processDictDetHandler.
+  End defs.
+
+  Global Arguments t {_}.
+End ProcessDictionary.
+
+Module Self.
+  Section defs.
+    Context {PID : Type}.
+
+    Inductive req_t := self.
+
+    Global Instance selfDetHandler : DeterministicHandler req_t (fun _ => PID) :=
+      { det_h_state := True;
+        det_h_chain_rule pid _ _ := (I, pid)
+      }.
+
+    Definition t := deterministicHandler selfDetHandler.
+  End defs.
+End Self.

@@ -33,7 +33,7 @@ Section find_pairs.
 End find_pairs.
 
 Section defs.
-  Context {TxId Key Value : Set}.
+  Context {TxId Key Value : Type}.
 
   Inductive Event :=
   | read : Key -> option Value -> TxId -> Event

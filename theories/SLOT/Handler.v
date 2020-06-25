@@ -7,7 +7,7 @@ From LibTx Require Export
 
 Class Handler {PID Req Ret} : Type :=
   mkHandler
-    { h_state : Set;
+    { h_state : Type;
       h_chain_rule : h_state -> h_state -> @TraceElem PID Req Ret -> Prop;
     }.
 
@@ -23,20 +23,20 @@ Global Instance handlerStateSpace `{Handler} : StateSpace h_state TraceElem :=
   {| chain_rule := h_chain_rule |}.
 
 Section ComposeHandlers.
-  Context {PID : Set} {Q_l Q_r R_l R_r}
+  Context {PID Q_l Q_r R_l R_r}
           (h_l : @Handler PID Q_l R_l)
           (h_r : @Handler PID Q_r R_r).
 
   Let S_l := @h_state _ _ _ h_l.
   Let S_r := @h_state _ _ _ h_r.
 
-  Definition compose_state : Set := S_l * S_r.
+  Definition compose_state : Type := S_l * S_r.
   Let S := compose_state.
 
-  Definition compose_req : Set := Q_l + Q_r.
+  Definition compose_req : Type := Q_l + Q_r.
   Let Q := compose_req.
 
-  Definition compose_ret (req : Q) : Set :=
+  Definition compose_ret (req : Q) :=
     match req with
     | inl l => R_l l
     | inr r => R_r r

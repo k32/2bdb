@@ -22,7 +22,7 @@ Ltac symm_not :=
      generalize dependent H.
 
 Section defns.
-  Context {K V : Set} `{HKeq_dec : EqDec K}.
+  Context {K V : Type} `{HKeq_dec : EqDec K}.
 
   Class Storage t : Type :=
     { new : t;
@@ -85,7 +85,7 @@ Notation "s1 =s= s2" := (s_eq s1 s2) (at level 50).
 Hint Constructors s_eq : storage.
 
 Section props.
-  Context {K V : Set} `{HKeq_dec : EqDec K} {T} `{HT_Storage : @Storage K V T}.
+  Context {K V : Type} `{HKeq_dec : EqDec K} {T} `{HT_Storage : @Storage K V T}.
 
   Lemma s_eq_self : forall (s : T), s =s= s.
   Proof.
@@ -171,7 +171,7 @@ End props.
 
 
 Section WriteLog.
-  Context {K V : Set} `{HKeq_dec : EqDec K} {T} `{HT_Storage : @Storage K V T}.
+  Context {K V : Type} `{HKeq_dec : EqDec K} {T} `{HT_Storage : @Storage K V T}.
 
 
   Inductive Wlog_elem :=
@@ -403,7 +403,7 @@ End WriteLog.
 
 Module ListStorage.
   Section defns.
-    Context {K V : Set} `{HKeq_dec : EqDec K}.
+    Context {K V : Type} `{HKeq_dec : EqDec K}.
 
     Definition t := list (K * V).
 

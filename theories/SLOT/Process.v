@@ -16,7 +16,7 @@ From LibTx Require Import
 Open Scope hoare_scope.
 
 Section defn.
-  Context {PID Req : Set} {Ret : Req -> Set}.
+  Context {PID Req : Type} {Ret : Req -> Type}.
 
   Let TE := @TraceElem PID Req Ret.
   Let T := @Trace PID Req Ret.
@@ -85,7 +85,7 @@ Notation "'call' V '<-' I ; C" := (I (fun V => C))
 
 Section props.
   (* Context `{ctx : EvtContext}. *)
-  Context {PID Req : Set} {Ret : Req -> Set}.
+  Context {PID Req : Type} {Ret : Req -> Type}.
 
   Lemma dead_thread : forall t (pid : PID),
       @ThreadGenerator PID Req Ret pid t_dead t -> t = [].

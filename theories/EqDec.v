@@ -12,12 +12,13 @@ Hint Rewrite eq_dec_same : eq_dec.
 Hint Extern 3 ((if eq_dec ?X ?Y then _ else _) = _) => destruct (eq_dec ?X ?Y); subst; firstorder : eq_dec.
 Hint Extern 3 (_ = (if eq_dec ?X ?Y then _ else _)) => destruct (eq_dec ?X ?Y); subst; firstorder : eq_dec.
 
-Global Instance eqDecNat : EqDec nat := {}.
-Proof.
-  decide equality.
-Qed.
+(* Global Instance eqDecNat : EqDec nat := *)
+(* Proof. *)
 
-Global Instance eqDecBool : EqDec bool := {}.
-Proof.
-  decide equality.
-Qed.
+(*   decide equality. *)
+(* Qed. *)
+
+(* Global Instance eqDecBool : EqDec bool := {}. *)
+(* Proof. *)
+(*   decide equality. *)
+(* Qed. *)
