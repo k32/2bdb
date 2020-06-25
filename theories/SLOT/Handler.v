@@ -276,3 +276,19 @@ Hint Transparent compose_state.
 
 Global Arguments h_state {_} {_} {_}.
 Global Arguments h_chain_rule {_} {_} {_}.
+
+
+(** Warning: [lift] tactic will emit arbitrary crap when there are
+multiple handlers of the same type combined, so avoid using it this
+way *)
+Ltac lift X :=
+ match goal with
+   |- ?top =>
+   match eval cbv in top with
+   | _ => exact X
+   | (?a + ?b)%type =>
+     (apply (@inl a b) + apply (@inr a b)); lift X
+   end
+ end.
+
+Tactic Notation "lift" constr(X) := lift X.

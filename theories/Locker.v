@@ -66,8 +66,8 @@ Section defs.
   Let Event := @Event PID Key Value.
 
   (** IO handler: *)
-  Definition Handler := (Var.t ImporterState <+> @MQ.t PID Tx) <+>
-                        (KV.t Key Value KVStore <+> History.t Event).
+  Definition Handler := Var.t ImporterState <+> @MQ.t PID Tx <+>
+                        KV.t Key Value KVStore <+> History.t Event.
 
   Let req_t := get_handler_req_pid Handler.
   Let ret_t := get_handler_ret_pid Handler.
@@ -76,41 +76,56 @@ Section defs.
 
   (** ** Syscalls: *)
   (** Get offset of the last imported transaction: *)
-  Definition get_importer_state : req_t :=
-    inl (inl (Var.read)).
+  Definition get_importer_state : req_t.
+    lift (@Var.read ImporterState).
+  Defined.
 
   (** Update offset of the last imported transaction (only the
   importer process is supposed to call this): *)
-  Definition update_importer_state new_state : req_t :=
-    inl (inl (Var.write new_state)).
+  Definition update_importer_state (new_state : ImporterState) : req_t.
+    lift (Var.write new_state).
+  Defined.
 
   (** Fetch a transaction from a distributed log (blocking call): *)
-  Definition pull_tx offset : req_t :=
-    inl (inr (MQ.fetch offset)).
+  Definition pull_tx (offset : Offset) : req_t.
+    lift (@MQ.fetch Tx offset).
+  Defined.
 
   (** Try to push a transaction to the distributed log (may fail): *)
-  Definition push_tx tx : req_t :=
-    inl (inr (MQ.produce tx)).
+  Definition push_tx (tx : Tx) : req_t.
+    lift (MQ.produce tx).
+  Defined.
 
   (** Dirty read: *)
-  Definition read_d key : req_t :=
-    inr (inl (Deterministic.KV.read key)).
+  Definition read_d (key : Key) : req_t.
+    lift (@Deterministic.KV.read Key Value key).
+  Defined.
 
   (** Dirty write (only the importer process is supposed to call this): *)
-  Definition write_d key val : req_t :=
-    inr (inl (Deterministic.KV.write key val)).
+  Definition write_d (key : Key) (val : Value) : req_t.
+    lift (Deterministic.KV.write key val).
+  Defined.
 
   (** Dirty delete (only the importer process is supposed to call this): *)
-  Definition delete_d key : req_t :=
-    inr (inl (Deterministic.KV.delete key)).
+  Definition delete_d (key : Key) : req_t.
+    lift (@Deterministic.KV.delete Key Value key).
+  Defined.
 
   (** Log a transaction event, such as read, write of commit *)
-  Definition log event : req_t :=
-    inr (inr event).
+  Definition log (event : PID -> Event) : req_t.
+    lift (event).
+  Defined.
 
   (** ** State getters *)
   Definition s_get_log (s : h_state Handler) : list Event.
-    (* Classy way to find the log among the handlers ^___~ *)
+    simpl in s. now decompose_state.
+  Defined.
+
+  Definition s_get_mq (s : h_state Handler) : list Tx.
+    simpl in s. now decompose_state.
+  Defined.
+
+  Definition s_get_imp (s : h_state Handler) : ImporterState.
     simpl in s. now decompose_state.
   Defined.
 
@@ -181,10 +196,11 @@ Section defs.
           pre_commit tx_context cont
       end.
 
-    CoFixpoint transaction self (tx_fun : Tx -> (Tx -> Thread) -> Thread) cont :=
+    Definition transaction self (tx_fun : Tx -> (Tx -> Thread) -> Thread) cont :=
       call tx_context <- start_tx self;
       call tx_context' <- tx_fun tx_context;
-      call _ <- pre_commit tx_context;
+      (* call _ <- pre_commit tx_context; *)
+      do _ <- push_tx tx_context;
       cont I.
 
   End TransactionProc.
@@ -252,19 +268,24 @@ Section defs.
   (** * First, let's prove some very humble liveness properties
     *)
   Section simple_liveness_props.
-    Definition txEnsemble pid :=
-      ThreadGenerator (TxPid pid) (transaction pid (fun tx_context cont => cont tx_context) finale).
+    Definition readTxEnsemble pid :=
+      ThreadGenerator (TxPid pid)
+                      (transaction pid (fun tx_context cont =>
+                                          cont tx_context)
+                                   finale).
 
     Definition importerEnsemble  :=
       ThreadGenerator Importer (importer_step finale).
 
     Goal forall pid,
-        -{{ fun _ => True }}
-           txEnsemble pid -|| importerEnsemble
+        -{{ fun s => s_get_mq s = [] /\ imp_tlogn (s_get_imp s) = 1}}
+           readTxEnsemble pid (* -|| importerEnsemble *)
          {{ fun s => committed (TxPid pid) (s_get_log s) }}.
     Proof.
       intros. intros t Ht. unfold_ht.
-      Fail bruteforce Ht Hls.
+      bruteforce Ht Hls. subst.
+      repeat trace_step Hls.
+      subst.
     Abort.
   End simple_liveness_props.
 End defs.
