@@ -226,6 +226,16 @@ Section props.
       - exists []. exists []. exists a. exists b...
     Qed.
 
+    Lemma par_comm_head t1 te1 t2 te2 t t' P Q :
+      trace_elems_commute te1 te2 ->
+      Interleaving t1 t2 t' ->
+      {{P}} te1 :: te2 :: t' {{Q}} ->
+      Interleaving (te1 :: t1) (te2 :: t2) t ->
+      {{P}} t {{Q}}.
+    Proof.
+      intros Hcomm Ht' H0 Ht.
+      unfold_ht.
+
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
         (* -{{P}} e1 -|| e {{Q}} -> *)
         (* -{{Q}} e2 -|| e {{Q}} -> *)

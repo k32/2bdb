@@ -131,6 +131,7 @@ Section defs.
     lift (ProcessDictionary.pd_put tx).
   Defined.
 
+  (** Get pid of the caller process *)
   Definition self : req_t.
     lift (Self.self).
   Defined.
@@ -144,9 +145,23 @@ Section defs.
     simpl in s. now decompose_state.
   Defined.
 
-  Definition s_get_imp (s : h_state Handler) : ImporterState.
+  Definition s_get_importer_state (s : h_state Handler) : ImporterState.
     simpl in s. now decompose_state.
   Defined.
+
+  Definition s_get_process_dictionary (s : h_state Handler) : PidMap Tx.
+    simpl in s. now decompose_state.
+  Defined.
+
+  Definition pristine_state ws s :=
+    s_get_mq s = [] /\
+    s_get_process_dictionary s = empty /\
+    s_get_log s = [] /\
+    s_get_importer_state s = {| imp_ws := ws;
+                                imp_tlogn := 0;
+                                imp_lit := 0;
+                                imp_seqnos := empty
+                             |}.
 
   Section TransactionProc.
     (** Get or create transaction context of a process *)
@@ -310,8 +325,8 @@ Section defs.
     Definition importerEnsemble  :=
       ThreadGenerator Importer (importer_step finale).
 
-    Goal forall pid key,
-        -{{ fun s => s_get_mq s = [] /\ imp_tlogn (s_get_imp s) = 1}}
+    Goal forall repl_window_size pid key,
+        -{{ pristine_state repl_window_size }}
            readonlyTxEnsemble pid key (* -|| importerEnsemble *)
          {{ fun s => committed (TxPid pid) (s_get_log s) }}.
     Proof.
