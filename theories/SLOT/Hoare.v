@@ -114,7 +114,6 @@ Section defn.
       {{ fun s => A s /\ C s }} t {{ fun s => B s /\ D s }}.
   Proof. firstorder. Qed.
 
-
   Inductive TraceInvariant (prop : S -> Prop) : T -> Prop :=
   | inv_nil : TraceInvariant prop []
   | inv_cons : forall te t,
@@ -328,7 +327,11 @@ Ltac unfold_ht :=
     let s' := fresh "s_end" in
     let Hls := fresh "Hls" in
     let Hpre := fresh "Hpre" in
-    intros s s' Hls Hpre
+    intros s s' Hls Hpre;
+    match eval cbn in Hpre with
+    | [fun _ => True] => clear Hpre (* TODO: Fixme *)
+    | _ => idtac
+    end
   | _ =>
     fail "Goal does not look like a Hoare triple"
   end.

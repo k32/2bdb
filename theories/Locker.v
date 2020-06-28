@@ -154,14 +154,15 @@ Section defs.
   Defined.
 
   Definition pristine_state ws s :=
-    s_get_mq s = [] /\
-    s_get_process_dictionary s = empty /\
-    s_get_log s = [] /\
-    s_get_importer_state s = {| imp_ws := ws;
-                                imp_tlogn := 0;
-                                imp_lit := 0;
-                                imp_seqnos := empty
-                             |}.
+    forall seqnos,
+      s_get_mq s = [] /\
+      s_get_process_dictionary s = empty /\
+      s_get_log s = [] /\
+      s_get_importer_state s = {| imp_ws := ws;
+                                  imp_tlogn := 0;
+                                  imp_lit := 0;
+                                  imp_seqnos := seqnos
+                               |}.
 
   Section TransactionProc.
     (** Get or create transaction context of a process *)

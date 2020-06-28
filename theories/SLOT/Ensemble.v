@@ -6,6 +6,7 @@
 
  *)
 From Coq Require Import
+     Program.Basics
      List.
 
 From LibTx Require Import
@@ -226,16 +227,6 @@ Section props.
       - exists []. exists []. exists a. exists b...
     Qed.
 
-    Lemma par_comm_head t1 te1 t2 te2 t t' P Q :
-      trace_elems_commute te1 te2 ->
-      Interleaving t1 t2 t' ->
-      {{P}} te1 :: te2 :: t' {{Q}} ->
-      Interleaving (te1 :: t1) (te2 :: t2) t ->
-      {{P}} t {{Q}}.
-    Proof.
-      intros Hcomm Ht' H0 Ht.
-      unfold_ht.
-
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
         (* -{{P}} e1 -|| e {{Q}} -> *)
         (* -{{Q}} e2 -|| e {{Q}} -> *)
@@ -264,6 +255,23 @@ Section props.
     Abort. (* This is wrong? *)
   End perm_props.
 End props.
+
+Ltac clear_equations :=
+  repeat match goal with
+           [H: ?a = ?a |- _] => clear H
+         end.
+
+Ltac destruct_interleaving H :=
+  match type of H with
+    Interleaving ?a ?b ?c =>
+    let a0 := fresh in
+    let b0 := fresh in
+    let Ha := fresh in
+    let Hb := fresh in
+    remember a as a0 eqn:Ha; remember b as b0 eqn:Hb;
+    destruct H; inversion Ha; inversion Hb; subst; try discriminate;
+    clear_equations
+  end.
 
 Ltac unfold_interleaving H tac :=
   simpl in H;
@@ -306,6 +314,30 @@ Tactic Notation "unfold_interleaving" ident(H) :=
 Section props.
   Context {S TE} `{HsspS : StateSpace S TE}.
   Let T := list TE.
+
+  Record CommDomain :=
+    mkCommDomain
+      { cd_elems : T;
+        cd_terminator : TE;
+      }.
+
+  Inductive CommDomains : list CommDomain -> list CommDomain -> Prop :=
+  | tp_cons_l : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
+      CommDomains (mkCommDomain t1 term1 :: doms1)
+                  (mkCommDomain (te2 :: t2) term2 :: doms2) ->
+      trace_elems_commute te1 te2 ->
+      CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
+                  (mkCommDomain (te2 :: t2) term2 :: doms2)
+  | tp_cons_r : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
+      CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
+                  (mkCommDomain t2 term2 :: doms2) ->
+      trace_elems_commute te1 te2 ->
+      CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
+                  (mkCommDomain (te2 :: t2) term2 :: doms2)
+  | tp_cut : forall term1 term2 doms1 doms2,
+      CommDomains doms1 doms2 ->
+      CommDomains (mkCommDomain [] term1 :: doms1)
+                  (mkCommDomain [] term2 :: doms2).
 
   Goal forall P Q R (x11 x12 x21 x22 x31 x32 : TE) (t12 t23 t13 t123 : list TE),
       let t1 := [x11(* ; x12 *)] in
