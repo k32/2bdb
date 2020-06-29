@@ -46,10 +46,7 @@ Section defn.
   | ilv_cons_r : forall te t1 t2 t,
       Interleaving t1 t2 t ->
       Interleaving t1 (te :: t2) (te :: t)
-  | ilv_nil_l : forall t2,
-      Interleaving [] t2 t2
-  | ilv_nil_r : forall t1,
-      Interleaving t1 [] t1.
+  | ilv_nil : Interleaving [] [] [].
 
   (** Two systems running in parallel are represented by interleaving
   of all possible traces that could be produced by these systems: *)
@@ -119,8 +116,7 @@ Section props.
         exists t'. exists (te :: t1_hd). exists (t1_tl).
         firstorder; subst; reflexivity.
       - exists (te :: t). exists []. exists t1...
-      - exists t2. exists []. exists []...
-      - exists t1. exists []. exists t1...
+      - exists []. exists []. exists []...
     Qed.
 
     Lemma e_hoare_par_ergo_seq : forall e1 e2 P Q,
@@ -132,7 +128,7 @@ Section props.
       destruct Hseq as [t1 t2].
       apply ilv_par with (t3 := t1) (t4 := t2); auto.
       clear H H0.
-      induction t1; simpl; auto.
+      induction t1; induction t2; simpl; auto.
     Qed.
 
     Lemma e_hoare_par_symm : forall e1 e2 P Q,
@@ -160,7 +156,7 @@ Section props.
     Proof with simpl; auto.
       intros.
       induction H...
-      induction t1...
+      induction c__tl...
     Qed.
 
     Lemma interleaving_nil_r : forall (a b : list TE),
@@ -211,7 +207,7 @@ Section props.
       remember (a ++ b) as ab.
       generalize dependent b.
       generalize dependent a.
-      induction H as [te ab c t H IH| te ab c t H IH| | ]; intros.
+      induction H as [te ab c t H IH| te ab c t H IH| ]; intros.
       - destruct a; [destruct b; inversion_ Heqab | idtac]; simpl in *.
         + exists []. exists c. exists []. exists (t0 :: t)...
         + inversion Heqab. subst.
@@ -221,10 +217,9 @@ Section props.
       - specialize (IH a b Heqab).
         destruct IH as [c1 [c2 [t1 [t2 [Ht [Ht2 [Hint1 Hint2]]]]]]]; subst.
         exists (te :: c1). exists c2. exists (te :: t1). exists t2...
-      - symmetry in Heqab. apply app_eq_nil in Heqab...
-        subst.
-        exists []. exists t2. exists []. exists t2...
-      - exists []. exists []. exists a. exists b...
+      - symmetry in Heqab. apply app_eq_nil in Heqab.
+        destruct Heqab. subst.
+        exists []. exists []. exists []. exists []...
     Qed.
 
     Lemma e_hoare_par_seq1 : forall e1 e2 e P Q,
@@ -292,7 +287,7 @@ Ltac unfold_interleaving H tac :=
     (* stuff that we need in order to eliminate wrong hypotheses *)
     let tl0 := fresh "tl" in let Htl0 := fresh "Heql" in remember tl as tl0 eqn:Htl0;
     let tr0 := fresh "tr" in let Htr0 := fresh "Heqr" in remember tr as tr0 eqn:Htr0;
-    destruct H as [te tl' tr' t H | te tl' tr' t H | tr' | tl'];
+    destruct H as [te tl' tr' t H | te tl' tr' t H |];
     repeat (match goal with
             | [H : _ :: _ = _ |- _] =>
               inversion H; subst; clear H
@@ -322,22 +317,50 @@ Section props.
       }.
 
   Inductive CommDomains : list CommDomain -> list CommDomain -> Prop :=
-  | tp_cons_l : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
+  | cd_cons_l : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
       CommDomains (mkCommDomain t1 term1 :: doms1)
                   (mkCommDomain (te2 :: t2) term2 :: doms2) ->
       trace_elems_commute te1 te2 ->
       CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
                   (mkCommDomain (te2 :: t2) term2 :: doms2)
-  | tp_cons_r : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
+  | cd_cons_r : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
       CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
                   (mkCommDomain t2 term2 :: doms2) ->
       trace_elems_commute te1 te2 ->
       CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
                   (mkCommDomain (te2 :: t2) term2 :: doms2)
-  | tp_cut : forall term1 term2 doms1 doms2,
+  | cd_cut : forall term1 term2 doms1 doms2,
       CommDomains doms1 doms2 ->
       CommDomains (mkCommDomain [] term1 :: doms1)
                   (mkCommDomain [] term2 :: doms2).
+
+  Inductive CommInterleaving : list CommDomain -> list CommDomain -> TraceEnsemble :=
+  | cilv_cons_l : forall elems terminator doms1 doms2 t,
+      CommInterleaving doms1 doms2 t ->
+      CommInterleaving (mkCommDomain elems terminator :: doms1) doms2 (elems ++ terminator :: t)
+  | cilv_cons_r : forall elems terminator doms1 doms2 t,
+      CommInterleaving doms1 doms2 t ->
+      CommInterleaving doms1 (mkCommDomain elems terminator :: doms2) (elems ++ terminator :: t)
+  | cilv_nil :
+      CommInterleaving [] [] [].
+
+  Inductive flatten_comm_domains : list CommDomain -> T -> Prop :=
+  | fltn_cd_cons : forall elems terminator doms t,
+      flatten_comm_domains doms t ->
+      flatten_comm_domains (mkCommDomain elems terminator :: doms) (elems ++ terminator :: t)
+  | fltn_cd_nil :
+      flatten_comm_domains [] [].
+
+  Lemma interleaving_to_comm_domains t1 t2 doms1 doms2 P Q :
+    flatten_comm_domains doms1 t1 ->
+    flatten_comm_domains doms2 t2 ->
+    -{{P}} CommInterleaving doms1 doms2 {{Q}} ->
+    -{{P}} Interleaving t1 t2 {{Q}}.
+  Proof.
+    intros H1 H2 Hcd_inv t Ht.
+    unfold_ht.
+    specialize (Hcd_inv t).
+  Abort.
 
   Goal forall P Q R (x11 x12 x21 x22 x31 x32 : TE) (t12 t23 t13 t123 : list TE),
       let t1 := [x11(* ; x12 *)] in
@@ -352,10 +375,10 @@ Section props.
   Proof.
     intros.
     unfold_ht.
-    repeat match goal with
-           | [H : Interleaving _ _ _ |- _] => unfold_interleaving H
-           (* | [H : {{_}} ?t {{_}} |- _] => unfold_ht H *)
-           end;
-      subst t1 t2 t3.
+(*     repeat match goal with *)
+      (*      | [H : Interleaving _ _ _ |- _] => unfold_interleaving H *)
+      (*      (* | [H : {{_}} ?t {{_}} |- _] => unfold_ht H *) *)
+      (*      end; *)
+      (* subst t1 t2 t3. *)
   Abort.
 End props.
