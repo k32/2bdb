@@ -9,17 +9,11 @@ Import Decidable.
 Import Sumbool.
 
 From LibTx Require Import
+     Misc
      FoldIn
      EqDec.
 
 Set Implicit Arguments.
-
-Ltac symm_not :=
-  let H := fresh
-  in unfold not;
-     intros H;
-     symmetry in H;
-     generalize dependent H.
 
 Section defns.
   Context {K V : Type} `{HKeq_dec : EqDec K}.

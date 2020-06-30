@@ -10,6 +10,7 @@ From Coq Require Import
      List.
 
 From LibTx Require Import
+     Misc
      EventTrace
      Permutation
      SLOT.Hoare.
@@ -321,7 +322,7 @@ Section permutation.
   Context `{HsspS : StateSpace S TE}.
 
   Definition can_swap (a b : TE) : Prop :=
-    te_pid a = te_pid b.
+    te_pid a <> te_pid b.
 
   Definition DoubleForall {X} (f : X -> X -> Prop) (l1 l2 : list X) : Prop :=
     Forall (fun a => (Forall (f a) l1)) l2.
@@ -367,7 +368,8 @@ Section permutation.
         apply Hs.
         + apply perm_cons, IHt1.
           now apply Forall_inv_tail in Hdisjoint.
-        + now apply Forall_inv in Hdisjoint.
+        + apply Forall_inv in Hdisjoint.
+          symm_not. apply Hdisjoint.
     }
   Qed.
 End permutation.
