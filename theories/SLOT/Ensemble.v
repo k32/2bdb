@@ -306,7 +306,9 @@ Tactic Notation "unfold_interleaving" ident(H) "with" tactic(tac) :=
 Tactic Notation "unfold_interleaving" ident(H) :=
   unfold_interleaving H with idtac.
 
-Section props.
+Section comm_domains.
+  (** ** Definitions that are needed mostly to reduce complexity of bruteforce tactic *)
+
   Context {S TE} `{HsspS : StateSpace S TE}.
   Let T := list TE.
 
@@ -316,50 +318,53 @@ Section props.
         cd_terminator : TE;
       }.
 
-  Inductive CommDomains : list CommDomain -> list CommDomain -> Prop :=
-  | cd_cons_l : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
-      CommDomains (mkCommDomain t1 term1 :: doms1)
-                  (mkCommDomain (te2 :: t2) term2 :: doms2) ->
-      trace_elems_commute te1 te2 ->
-      CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
-                  (mkCommDomain (te2 :: t2) term2 :: doms2)
-  | cd_cons_r : forall te1 te2 t1 t2 term1 term2 doms1 doms2,
-      CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
-                  (mkCommDomain t2 term2 :: doms2) ->
-      trace_elems_commute te1 te2 ->
-      CommDomains (mkCommDomain (te1 :: t1) term1 :: doms1)
-                  (mkCommDomain (te2 :: t2) term2 :: doms2)
-  | cd_cut : forall term1 term2 doms1 doms2,
-      CommDomains doms1 doms2 ->
-      CommDomains (mkCommDomain [] term1 :: doms1)
-                  (mkCommDomain [] term2 :: doms2).
+  Definition domains_commute dom1 dom2 : Prop :=
+    Forall (fun a => Forall (fun b => trace_elems_commute a b) (cd_elems dom1))
+           (cd_elems dom2).
 
-  Inductive CommInterleaving : list CommDomain -> list CommDomain -> TraceEnsemble :=
-  | cilv_cons_l : forall elems terminator doms1 doms2 t,
-      CommInterleaving doms1 doms2 t ->
-      CommInterleaving (mkCommDomain elems terminator :: doms1) doms2 (elems ++ terminator :: t)
-  | cilv_cons_r : forall elems terminator doms1 doms2 t,
-      CommInterleaving doms1 doms2 t ->
-      CommInterleaving doms1 (mkCommDomain elems terminator :: doms2) (elems ++ terminator :: t)
+  Inductive CommDomains :=
+  | commd_nil :
+      CommDomains
+  | commd_cons : forall dom_l dom_r,
+      domains_commute dom_l dom_r ->
+      CommDomains ->
+      CommDomains.
+
+  Definition flatten_domain (dom : CommDomain) : T :=
+    let (elems, terminator) := dom in
+    terminator :: elems.
+
+  Inductive CommInterleaving : CommDomains -> TraceEnsemble :=
   | cilv_nil :
-      CommInterleaving [] [] [].
+      CommInterleaving commd_nil []
+  | cilv_l : forall dom_l dom_r H rest t,
+      CommInterleaving rest t ->
+      CommInterleaving (commd_cons dom_l dom_r H rest)
+                       (flatten_domain dom_l ++ flatten_domain dom_r ++ t)
+  | cilv_r : forall dom_l dom_r H rest t,
+      CommInterleaving rest t ->
+      CommInterleaving (commd_cons dom_l dom_r H rest)
+                       (flatten_domain dom_r ++ flatten_domain dom_l ++ t).
 
-  Inductive flatten_comm_domains : list CommDomain -> T -> Prop :=
-  | fltn_cd_cons : forall elems terminator doms t,
-      flatten_comm_domains doms t ->
-      flatten_comm_domains (mkCommDomain elems terminator :: doms) (elems ++ terminator :: t)
-  | fltn_cd_nil :
-      flatten_comm_domains [] [].
+  Inductive flatten_comm_domains : CommDomains -> T -> T -> Prop :=
+  | fltcd_nil : flatten_comm_domains commd_nil [] []
+  | fltcd_cons : forall dom1 dom2 Hcomm t1 t2 rest,
+      flatten_comm_domains rest t1 t2 ->
+      flatten_comm_domains (commd_cons dom1 dom2 Hcomm rest)
+                           (flatten_domain dom1 ++ t1)
+                           (flatten_domain dom2 ++ t2).
 
-  Lemma interleaving_to_comm_domains t1 t2 doms1 doms2 P Q :
-    flatten_comm_domains doms1 t1 ->
-    flatten_comm_domains doms2 t2 ->
-    -{{P}} CommInterleaving doms1 doms2 {{Q}} ->
+  Lemma interleaving_to_comm_domains t1 t2 doms P Q :
+    flatten_comm_domains doms t1 t2 ->
+    -{{P}} CommInterleaving doms {{Q}} ->
     -{{P}} Interleaving t1 t2 {{Q}}.
   Proof.
-    intros H1 H2 Hcd_inv t Ht.
+    intros Hdoms Hcinv t Ht.
     unfold_ht.
-    specialize (Hcd_inv t).
+    specialize (fun H => Hcinv t H s_begin s_end Hls Hpre).
+    clear Hpre. clear Hls. clear P.
+    induction Ht.
+    -
   Abort.
 
   Goal forall P Q R (x11 x12 x21 x22 x31 x32 : TE) (t12 t23 t13 t123 : list TE),
@@ -381,4 +386,4 @@ Section props.
       (*      end; *)
       (* subst t1 t2 t3. *)
   Abort.
-End props.
+End comm_domains.
