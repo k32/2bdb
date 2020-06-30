@@ -21,6 +21,19 @@ Section defn.
 
   Hint Constructors Permutation.
 
+  Lemma perm_cons a l1 l2 :
+    Permutation l1 l2 ->
+    Permutation (a :: l1) (a :: l2).
+  Proof.
+    intros.
+    remember (a :: l1) as l1_.
+    (* remember (a :: l2) as l2_. *)
+    induction H; subst.
+    - easy.
+    - specialize (perm_shuf (a :: l1) (a :: l') r' a0 b IHPermutation H0) as Hs.
+      assumption.
+  Qed.
+
   (* TODO: Prove completeness of this definition *)
 
   Definition fixed (l : L) : Prop :=

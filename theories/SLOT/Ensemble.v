@@ -10,6 +10,7 @@ From Coq Require Import
      List.
 
 From LibTx Require Import
+     EventTrace
      Permutation
      SLOT.Hoare.
 
@@ -306,21 +307,110 @@ Tactic Notation "unfold_interleaving" ident(H) "with" tactic(tac) :=
 Tactic Notation "unfold_interleaving" ident(H) :=
   unfold_interleaving H with idtac.
 
+Ltac interleaving_nil :=
+  repeat match goal with
+         | [H: Interleaving [] ?t1 ?t |- _] => apply interleaving_nil in H
+         | [H: Interleaving ?t1 [] ?t |- _] => apply interleaving_symm, interleaving_nil in H
+         end.
+
+Hint Extern 4 => interleaving_nil.
+
+Section permutation.
+  Context {S PID Req : Type} {Ret : Req -> Type}.
+  Let TE := @TraceElem PID Req Ret.
+  Context `{HsspS : StateSpace S TE}.
+
+  Definition can_swap (a b : TE) : Prop :=
+    te_pid a = te_pid b.
+
+  Definition DoubleForall {X} (f : X -> X -> Prop) (l1 l2 : list X) : Prop :=
+    Forall (fun a => (Forall (f a) l1)) l2.
+
+  Lemma DoubleForall_drop {X} f (a : X) l1 l2 :
+    Forall (fun a0 : X => Forall (f a0) (a :: l1)) l2 ->
+    Forall (fun a0 : X => Forall (f a0) l1) l2.
+  Admitted. (* TODO *)
+  (* assert (Htail : Forall (fun a : TE => Forall (can_swap a) t2) t1). *)
+  (* { clear IHInterleaving. clear H. *)
+  (*   induction t1. *)
+  (*   - easy. *)
+  (*   - constructor. *)
+  (*     + now apply Forall_inv,Forall_inv_tail in Hdisjoint. *)
+  (*     + apply Forall_inv_tail in Hdisjoint. *)
+  (*       now apply IHt1. *)
+  (* } *)
+
+  Lemma DoubleForall_symm {X} f (l1 l2 : list X) :
+    DoubleForall f l1 l2 -> DoubleForall f l2 l1.
+  Admitted. (* TODO *)
+
+  Lemma interleaving_to_permutation t1 t2 t :
+    Forall (fun a => Forall (can_swap a) t2) t1 ->
+    Interleaving t1 t2 t ->
+    @Permutation _ can_swap (t1 ++ t2) t.
+  Proof.
+    intros Hdisjoint H.
+    induction H.
+    3:{ simpl. constructor. }
+    { apply Forall_inv_tail in Hdisjoint.
+      now apply perm_cons, IHInterleaving.
+    }
+    { specialize (DoubleForall_drop can_swap te t2 t1 Hdisjoint) as Htail.
+      specialize (IHInterleaving Htail). clear Htail. clear H.
+      apply DoubleForall_symm, Forall_inv in Hdisjoint.
+      apply perm_cons with (a := te) in IHInterleaving.
+      induction IHInterleaving; try now constructor.
+      induction t1.
+      - constructor.
+      - specialize (perm_shuf can_swap ((a :: t1) ++ te :: t2) [] (t1 ++ t2) a te) as Hs.
+        simpl in *.
+        apply Hs.
+        + apply perm_cons, IHt1.
+          now apply Forall_inv_tail in Hdisjoint.
+        + now apply Forall_inv in Hdisjoint.
+    }
+  Qed.
+End permutation.
+
 Section comm_domains.
   (** ** Definitions that are needed mostly to reduce complexity of bruteforce tactic *)
-
-  Context {S TE} `{HsspS : StateSpace S TE}.
+  Context {S PID Req : Type} {Ret : Req -> Type}.
+  Let TE := @TraceElem PID Req Ret.
+  Context `{HsspS : StateSpace S TE}.
   Let T := list TE.
 
-  Record CommDomain :=
-    mkCommDomain
-      { cd_elems : T;
-        cd_terminator : TE;
-      }.
+  Definition domains_commute (dom1 dom2 : T) :=
+    match dom1, dom2 with
+    | [], _ => True
+    | _, [] => True
+    | (te1 :: dom1), (te2 :: dom2) =>
+      DoubleForall trace_elems_commute dom1 dom2 /\
+      Forall (fun a => trace_elems_commute a te2) dom1 /\
+      Forall (fun a => trace_elems_commute a te1) dom2
+    end.
 
-  Definition domains_commute dom1 dom2 : Prop :=
-    Forall (fun a => Forall (fun b => trace_elems_commute a b) (cd_elems dom1))
-           (cd_elems dom2).
+  Lemma ilv_dom_comm dom1 dom2 P Q :
+    domains_commute dom1 dom2 ->
+    {{P}} dom1 ++ dom2 {{Q}} -> {{P}} dom2 ++ dom1 {{Q}} ->
+    -{{P}} Interleaving dom1 dom2 {{Q}}.
+  Proof.
+    intros Hcomm H1 H2 t Ht. unfold_ht.
+    specialize (fun H => H1 s_begin s_end H Hpre).
+    specialize (fun H => H2 s_begin s_end H Hpre).
+    clear Hpre.
+    destruct dom1 as [|te1 t1], dom2 as [|te2 t2];
+      simpl in *;
+      interleaving_nil;
+      autorewrite with list in *;
+      subst;
+      try now apply H1.
+    replace (te1 :: t1 ++ te2 :: t2) with ((te1 :: t1) ++ te2 :: t2) in H1 by auto.
+    replace (te2 :: t2 ++ te1 :: t1) with ((te2 :: t2) ++ te1 :: t1) in H2 by auto.
+    apply interleaving_to_permutation in Ht.
+    remember (te1 :: t1) as t1_.
+    remember (te2 :: t2) as t2_.
+    destruct Ht; subst.
+  Abort.
 
   Inductive CommDomains :=
   | commd_nil :
@@ -330,29 +420,25 @@ Section comm_domains.
       CommDomains ->
       CommDomains.
 
-  Definition flatten_domain (dom : CommDomain) : T :=
-    let (elems, terminator) := dom in
-    terminator :: elems.
-
   Inductive CommInterleaving : CommDomains -> TraceEnsemble :=
   | cilv_nil :
       CommInterleaving commd_nil []
   | cilv_l : forall dom_l dom_r H rest t,
       CommInterleaving rest t ->
       CommInterleaving (commd_cons dom_l dom_r H rest)
-                       (flatten_domain dom_l ++ flatten_domain dom_r ++ t)
+                       (dom_l ++ dom_r ++ t)
   | cilv_r : forall dom_l dom_r H rest t,
       CommInterleaving rest t ->
       CommInterleaving (commd_cons dom_l dom_r H rest)
-                       (flatten_domain dom_r ++ flatten_domain dom_l ++ t).
+                       (dom_r ++ dom_l ++ t).
 
   Inductive flatten_comm_domains : CommDomains -> T -> T -> Prop :=
   | fltcd_nil : flatten_comm_domains commd_nil [] []
   | fltcd_cons : forall dom1 dom2 Hcomm t1 t2 rest,
       flatten_comm_domains rest t1 t2 ->
       flatten_comm_domains (commd_cons dom1 dom2 Hcomm rest)
-                           (flatten_domain dom1 ++ t1)
-                           (flatten_domain dom2 ++ t2).
+                           (dom1 ++ t1)
+                           (dom2 ++ t2).
 
   Lemma interleaving_to_comm_domains t1 t2 doms P Q :
     flatten_comm_domains doms t1 t2 ->
