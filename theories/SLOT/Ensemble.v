@@ -40,7 +40,8 @@ Section defn.
   | et_concat : forall t1 t2, e1 t1 -> e2 t2 -> TraceEnsembleConcat e1 e2 (t1 ++ t2).
 
   (** Set of all possible interleaving of two traces is a trace
-  ensemble: *)
+  ensemble. As we later prove in [interleaving_to_permutation], this
+  definition is dual to [Permutation]. *)
   Inductive Interleaving : T -> T -> TraceEnsemble :=
   | ilv_cons_l : forall te t1 t2 t,
       Interleaving t1 t2 t ->
@@ -64,7 +65,8 @@ End defn.
 
 Hint Constructors Interleaving Parallel.
 
-Notation "'-{{' a '}}' t '{{' b '}}'" := (EHoareTriple a t b)(at level 40) : hoare_scope.
+Notation "'-{{' a '}}' e '{{' b '}}'" := (EHoareTriple a e b)(at level 40) : hoare_scope.
+Notation "'-{{}}' e '{{}}'" := (forall t, e t -> exists s s', LongStep s t s')(at level 39) : hoare_scope.
 Infix "->>" := (TraceEnsembleConcat) (at level 100) : hoare_scope.
 Infix "-||" := (Parallel) (at level 101) : hoare_scope.
 
@@ -275,11 +277,11 @@ Ltac unfold_interleaving H tac :=
   lazymatch type of H with
   | Interleaving [] _ _ =>
     apply interleaving_nil in H;
-    rewrite <-H in *; clear H;
+    try (rewrite <-H in *; clear H);
     repeat tac
   | Interleaving _ [] _ =>
     apply interleaving_symm, interleaving_nil in H;
-    rewrite <-H in *; clear H;
+    try (rewrite <-H in *; clear H);
     repeat tac
   | Interleaving ?tl ?tr ?t =>
     let te := fresh "te" in
@@ -346,7 +348,7 @@ Section permutation.
   Admitted. (* TODO *)
 
   Lemma interleaving_to_permutation t1 t2 t :
-    Forall (fun a => Forall (can_swap a) t2) t1 ->
+    DoubleForall can_swap t2 t1 ->
     Interleaving t1 t2 t ->
     @Permutation _ can_swap (t1 ++ t2) t.
   Proof.
@@ -373,6 +375,33 @@ Section permutation.
     }
   Qed.
 End permutation.
+
+Section num_interleavings.
+  Context `{HSSp : StateSpace}.
+
+  Fixpoint num_interleavings (a b : nat) : nat :=
+    match a, b with
+    | 0, _   => 1
+    | _, 0   => 1
+    | _, S b => fold_left (fun acc i => acc + (num_interleavings i b)) (seq 0 (S a)) 1
+    end.
+
+  Goal forall (a b c d e f g h i j k : TE) t,
+      Interleaving [a; b; e; f; g] [c; d; i] t ->
+      False.
+  Proof.
+    intros.
+    Compute num_interleavings 5 3.
+    repeat match goal with
+           | [H : Interleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
+             destruct_interleaving H
+           | [H : Interleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
+             destruct_interleaving H
+           end.
+  Abort.
+
+  Let comm_diff a b := num_interleavings a b - (num_interleavings (a - 1) (b - 1)).
+End num_interleavings.
 
 Section comm_domains.
   (** ** Definitions that are needed mostly to reduce complexity of bruteforce tactic *)
