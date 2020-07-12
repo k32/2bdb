@@ -431,7 +431,7 @@ Section properties.
       forward s'0...
   Qed.
 
-  Lemma ilv_one_comm_all a t2 P Q :
+  Lemma ilv_singleton_comm_all a t2 P Q :
     Forall (trace_elems_commute a) t2 ->
     {{P}} [a] {{P}} ->
     {{P}} t2 {{Q}} ->
@@ -451,4 +451,43 @@ Section properties.
       refine (Ha' s_begin s_end _ _)...
       forward s'...
   Qed.
+
+  Lemma ilv_singleton_vs_app x a b (P Q : S0 -> Prop) :
+    -{{P}} Interleaving a [x] ->> eq b {{Q}} ->
+    -{{P}} eq a ->> Interleaving b [x] {{Q}} ->
+    -{{P}} Interleaving (a ++ b) [x] {{Q}}.
+  Proof with auto with hoare.
+    intros H1 H2 t Ht.
+    remember [x] as t1.
+    apply interleaving_par_seq in Ht.
+    destruct Ht as [c1 [c2 [t2 [t3 [Ht [Hc [Hint1 Hint2]]]]]]].
+    subst.
+    destruct c1; destruct c2; try discriminate;
+      autorewrite with list in *; simpl in *;
+      inversion_ Hc;
+      interleaving_nil; unfold_ht;
+      apply ls_split in Hls;
+      destruct Hls as [s' [Hls1 Hls2]].
+    - refine (H2 (a ++ t3) _ s_begin s_end _ _)...
+      + constructor...
+      + apply ls_concat with (s'0 := s')...
+    - refine (H1 (t2 ++ b) _ s_begin s_end _ _)...
+      + constructor...
+      + apply ls_concat with (s'0 := s')...
+    - exfalso.
+      destruct c1; inversion Hc.
+  Qed.
+
+  Lemma ilv_separate_head x a b (P Q : S0 -> Prop) :
+    -{{P}} Interleaving [x] b ->> eq a {{Q}} ->
+    -{{P}} eq [x] ->> Interleaving a b {{Q}} ->
+    -{{P}} Interleaving (x :: a) b {{Q}}.
+  Proof with auto with hoare.
+    intros H1 H2 t Ht.
+    remember (x :: a) as a_.
+    induction Ht; inversion_ Heqa_.
+    - refine (H2 (x :: t) _).
+      replace (x :: t) with ([x] ++ t) by easy.
+      constructor...
+  Abort.
 End properties.
