@@ -12,6 +12,7 @@ From LibTx Require Import
      FoldIn.
 
 Reserved Notation "'{{' a '}}' t '{{' b '}}'" (at level 40).
+Reserved Notation "'{{}}' t '{{' b '}}'" (at level 39).
 
 Global Arguments In {_}.
 Global Arguments Complement {_}.
@@ -186,6 +187,17 @@ Section defn.
     apply ls_cons with (s' := s'0); auto.
   Qed.
 
+  Lemma trace_elems_commute_head_ht : forall P Q b a trace,
+      trace_elems_commute a b ->
+      {{P}} b :: a :: trace {{Q}} ->
+      {{P}} a :: b :: trace {{Q}}.
+  Proof.
+    intros. intros s s' Hls Hpre.
+    apply trace_elems_commute_head in Hls.
+    - apply (H0 s s' Hls Hpre).
+    - now apply trace_elems_commute_symm.
+  Qed.
+
   Section ExpandTrace.
     Variable te_subset : Ensemble TE.
 
@@ -283,6 +295,7 @@ Section defn.
 End defn.
 
 Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b) : hoare_scope.
+Notation "'{{}}' t '{{' b '}}'" := (HoareTriple (const True) t b) : hoare_scope.
 
 Check ls_cons.
 
@@ -317,8 +330,8 @@ Tactic Notation "unfold_trace" ident(f) tactic3(tac) := unfold_trace f tac.
 Tactic Notation "unfold_trace" ident(f) := unfold_trace f (fun _ => idtac).
 
 Hint Transparent Ensembles.In Ensembles.Complement.
-Hint Constructors LongStep.
-Hint Resolve trace_elems_commute_symm.
+Hint Constructors LongStep : hoare.
+Hint Resolve trace_elems_commute_symm : hoare.
 
 Ltac unfold_ht :=
   match goal with

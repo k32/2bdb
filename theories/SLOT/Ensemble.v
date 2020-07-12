@@ -9,13 +9,13 @@ From Coq Require Import
      Program.Basics
      List.
 
+Import ListNotations.
+
 From LibTx Require Import
      Misc
      EventTrace
      Permutation
      SLOT.Hoare.
-
-Import ListNotations.
 
 Open Scope hoare_scope.
 
@@ -66,7 +66,8 @@ End defn.
 Hint Constructors Interleaving Parallel.
 
 Notation "'-{{' a '}}' e '{{' b '}}'" := (EHoareTriple a e b)(at level 40) : hoare_scope.
-Notation "'-{{}}' e '{{}}'" := (forall t, e t -> exists s s', LongStep s t s')(at level 39) : hoare_scope.
+Notation "'-{{}}' e '{{' b '}}'" := (EHoareTriple (const True) e b)(at level 40) : hoare_scope.
+Notation "'-{{}}' e '{{}}'" := (forall t, e t -> exists s s', LongStep s t s')(at level 38) : hoare_scope.
 Infix "->>" := (TraceEnsembleConcat) (at level 100) : hoare_scope.
 Infix "-||" := (Parallel) (at level 101) : hoare_scope.
 
@@ -312,11 +313,11 @@ Tactic Notation "unfold_interleaving" ident(H) :=
 
 Ltac interleaving_nil :=
   repeat match goal with
-         | [H: Interleaving [] ?t1 ?t |- _] => apply interleaving_nil in H
-         | [H: Interleaving ?t1 [] ?t |- _] => apply interleaving_symm, interleaving_nil in H
+         | [H: Interleaving [] ?t1 ?t |- _] => apply interleaving_nil in H; try subst t
+         | [H: Interleaving ?t1 [] ?t |- _] => apply interleaving_symm, interleaving_nil in H; try subst t
          end.
 
-Hint Extern 4 => interleaving_nil.
+Hint Extern 4 => interleaving_nil : hoare.
 
 Section permutation.
   Context {S PID Req : Type} {Ret : Req -> Type}.
@@ -376,7 +377,18 @@ Section permutation.
   Qed.
 End permutation.
 
-Section num_interleavings.
+Ltac resolve_forall :=
+  match goal with
+  | [H : Forall (trace_elems_commute ?a) (?x :: ?t) |- Forall (trace_elems_commute ?a) ?t] =>
+    apply Forall_inv_tail in H; assumption
+  | [H : Forall (trace_elems_commute ?a) (?x :: ?t) |- trace_elems_commute ?a ?x] =>
+    apply Forall_inv in H; assumption
+  end.
+
+Hint Extern 1 (Forall (trace_elems_commute _) _) => resolve_forall : hoare.
+Hint Extern 3 (trace_elems_commute _ _) => resolve_forall : hoare.
+
+Section properties.
   Context `{HSSp : StateSpace}.
 
   Fixpoint num_interleavings (a b : nat) : nat :=
@@ -401,106 +413,42 @@ Section num_interleavings.
   Abort.
 
   Let comm_diff a b := num_interleavings a b - (num_interleavings (a - 1) (b - 1)).
-End num_interleavings.
 
-Section comm_domains.
-  (** ** Definitions that are needed mostly to reduce complexity of bruteforce tactic *)
-  Context {S PID Req : Type} {Ret : Req -> Type}.
-  Let TE := @TraceElem PID Req Ret.
-  Context `{HsspS : StateSpace S TE}.
-  Let T := list TE.
+  Lemma comm_ilv_ls s s' a t t' :
+    Forall (trace_elems_commute a) t ->
+    Interleaving [a] t t' ->
+    LongStep s t' s' ->
+    LongStep s (a :: t) s'.
+  Proof with auto with hoare.
+    intros Hcomm Ht Ht'.
+    generalize dependent s'.
+    generalize dependent s.
+    remember [a] as t1.
+    induction Ht; intros; inversion_ Heqt1.
+    - now interleaving_nil.
+    - apply trace_elems_commute_head...
+      inversion_ Ht'.
+      forward s'0...
+  Qed.
 
-  Definition domains_commute (dom1 dom2 : T) :=
-    match dom1, dom2 with
-    | [], _ => True
-    | _, [] => True
-    | (te1 :: dom1), (te2 :: dom2) =>
-      DoubleForall trace_elems_commute dom1 dom2 /\
-      Forall (fun a => trace_elems_commute a te2) dom1 /\
-      Forall (fun a => trace_elems_commute a te1) dom2
-    end.
-
-  Lemma ilv_dom_comm dom1 dom2 P Q :
-    domains_commute dom1 dom2 ->
-    {{P}} dom1 ++ dom2 {{Q}} -> {{P}} dom2 ++ dom1 {{Q}} ->
-    -{{P}} Interleaving dom1 dom2 {{Q}}.
-  Proof.
-    intros Hcomm H1 H2 t Ht. unfold_ht.
-    specialize (fun H => H1 s_begin s_end H Hpre).
-    specialize (fun H => H2 s_begin s_end H Hpre).
-    clear Hpre.
-    destruct dom1 as [|te1 t1], dom2 as [|te2 t2];
-      simpl in *;
-      interleaving_nil;
-      autorewrite with list in *;
-      subst;
-      try now apply H1.
-    replace (te1 :: t1 ++ te2 :: t2) with ((te1 :: t1) ++ te2 :: t2) in H1 by auto.
-    replace (te2 :: t2 ++ te1 :: t1) with ((te2 :: t2) ++ te1 :: t1) in H2 by auto.
-    apply interleaving_to_permutation in Ht.
-    remember (te1 :: t1) as t1_.
-    remember (te2 :: t2) as t2_.
-    destruct Ht; subst.
-  Abort.
-
-  Inductive CommDomains :=
-  | commd_nil :
-      CommDomains
-  | commd_cons : forall dom_l dom_r,
-      domains_commute dom_l dom_r ->
-      CommDomains ->
-      CommDomains.
-
-  Inductive CommInterleaving : CommDomains -> TraceEnsemble :=
-  | cilv_nil :
-      CommInterleaving commd_nil []
-  | cilv_l : forall dom_l dom_r H rest t,
-      CommInterleaving rest t ->
-      CommInterleaving (commd_cons dom_l dom_r H rest)
-                       (dom_l ++ dom_r ++ t)
-  | cilv_r : forall dom_l dom_r H rest t,
-      CommInterleaving rest t ->
-      CommInterleaving (commd_cons dom_l dom_r H rest)
-                       (dom_r ++ dom_l ++ t).
-
-  Inductive flatten_comm_domains : CommDomains -> T -> T -> Prop :=
-  | fltcd_nil : flatten_comm_domains commd_nil [] []
-  | fltcd_cons : forall dom1 dom2 Hcomm t1 t2 rest,
-      flatten_comm_domains rest t1 t2 ->
-      flatten_comm_domains (commd_cons dom1 dom2 Hcomm rest)
-                           (dom1 ++ t1)
-                           (dom2 ++ t2).
-
-  Lemma interleaving_to_comm_domains t1 t2 doms P Q :
-    flatten_comm_domains doms t1 t2 ->
-    -{{P}} CommInterleaving doms {{Q}} ->
-    -{{P}} Interleaving t1 t2 {{Q}}.
-  Proof.
-    intros Hdoms Hcinv t Ht.
-    unfold_ht.
-    specialize (fun H => Hcinv t H s_begin s_end Hls Hpre).
-    clear Hpre. clear Hls. clear P.
-    induction Ht.
-    -
-  Abort.
-
-  Goal forall P Q R (x11 x12 x21 x22 x31 x32 : TE) (t12 t23 t13 t123 : list TE),
-      let t1 := [x11(* ; x12 *)] in
-      let t2 := [x21(* ; x22 *)] in
-      let t3 := [x31(* ; x32 *)] in
-      Interleaving t1 t2 t12 ->
-      Interleaving t1 t3 t13 ->
-      {{P}} t12 {{Q}} ->
-      {{Q}} t13 {{R}} ->
-      Interleaving t12 t3 t123 ->
-      {{P}} t123 {{Q}}.
-  Proof.
-    intros.
-    unfold_ht.
-(*     repeat match goal with *)
-      (*      | [H : Interleaving _ _ _ |- _] => unfold_interleaving H *)
-      (*      (* | [H : {{_}} ?t {{_}} |- _] => unfold_ht H *) *)
-      (*      end; *)
-      (* subst t1 t2 t3. *)
-  Abort.
-End comm_domains.
+  Lemma ilv_one_comm_all a t2 P Q :
+    Forall (trace_elems_commute a) t2 ->
+    {{P}} [a] {{P}} ->
+    {{P}} t2 {{Q}} ->
+    -{{P}} Interleaving [a] t2 {{Q}}.
+  Proof with auto with hoare.
+    intros Hcomm Ha Ht2 t Ht.
+    remember [a] as t1.
+    destruct Ht; inversion_ Heqt1.
+    - interleaving_nil.
+      apply hoare_cons with (mid := P)...
+    - unfold_ht.
+      inversion_ Hls.
+      assert (Ha' : {{P}} a :: te :: t2 {{Q}}).
+      { apply hoare_cons with (mid := P)... }
+      apply trace_elems_commute_head_ht in Ha'...
+      specialize (comm_ilv_ls s' s_end a t2 t) as Ht'.
+      refine (Ha' s_begin s_end _ _)...
+      forward s'...
+  Qed.
+End properties.
