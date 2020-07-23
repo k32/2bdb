@@ -302,6 +302,14 @@ Check ls_cons.
 Ltac forward s' :=
   apply (ls_cons _ s' _ _ _).
 
+Ltac resolve_concat :=
+  match goal with
+    [ H1 : LongStep ?s1 ?t1 ?s2, H2 : LongStep ?s2 ?t2 ?s3 |- LongStep ?s1 (?t1 ++ ?t2) ?s3] =>
+    apply (ls_concat s1 s2 s3 t1 t2)
+  end.
+
+Hint Extern 3 (LongStep _ (_ ++ _) _) => resolve_concat : hoare.
+
 Ltac unfold_trace f tac :=
   match type of f with
   | LongStep ?s1 [] ?s2 =>

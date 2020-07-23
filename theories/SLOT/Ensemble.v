@@ -21,9 +21,8 @@ Open Scope hoare_scope.
 
 Section defn.
   Context {S TE} `{StateSpace S TE}.
-  Let T := list TE.
 
-  Definition TraceEnsemble := T -> Prop.
+  Definition TraceEnsemble := list TE -> Prop.
 
   Class Generator (A : Type) :=
     { unfolds_to : A -> TraceEnsemble;
@@ -42,7 +41,7 @@ Section defn.
   (** Set of all possible interleaving of two traces is a trace
   ensemble. As we later prove in [interleaving_to_permutation], this
   definition is dual to [Permutation]. *)
-  Inductive Interleaving : T -> T -> TraceEnsemble :=
+  Inductive Interleaving : list TE -> list TE -> TraceEnsemble :=
   | ilv_cons_l : forall te t1 t2 t,
       Interleaving t1 t2 t ->
       Interleaving (te :: t1) t2 (te :: t)
@@ -60,10 +59,10 @@ Section defn.
       Parallel e1 e2 t.
 
   Definition EnsembleInvariant (prop : S -> Prop) (E : TraceEnsemble) : Prop :=
-    forall (t : T), E t -> TraceInvariant prop t.
+    forall (t : list TE), E t -> TraceInvariant prop t.
 End defn.
 
-Hint Constructors Interleaving Parallel.
+Hint Constructors Interleaving Parallel TraceEnsembleConcat : hoare.
 
 Notation "'-{{' a '}}' e '{{' b '}}'" := (EHoareTriple a e b)(at level 40) : hoare_scope.
 Notation "'-{{}}' e '{{' b '}}'" := (EHoareTriple (const True) e b)(at level 40) : hoare_scope.
@@ -131,9 +130,9 @@ Section props.
       intros. intros t Hseq.
       specialize (H t). apply H. clear H.
       destruct Hseq as [t1 t2].
-      apply ilv_par with (t3 := t1) (t4 := t2); auto.
+      apply ilv_par with (t3 := t1) (t4 := t2); auto with hoare.
       clear H H0.
-      induction t1; induction t2; simpl; auto.
+      induction t1; induction t2; simpl; auto with hoare.
     Qed.
 
     Lemma e_hoare_par_symm : forall e1 e2 P Q,
@@ -152,13 +151,13 @@ Section props.
         Interleaving b (c__hd ++ c__tl) (c__hd ++ t).
     Proof.
       intros.
-      induction c__hd; simpl; auto.
+      induction c__hd; simpl; auto with hoare.
     Qed.
 
     Lemma interl_app_hd : forall (a c__hd c__tl t : list TE),
         Interleaving a c__hd t ->
         Interleaving a (c__hd ++ c__tl) (t ++ c__tl).
-    Proof with simpl; auto.
+    Proof with simpl; auto with hoare.
       intros.
       induction H...
       induction c__tl...
@@ -469,11 +468,7 @@ Section properties.
       apply ls_split in Hls;
       destruct Hls as [s' [Hls1 Hls2]].
     - refine (H2 (a ++ t3) _ s_begin s_end _ _)...
-      + constructor...
-      + apply ls_concat with (s'0 := s')...
     - refine (H1 (t2 ++ b) _ s_begin s_end _ _)...
-      + constructor...
-      + apply ls_concat with (s'0 := s')...
     - exfalso.
       destruct c1; inversion Hc.
   Qed.
@@ -487,7 +482,6 @@ Section properties.
     remember (x :: a) as a_.
     induction Ht; inversion_ Heqa_.
     - refine (H2 (x :: t) _).
-      replace (x :: t) with ([x] ++ t) by easy.
-      constructor...
+      replace (x :: t) with ([x] ++ t) by easy...
   Abort.
 End properties.

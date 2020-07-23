@@ -94,7 +94,7 @@ Section props.
     remember t_dead as thread.
     destruct Ht.
     - reflexivity.
-    - simpl in t0. subst. contradiction.
+    - simpl in *. subst. contradiction.
   Qed.
 End props.
 
