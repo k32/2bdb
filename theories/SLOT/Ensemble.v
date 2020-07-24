@@ -277,14 +277,19 @@ Ltac comm_heads_step :=
   lazymatch goal with
   | [Hls : LongStep ?s ?t ?s', Ht: Interleaving (?a :: ?t1) (?b :: ?t2) ?t |- ?Q ?s'] =>
     let Hcomm := fresh "Hcomm" in
+    (* Check that heads of the traces commute, or backtrack: *)
     assert (Hcomm : trace_elems_commute a b) by auto with hoare;
+    (* Assume a hypothesis that will be used to resolve two goals: *)
     assert (Hab : forall t', Interleaving t1 t2 t' -> LongStep s (a :: b :: t') s' -> Q s');
-    [clear Ht; clear Hls; clear t; intros t Ht Hls
+    [(* Prepare context for proving [Hab]: *)
+      clear Ht; clear Hls; clear t; intros t Ht Hls
     |destruct_interleaving Ht;
      destruct_interleaving Ht;
      [idtac
-     |apply (Hab _ Ht Hls)
-     |apply trace_elems_commute_head in Hls;
+     |(* Solve [a :: b :: t] using [Hab]: *)
+      apply (Hab _ Ht Hls)
+     |(* Solve [b :: a :: t] using [Hab]: *)
+      apply trace_elems_commute_head in Hls;
       [apply (Hab _ Ht Hls)|apply Hcomm]
      |idtac
      ]; clear Hcomm; clear Hab
