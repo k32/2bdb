@@ -19,7 +19,7 @@ Section defn.
       can_swap a b ->
       Permutation l (l' ++ b :: a :: r').
 
-  Hint Constructors Permutation.
+  Hint Constructors Permutation : permutation.
 
   Lemma perm_cons a l1 l2 :
     Permutation l1 l2 ->
@@ -29,7 +29,7 @@ Section defn.
     remember (a :: l1) as l1_.
     (* remember (a :: l2) as l2_. *)
     induction H; subst.
-    - easy.
+    - auto with permutation.
     - specialize (perm_shuf (a :: l1) (a :: l') r' a0 b IHPermutation H0) as Hs.
       assumption.
   Qed.
@@ -64,13 +64,13 @@ End defn.
 Section tests.
   Let comm a b := odd a /\ even b.
 
-  Hint Constructors odd.
-  Hint Constructors even.
+  Hint Constructors odd : permutation.
+  Hint Constructors even  : permutation.
 
   Let even2 : ~odd 2.
   Proof.
     intros H.
-    apply (not_even_and_odd 2); auto.
+    apply (not_even_and_odd 2); auto with permutation.
   Qed.
 
   Hint Resolve even2.
@@ -84,7 +84,7 @@ Section tests.
     constructor.
     - replace ([1] ++ [3; 2; 4]) with ([1; 3] ++ [2; 4]) by auto.
       constructor.
-    - split; auto.
+    - split; auto with permutation.
   Qed.
 
   Goal ~Permutation comm [2; 4] [4; 2].

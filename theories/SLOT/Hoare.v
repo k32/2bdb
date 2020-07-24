@@ -305,7 +305,7 @@ Ltac forward s' :=
 Ltac resolve_concat :=
   match goal with
     [ H1 : LongStep ?s1 ?t1 ?s2, H2 : LongStep ?s2 ?t2 ?s3 |- LongStep ?s1 (?t1 ++ ?t2) ?s3] =>
-    apply (ls_concat s1 s2 s3 t1 t2)
+    apply (ls_concat s1 s2 s3 t1 t2); assumption
   end.
 
 Hint Extern 3 (LongStep _ (_ ++ _) _) => resolve_concat : hoare.

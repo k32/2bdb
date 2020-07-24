@@ -272,6 +272,38 @@ Ltac destruct_interleaving H :=
     clear_equations
   end.
 
+
+Ltac comm_heads_step :=
+  lazymatch goal with
+  | [Hls : LongStep ?s ?t ?s', Ht: Interleaving (?a :: ?t1) (?b :: ?t2) ?t |- ?Q ?s'] =>
+    let Hcomm := fresh "Hcomm" in
+    assert (Hcomm : trace_elems_commute a b) by auto with hoare;
+    assert (Hab : forall t', Interleaving t1 t2 t' -> LongStep s (a :: b :: t') s' -> Q s');
+    [clear Ht; clear Hls; clear t; intros t Ht Hls
+    |destruct_interleaving Ht;
+     destruct_interleaving Ht;
+     [idtac
+     |apply (Hab _ Ht Hls)
+     |apply trace_elems_commute_head in Hls;
+      [apply (Hab _ Ht Hls)|apply Hcomm]
+     |idtac
+     ]; clear Hcomm; clear Hab
+    ]
+  end.
+
+Section tests.
+  Context {S TE} `{StateSpace S TE}.
+
+  Goal forall (a b : TE) (t1 t2 : list TE) Q,
+      trace_elems_commute a b ->
+      -{{const True}} eq (a :: t1) -|| eq (b :: t2) {{Q}}.
+    intros. intros t Ht. unfold_ht.
+    destruct Ht. subst.
+    comm_heads_step.
+    Fail Focus 4. (* Yay, only 3 goals! *)
+  Abort.
+End tests.
+
 Ltac unfold_interleaving H tac :=
   simpl in H;
   lazymatch type of H with
@@ -472,16 +504,4 @@ Section properties.
     - exfalso.
       destruct c1; inversion Hc.
   Qed.
-
-  Lemma ilv_separate_head x a b (P Q : S0 -> Prop) :
-    -{{P}} Interleaving [x] b ->> eq a {{Q}} ->
-    -{{P}} eq [x] ->> Interleaving a b {{Q}} ->
-    -{{P}} Interleaving (x :: a) b {{Q}}.
-  Proof with auto with hoare.
-    intros H1 H2 t Ht.
-    remember (x :: a) as a_.
-    induction Ht; inversion_ Heqa_.
-    - refine (H2 (x :: t) _).
-      replace (x :: t) with ([x] ++ t) by easy...
-  Abort.
 End properties.

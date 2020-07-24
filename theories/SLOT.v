@@ -147,7 +147,7 @@ Module ExampleModelDefn.
     (* Just a demonstration how to define a program that loops
     indefinitely, as long as it does IO: *)
 
-    Local CoFixpoint infinite_loop (self : PID) : Thread :=
+    CoFixpoint infinite_loop (self : PID) : Thread :=
       do _ <- put 0;
       infinite_loop self.
 
