@@ -91,6 +91,20 @@ Section ComposeHandlers.
     | inr _ => True
     end.
 
+  Lemma compose_comm pid1 pid2 req1 req2 ret1 ret2 :
+      trace_elems_commute (pid1 @ ret1 <~ inl req1)
+                          (pid2 @ ret2 <~ inr req2).
+  Proof with repeat constructor; auto.
+    intros [s_l s_r] [s_l' s_r'].
+    split; intros H;
+    inversion_ H; inversion_ H5; inversion_ H7;
+    destruct s'; simpl in *; destruct H3; destruct H4; simpl in *; firstorder; subst.
+    - forward (s_l, s_r')...
+      forward (s_l', s_r')...
+    - forward (s_l', s_r)...
+      forward (s_l', s_r')...
+  Qed.
+
   Definition lift_l (prop : S_l -> Prop) : compose_state -> Prop :=
     fun s => match s with
             (s_l, _) => prop s_l

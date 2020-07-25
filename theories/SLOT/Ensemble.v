@@ -50,6 +50,18 @@ Section defn.
       Interleaving t1 (te :: t2) (te :: t)
   | ilv_nil : Interleaving [] [] [].
 
+  (* Left-biased version of [Interleaving] that doesn't make
+  distinction between schedulings of commuting elements: *)
+  Inductive UniqueInterleaving : list TE -> list TE -> TraceEnsemble :=
+  | uilv_cons_l : forall te_l t1 t2 t,
+      UniqueInterleaving t1 t2 t ->
+      UniqueInterleaving (te_l :: t1) t2 (te_l :: t)
+  | uilv_cons_r : forall te_l te_r t1 t2 t,
+      ~trace_elems_commute te_l te_r ->
+      UniqueInterleaving (te_l :: t1) t2 t ->
+      UniqueInterleaving (te_l :: t1) (te_r :: t2) (te_r :: t)
+  | uilv_nil : forall t, UniqueInterleaving [] t t.
+
   (** Two systems running in parallel are represented by interleaving
   of all possible traces that could be produced by these systems: *)
   Inductive Parallel (e1 e2 : TraceEnsemble) : TraceEnsemble :=
@@ -253,6 +265,74 @@ Section props.
       destruct Ht as [t1 t2 t Ht1 Ht2 Hint].
     Abort. (* This is wrong? *)
   End perm_props.
+
+  Definition canonicalize_ilv
+             (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b))
+             (t1 t2 t : list TE) (H : Interleaving t1 t2 t) :
+    exists t, UniqueInterleaving t1 t2 t.
+  Admitted.
+  (*   induction H. *)
+  (*   3:{ exists []. constructor. } *)
+  (*   { destruct IHInterleaving as [t' Ht']. *)
+  (*     exists (te :: t'). constructor. assumption. *)
+  (*   } *)
+  (*   { inversion_ H. *)
+  (*     3:{ exists [te]. constructor. } *)
+  (*     - destruct IHInterleaving as [t' Ht']. *)
+
+  (*     clear H.       *)
+  (*     induction Ht'. *)
+  (*     3:{ exists (te :: t0). constructor. } *)
+  (*     - destruct IHHt' as [t' Ht'']. *)
+  (*       exists (te_l :: t'). constructor. assumption. *)
+  (*     -  *)
+
+  (*     { destruct IHHt' as [t' Ht'']. *)
+  (*       exists (te_l :: t'). constructor.  assumption. *)
+  (*     } *)
+  (*     { destruct IHHt' as [t' Ht'']. *)
+  (*       exists (te :: te_r :: t'). constructor. *)
+  (*       Focus 2. *)
+  (*       constructor; auto. *)
+  (* Abort. *)
+
+  Lemma uniq_ilv_ergo_ilv t1 t2 t :
+    UniqueInterleaving t1 t2 t ->
+    Interleaving t1 t2 t.
+  Proof.
+    intros.
+    induction H; try constructor; auto.
+    induction t; constructor.
+    easy.
+  Qed.
+
+  Lemma canon_ilv_ls t1 t2 t t' s s' :
+    Interleaving t1 t2 t ->
+    UniqueInterleaving t1 t2 t' ->
+    LongStep s t s' ->
+    LongStep s t' s'.
+  Admitted.
+  (* Proof with auto. *)
+  (*   intros Ht. *)
+  (*   generalize dependent s. *)
+  (*   generalize dependent t'. *)
+  (*   induction Ht; intros t' s Ht' Hls. *)
+  (*   - inversion_ Hls. *)
+  (*     inversion_ Ht'. *)
+  (*     + forward s'0... *)
+  (*     +  *)
+
+
+  Lemma uniq_ilv_correct P Q t1 t2
+        (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)) :
+    -{{P}} UniqueInterleaving t1 t2 {{Q}} ->
+    -{{P}} Interleaving t1 t2 {{Q}}.
+  Proof.
+    intros Huilv t Ht. unfold_ht.
+    destruct (canonicalize_ilv Hcomm_dec t1 t2 t Ht) as [t' Ht'].
+    specialize (canon_ilv_ls t1 t2 t t' s_begin s_end Ht Ht') as H.
+    refine (Huilv t' _ s_begin s_end _ _); auto.
+  Qed.
 End props.
 
 Ltac clear_equations :=

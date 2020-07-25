@@ -343,10 +343,8 @@ Tactic Notation "unfold_trace" ident(f) := unfold_trace f (fun _ => idtac).
 
 Ltac ls_advance tac :=
   match goal with
-  | [H : LongStep ?s (?a :: ?t) ?s' |- ?Q ?s'] =>
+  | [H : LongStep ?s ?t ?s' |- ?Q ?s'] =>
     long_step H tac
-  | [H : LongStep ?s [] ?s' |- ?Q ?s'] =>
-    inversion_clear H
   end.
 
 Tactic Notation "ls_advance" tactic3(tac) := ls_advance tac.
