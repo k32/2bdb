@@ -266,35 +266,22 @@ Section props.
     Abort. (* This is wrong? *)
   End perm_props.
 
-  Definition canonicalize_ilv
-             (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b))
-             (t1 t2 t : list TE) (H : Interleaving t1 t2 t) :
+  Definition uilv_total (t1 t2 : list TE) :
     exists t, UniqueInterleaving t1 t2 t.
-  Admitted.
-  (*   induction H. *)
-  (*   3:{ exists []. constructor. } *)
-  (*   { destruct IHInterleaving as [t' Ht']. *)
-  (*     exists (te :: t'). constructor. assumption. *)
-  (*   } *)
-  (*   { inversion_ H. *)
-  (*     3:{ exists [te]. constructor. } *)
-  (*     - destruct IHInterleaving as [t' Ht']. *)
-
-  (*     clear H.       *)
-  (*     induction Ht'. *)
-  (*     3:{ exists (te :: t0). constructor. } *)
-  (*     - destruct IHHt' as [t' Ht'']. *)
-  (*       exists (te_l :: t'). constructor. assumption. *)
-  (*     -  *)
-
-  (*     { destruct IHHt' as [t' Ht'']. *)
-  (*       exists (te_l :: t'). constructor.  assumption. *)
-  (*     } *)
-  (*     { destruct IHHt' as [t' Ht'']. *)
-  (*       exists (te :: te_r :: t'). constructor. *)
-  (*       Focus 2. *)
-  (*       constructor; auto. *)
-  (* Abort. *)
+  Proof with constructor; assumption.
+    induction t1.
+    { exists t2. constructor. }
+    { destruct IHt1 as [t Ht].
+      destruct t2.
+      - exists (a :: t1). constructor.
+        clear Ht.
+        induction t1...
+      - inversion_ Ht.
+        + exists (a :: te_l :: t5)...
+        + exists (a :: t0 :: t5)...
+        + exists (a :: t0 :: t2)...
+    }
+  Defined.
 
   Lemma uniq_ilv_ergo_ilv t1 t2 t :
     UniqueInterleaving t1 t2 t ->
@@ -323,13 +310,12 @@ Section props.
   (*     +  *)
 
 
-  Lemma uniq_ilv_correct P Q t1 t2
-        (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)) :
+  Lemma uniq_ilv_correct P Q t1 t2 :
     -{{P}} UniqueInterleaving t1 t2 {{Q}} ->
     -{{P}} Interleaving t1 t2 {{Q}}.
   Proof.
     intros Huilv t Ht. unfold_ht.
-    destruct (canonicalize_ilv Hcomm_dec t1 t2 t Ht) as [t' Ht'].
+    destruct (uilv_total t1 t2) as [t' Ht'].
     specialize (canon_ilv_ls t1 t2 t t' s_begin s_end Ht Ht') as H.
     refine (Huilv t' _ s_begin s_end _ _); auto.
   Qed.
@@ -343,6 +329,18 @@ Ltac clear_equations :=
 Ltac destruct_interleaving H :=
   match type of H with
     Interleaving ?a ?b ?c =>
+    let a0 := fresh in
+    let b0 := fresh in
+    let Ha := fresh in
+    let Hb := fresh in
+    remember a as a0 eqn:Ha; remember b as b0 eqn:Hb;
+    destruct H; inversion Ha; inversion Hb; subst; try discriminate;
+    clear_equations
+  end.
+
+Ltac destruct_uinterleaving H :=
+  match type of H with
+    UniqueInterleaving ?a ?b ?c =>
     let a0 := fresh in
     let b0 := fresh in
     let Ha := fresh in
@@ -531,21 +529,26 @@ Section properties.
     match a, b with
     | 0, _   => 1
     | _, 0   => 1
-    | _, S b => fold_left (fun acc i => acc + (num_interleavings i b)) (seq 0 (S a)) 1
+    | _, S b => fold_left (fun acc i => acc + (num_interleavings i b)) (seq 0 (S a)) 0
     end.
 
-  Goal forall (a b c d e f g h i j k : TE) t,
-      Interleaving [a; b; e; f; g] [c; d; i] t ->
+  Goal forall (a b c d e f g h i j k : TE) s s' t,
+      trace_elems_commute a d ->
+      trace_elems_commute a c ->
+      LongStep s t s' ->
+      UniqueInterleaving [a; b; e; f; g] [c; d; i] t ->
       False.
   Proof.
     intros.
-    Compute num_interleavings 5 3. (* 77 *)
-    repeat match goal with
-           | [H : Interleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
-             destruct_interleaving H
-           | [H : Interleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
-             destruct_interleaving H
-           end;
+    Compute num_interleavings 5 3. (* 56 *)
+    repeat (match goal with
+            | [H : UniqueInterleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
+              destruct_interleaving H
+            | [H : UniqueInterleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
+              inversion_ H; clear H
+            end; try contradiction).
+    Focus 30.
+    3:{
       let n := numgoals in guard n = 77.
   Abort.
 
