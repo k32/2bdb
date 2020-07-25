@@ -310,32 +310,47 @@ Ltac resolve_concat :=
 
 Hint Extern 3 (LongStep _ (_ ++ _) _) => resolve_concat : hoare.
 
-Ltac unfold_trace f tac :=
-  match type of f with
-  | LongStep ?s1 [] ?s2 =>
-    let x := fresh "s" in
+Ltac long_step f tac :=
+  cbn in f;
+  lazymatch type of f with
+  | LongStep _ [] _ =>
+    let s := fresh "s" in
     let Hx := fresh "Hx" in
     let Hy := fresh "Hy" in
     let Hz := fresh "Hz" in
-    inversion f as [x Hx Hy Hz|];
-    destruct Hz; destruct Hy; destruct Hx;
-    clear f
-  | LongStep ?s1 (?h :: ?t) ?s2 =>
-    let s1 := fresh "s" in
-    let s2 := fresh "s" in
-    let s3 := fresh "s" in
+    inversion f as [s Hx Hy Hz|];
+    subst s; clear f; clear Hy
+  | LongStep _ (_ :: _) _ =>
+    let s' := fresh "s" in
     let te := fresh "te" in
     let tail := fresh "tail" in
     let Hcr := fresh "Hcr" in
     let Htl := fresh "Htl" in
-    try subst h;
-    inversion_clear f as [|s1 s2 s3 te tail Hcr Htl];
-    tac Hcr;
-    unfold_trace Htl tac
+    inversion_clear f as [|? s' ? te tail Hcr Htl];
+    rename Htl into f;
+    cbn in Hcr;
+    tac Hcr
   end.
+
+Tactic Notation "long_step" ident(f) tactic3(tac) := long_step f tac.
+Tactic Notation "long_step" ident(f) := long_step f (fun _ => idtac).
+
+Ltac unfold_trace f tac :=
+  repeat (long_step f tac).
 
 Tactic Notation "unfold_trace" ident(f) tactic3(tac) := unfold_trace f tac.
 Tactic Notation "unfold_trace" ident(f) := unfold_trace f (fun _ => idtac).
+
+Ltac ls_advance tac :=
+  match goal with
+  | [H : LongStep ?s (?a :: ?t) ?s' |- ?Q ?s'] =>
+    long_step H tac
+  | [H : LongStep ?s [] ?s' |- ?Q ?s'] =>
+    inversion_clear H
+  end.
+
+Tactic Notation "ls_advance" tactic3(tac) := ls_advance tac.
+Tactic Notation "ls_advance" := ls_advance (fun _ => idtac).
 
 Hint Transparent Ensembles.In Ensembles.Complement.
 Hint Constructors LongStep : hoare.

@@ -272,6 +272,13 @@ Ltac destruct_interleaving H :=
     clear_equations
   end.
 
+Ltac interleaving_nil :=
+  repeat match goal with
+         | [H: Interleaving [] ?t1 ?t |- _] => apply interleaving_nil in H; try subst t
+         | [H: Interleaving ?t1 [] ?t |- _] => apply interleaving_symm, interleaving_nil in H; try subst t
+         end.
+
+Hint Extern 4 => interleaving_nil : hoare.
 
 Ltac comm_heads_step :=
   lazymatch goal with
@@ -283,18 +290,27 @@ Ltac comm_heads_step :=
     assert (Hab : forall t', Interleaving t1 t2 t' -> LongStep s (a :: b :: t') s' -> Q s');
     [(* Prepare context for proving [Hab]: *)
       clear Ht; clear Hls; clear t; intros t Ht Hls
-    |destruct_interleaving Ht;
+    |(* Solve goals using [Hab], if we can: *)
      destruct_interleaving Ht;
-     [idtac
-     |(* Solve [a :: b :: t] using [Hab]: *)
-      apply (Hab _ Ht Hls)
-     |(* Solve [b :: a :: t] using [Hab]: *)
-      apply trace_elems_commute_head in Hls;
-      [apply (Hab _ Ht Hls)|apply Hcomm]
-     |idtac
-     ]; clear Hcomm; clear Hab
-    ]
+     destruct_interleaving Ht;
+     (* Try to resolve goals using [Hab]: *)
+     lazymatch type of Hls with
+     | LongStep _ (a :: b :: t) _ =>
+       apply (Hab _ Ht Hls)
+     | LongStep _ (b :: a :: t) _ =>
+       apply trace_elems_commute_head in Hls;
+       [apply (Hab _ Ht Hls)|apply Hcomm]
+     | _ =>
+       idtac
+     end]; clear Hcomm; try clear Hab
   end.
+
+Ltac interleaving_step tac :=
+  interleaving_nil || comm_heads_step;
+  repeat (ls_advance tac).
+
+Tactic Notation "interleaving_step" tactic3(tac) := interleaving_step tac.
+Tactic Notation "interleaving_step" := interleaving_step (fun _ => idtac).
 
 Section tests.
   Context {S TE} `{StateSpace S TE}.
@@ -304,8 +320,20 @@ Section tests.
       -{{const True}} eq (a :: t1) -|| eq (b :: t2) {{Q}}.
     intros. intros t Ht. unfold_ht.
     destruct Ht. subst.
-    comm_heads_step.
-    Fail Focus 4. (* Yay, only 3 goals! *)
+    interleaving_step;
+    let n := numgoals in guard n = 3.
+  Abort.
+
+  Goal forall (a b c d : TE) Q,
+      trace_elems_commute a b ->
+      trace_elems_commute c b ->
+      trace_elems_commute a d ->
+      trace_elems_commute c d ->
+      -{{const True}} eq [a; c] -|| eq [b; d] {{Q}}.
+    intros. intros t Ht. unfold_ht.
+    destruct Ht. subst.
+    Fail repeat interleaving_step;
+    let n := numgoals in guard n = 1. (* TODO: We still got unnecessary goals :( *)
   Abort.
 End tests.
 
@@ -346,14 +374,6 @@ Tactic Notation "unfold_interleaving" ident(H) "with" tactic(tac) :=
 
 Tactic Notation "unfold_interleaving" ident(H) :=
   unfold_interleaving H with idtac.
-
-Ltac interleaving_nil :=
-  repeat match goal with
-         | [H: Interleaving [] ?t1 ?t |- _] => apply interleaving_nil in H; try subst t
-         | [H: Interleaving ?t1 [] ?t |- _] => apply interleaving_symm, interleaving_nil in H; try subst t
-         end.
-
-Hint Extern 4 => interleaving_nil : hoare.
 
 Section permutation.
   Context {S PID Req : Type} {Ret : Req -> Type}.
@@ -439,13 +459,14 @@ Section properties.
       False.
   Proof.
     intros.
-    Compute num_interleavings 5 3.
+    Compute num_interleavings 5 3. (* 77 *)
     repeat match goal with
            | [H : Interleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
              destruct_interleaving H
            | [H : Interleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
              destruct_interleaving H
-           end.
+           end;
+      let n := numgoals in guard n = 77.
   Abort.
 
   Let comm_diff a b := num_interleavings a b - (num_interleavings (a - 1) (b - 1)).

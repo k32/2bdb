@@ -240,27 +240,7 @@ Ltac handler_step Hcr :=
 Create HintDb handlers.
 
 Ltac trace_step f :=
-  cbn in f;
-  lazymatch type of f with
-  | LongStep _ [] _ =>
-    let s := fresh "s" in
-    let Hx := fresh "Hx" in
-    let Hy := fresh "Hy" in
-    let Hz := fresh "Hz" in
-    inversion f as [s Hx Hy Hz|];
-    subst s; clear f; clear Hy
-  | LongStep _ (_ :: _) _ =>
-    let s' := fresh "s" in
-    let te := fresh "te" in
-    let tail := fresh "tail" in
-    let Hcr := fresh "Hcr" in
-    let Htl := fresh "Htl" in
-    inversion_clear f as [|? s' ? te tail Hcr Htl];
-    rename Htl into f;
-    cbn in Hcr;
-    handler_step Hcr;
-    auto with handlers
-  end.
+  long_step f (fun H => handler_step H; auto with handlers).
 
 Tactic Notation "unfold_trace_deep" ident(f) := unfold_trace f (fun x => inversion x); subst.
 
@@ -276,7 +256,6 @@ Hint Transparent compose_state.
 
 Global Arguments h_state {_} {_} {_}.
 Global Arguments h_chain_rule {_} {_} {_}.
-
 
 (** Warning: [lift] tactic will emit arbitrary crap when there are
 multiple handlers of the same type combined, so avoid using it this
