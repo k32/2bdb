@@ -53,13 +53,16 @@ Section defn.
   (* Left-biased version of [Interleaving] that doesn't make
   distinction between schedulings of commuting elements: *)
   Inductive UniqueInterleaving : list TE -> list TE -> TraceEnsemble :=
-  | uilv_cons_l : forall te_l t1 t2 t,
+  | uilv_cons_l : forall l t1 t2 t,
       UniqueInterleaving t1 t2 t ->
-      UniqueInterleaving (te_l :: t1) t2 (te_l :: t)
-  | uilv_cons_r : forall te_l te_r t1 t2 t,
-      ~trace_elems_commute te_l te_r ->
-      UniqueInterleaving (te_l :: t1) t2 t ->
-      UniqueInterleaving (te_l :: t1) (te_r :: t2) (te_r :: t)
+      UniqueInterleaving (l :: t1) t2 (l :: t)
+  | uilv_cons_r1 : forall l r t1 t2 t,
+      ~trace_elems_commute l r ->
+      UniqueInterleaving (l :: t1) t2 (l :: t) ->
+      UniqueInterleaving (l :: t1) (r :: t2) (r :: l :: t)
+  | uilv_cons_r2 : forall r1 r2 t1 t2 t,
+      UniqueInterleaving t1 (r1 :: t2) (r1 :: t) ->
+      UniqueInterleaving t1 (r2 :: r1 :: t2) (r2 :: r1 :: t)
   | uilv_nil : forall t, UniqueInterleaving [] t t.
 
   (** Two systems running in parallel are represented by interleaving
@@ -266,59 +269,84 @@ Section props.
     Abort. (* This is wrong? *)
   End perm_props.
 
-  Definition uilv_total (t1 t2 : list TE) :
-    exists t, UniqueInterleaving t1 t2 t.
-  Proof with constructor; assumption.
-    induction t1.
-    { exists t2. constructor. }
-    { destruct IHt1 as [t Ht].
-      destruct t2.
-      - exists (a :: t1). constructor.
-        clear Ht.
-        induction t1...
-      - inversion_ Ht.
-        + exists (a :: te_l :: t5)...
-        + exists (a :: t0 :: t5)...
-        + exists (a :: t0 :: t2)...
-    }
-  Defined.
+  Section uniq_correct.
+    Context (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).
 
-  Lemma uniq_ilv_ergo_ilv t1 t2 t :
-    UniqueInterleaving t1 t2 t ->
-    Interleaving t1 t2 t.
-  Proof.
-    intros.
-    induction H; try constructor; auto.
-    induction t; constructor.
-    easy.
-  Qed.
+    Lemma uniq_ilv_ergo_ilv t1 t2 t :
+      UniqueInterleaving t1 t2 t ->
+      Interleaving t1 t2 t.
+    Proof.
+      intros.
+      induction H; try constructor; auto.
+      induction t; constructor.
+      easy.
+    Qed.
 
-  Lemma canon_ilv_ls t1 t2 t t' s s' :
-    Interleaving t1 t2 t ->
-    UniqueInterleaving t1 t2 t' ->
-    LongStep s t s' ->
-    LongStep s t' s'.
-  Admitted.
-  (* Proof with auto. *)
-  (*   intros Ht. *)
-  (*   generalize dependent s. *)
-  (*   generalize dependent t'. *)
-  (*   induction Ht; intros t' s Ht' Hls. *)
-  (*   - inversion_ Hls. *)
-  (*     inversion_ Ht'. *)
-  (*     + forward s'0... *)
-  (*     +  *)
+    Lemma uilv_nil_l : forall t, UniqueInterleaving t [] t.
+    Proof.
+      now induction t; constructor.
+    Qed.
 
+    Fixpoint uilv_append_r te (t1 t2 t : list TE)
+             (Ht : UniqueInterleaving t1 t2 t)
+             (s s' s'' : S) (Hls : LongStep s' t s'')
+             (Hte : s ~[te]~> s')
+             {struct Ht} :
+      exists t', UniqueInterleaving t1 (te :: t2) t' /\ LongStep s t' s''.
+    Proof with repeat (try assumption ; constructor); auto.
+      destruct Ht.
+      - long_step Hls.
+        destruct (Hcomm_dec l te) as [Hcomm|Hcomm].
+        + assert (Hx : LongStep s [te; l] s0).
+          { forward s'...
+            forward s0...
+          }
+          specialize (Hcomm s s0). apply Hcomm in Hx. clear Hcomm.
+          repeat long_step Hx. subst.
+          specialize (uilv_append_r te t1 t2 t Ht s1 s0 s'' Hls Hcr1).
+          destruct uilv_append_r as [t' [Ht' Hls']].
+          exists (l :: t').
+          split...
+          forward s1...
+        + exists (te :: l :: t).
+          split...
+          forward s'...
+          forward s0...
+      - exists (te :: r :: l :: t).
+        split...
+        forward s'...
+      - exists (te :: r2 :: r1 :: t).
+        split...
+        forward s'...
+      - exists (te :: t).
+        split...
+        forward s'...
+    Qed.
 
-  Lemma uniq_ilv_correct P Q t1 t2 :
-    -{{P}} UniqueInterleaving t1 t2 {{Q}} ->
-    -{{P}} Interleaving t1 t2 {{Q}}.
-  Proof.
-    intros Huilv t Ht. unfold_ht.
-    destruct (uilv_total t1 t2) as [t' Ht'].
-    specialize (canon_ilv_ls t1 t2 t t' s_begin s_end Ht Ht') as H.
-    refine (Huilv t' _ s_begin s_end _ _); auto.
-  Qed.
+    Fixpoint canonicalize_ilv (t1 t2 t : list TE) (Ht : Interleaving t1 t2 t)
+                              (s s' : S) (Hls : LongStep s t s')
+                              {struct Ht} :
+      exists t', UniqueInterleaving t1 t2 t' /\ LongStep s t' s'.
+    Proof with repeat constructor; auto.
+      destruct Ht; try long_step Hls.
+      - destruct (canonicalize_ilv t1 t2 t Ht s0 s' Hls) as [t' [Ht' Hls']].
+        exists (te :: t').
+        split...
+        forward s0...
+      - destruct (canonicalize_ilv t1 t2 t Ht s0 s' Hls) as [t' [Ht' Hls']].
+        apply (uilv_append_r te t1 t2 t' Ht' s s0 s' Hls' Hcr).
+      - exists []...
+    Defined.
+
+    Lemma uniq_ilv_correct P Q t1 t2 :
+      -{{P}} UniqueInterleaving t1 t2 {{Q}} ->
+      -{{P}} Interleaving t1 t2 {{Q}}.
+    Proof.
+      intros Huilv t Ht. unfold_ht.
+      destruct (canonicalize_ilv t1 t2 t Ht s_begin s_end Hls) as [t' [Ht' Hls']].
+      eapply Huilv; eauto.
+    Qed.
+  End uniq_correct.
 End props.
 
 Ltac clear_equations :=
@@ -389,31 +417,6 @@ Ltac interleaving_step tac :=
 
 Tactic Notation "interleaving_step" tactic3(tac) := interleaving_step tac.
 Tactic Notation "interleaving_step" := interleaving_step (fun _ => idtac).
-
-Section tests.
-  Context {S TE} `{StateSpace S TE}.
-
-  Goal forall (a b : TE) (t1 t2 : list TE) Q,
-      trace_elems_commute a b ->
-      -{{const True}} eq (a :: t1) -|| eq (b :: t2) {{Q}}.
-    intros. intros t Ht. unfold_ht.
-    destruct Ht. subst.
-    interleaving_step;
-    let n := numgoals in guard n = 3.
-  Abort.
-
-  Goal forall (a b c d : TE) Q,
-      trace_elems_commute a b ->
-      trace_elems_commute c b ->
-      trace_elems_commute a d ->
-      trace_elems_commute c d ->
-      -{{const True}} eq [a; c] -|| eq [b; d] {{Q}}.
-    intros. intros t Ht. unfold_ht.
-    destruct Ht. subst.
-    Fail repeat interleaving_step;
-    let n := numgoals in guard n = 1. (* TODO: We still got unnecessary goals :( *)
-  Abort.
-End tests.
 
 Ltac unfold_interleaving H tac :=
   simpl in H;
@@ -547,9 +550,6 @@ Section properties.
             | [H : UniqueInterleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
               inversion_ H; clear H
             end; try contradiction).
-    Focus 30.
-    3:{
-      let n := numgoals in guard n = 77.
   Abort.
 
   Let comm_diff a b := num_interleavings a b - (num_interleavings (a - 1) (b - 1)).
@@ -614,3 +614,29 @@ Section properties.
       destruct c1; inversion Hc.
   Qed.
 End properties.
+
+Section tests.
+  Context {S TE} `{StateSpace S TE}.
+
+  Goal forall (a b : TE) (t1 t2 : list TE) Q,
+      trace_elems_commute a b ->
+      -{{const True}} eq (a :: t1) -|| eq (b :: t2) {{Q}}.
+    intros. intros t Ht. unfold_ht.
+    destruct Ht. subst.
+    interleaving_step;
+    let n := numgoals in guard n = 3.
+  Abort.
+
+  Goal forall (a b c d : TE) Q,
+      trace_elems_commute a b ->
+      trace_elems_commute c b ->
+      trace_elems_commute a d ->
+      trace_elems_commute c d ->
+      -{{const True}} UniqueInterleaving [a; c] [b; d] {{Q}}.
+    intros. intros t Ht. unfold_ht.
+    match goal with
+    | [H : UniqueInterleaving ?a ?b ?c |- _] =>
+      inversion_ H; try contradiction
+    end.
+  Abort.
+End tests.
