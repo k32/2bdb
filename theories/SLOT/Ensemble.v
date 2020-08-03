@@ -50,6 +50,33 @@ Section defn.
       Interleaving t1 (te :: t2) (te :: t)
   | ilv_nil : Interleaving [] [] [].
 
+  Section tests.
+    (** Let's briefly check that our definition of [Interleaving] has
+    desired properties: *)
+    Variables (a b c d : TE).
+
+    Goal Interleaving [a;b] [c;d] [a;b;c;d].
+    Proof. repeat constructor. Qed.
+
+    Goal Interleaving [a;b] [c;d] [a;c;b;d].
+    Proof. repeat constructor. Qed.
+
+    Goal Interleaving [a;b] [c;d] [a;c;d;b].
+    Proof. repeat constructor. Qed.
+
+    Goal Interleaving [a;b] [c;d] [c;a;d;b].
+    Proof. repeat constructor. Qed.
+
+    Goal Interleaving [a;b] [c;d] [c;d;a;b].
+    Proof. repeat constructor. Qed.
+
+    Goal a<>b -> b<>c -> not(Interleaving [a;b] [c;d] [b;a;c;d]).
+    Proof.
+      intros Hab Hac Hint.
+      inversion_ Hint.
+    Qed.
+  End tests.
+
   (* Left-biased version of [Interleaving] that doesn't make
   distinction between schedulings of commuting elements: *)
   Inductive UniqueInterleaving : list TE -> list TE -> TraceEnsemble :=
@@ -386,38 +413,6 @@ Ltac interleaving_nil :=
 
 Hint Extern 4 => interleaving_nil : hoare.
 
-Ltac comm_heads_step :=
-  lazymatch goal with
-  | [Hls : LongStep ?s ?t ?s', Ht: Interleaving (?a :: ?t1) (?b :: ?t2) ?t |- ?Q ?s'] =>
-    let Hcomm := fresh "Hcomm" in
-    (* Check that heads of the traces commute, or backtrack: *)
-    assert (Hcomm : trace_elems_commute a b) by auto with hoare;
-    (* Assume a hypothesis that will be used to resolve two goals: *)
-    assert (Hab : forall t', Interleaving t1 t2 t' -> LongStep s (a :: b :: t') s' -> Q s');
-    [(* Prepare context for proving [Hab]: *)
-      clear Ht; clear Hls; clear t; intros t Ht Hls
-    |(* Solve goals using [Hab], if we can: *)
-     destruct_interleaving Ht;
-     destruct_interleaving Ht;
-     (* Try to resolve goals using [Hab]: *)
-     lazymatch type of Hls with
-     | LongStep _ (a :: b :: t) _ =>
-       apply (Hab _ Ht Hls)
-     | LongStep _ (b :: a :: t) _ =>
-       apply trace_elems_commute_head in Hls;
-       [apply (Hab _ Ht Hls)|apply Hcomm]
-     | _ =>
-       idtac
-     end]; clear Hcomm; try clear Hab
-  end.
-
-Ltac interleaving_step tac :=
-  interleaving_nil || comm_heads_step;
-  repeat (ls_advance tac).
-
-Tactic Notation "interleaving_step" tactic3(tac) := interleaving_step tac.
-Tactic Notation "interleaving_step" := interleaving_step (fun _ => idtac).
-
 Ltac unfold_interleaving H tac :=
   simpl in H;
   lazymatch type of H with
@@ -617,15 +612,6 @@ End properties.
 
 Section tests.
   Context {S TE} `{StateSpace S TE}.
-
-  Goal forall (a b : TE) (t1 t2 : list TE) Q,
-      trace_elems_commute a b ->
-      -{{const True}} eq (a :: t1) -|| eq (b :: t2) {{Q}}.
-    intros. intros t Ht. unfold_ht.
-    destruct Ht. subst.
-    interleaving_step;
-    let n := numgoals in guard n = 3.
-  Abort.
 
   Goal forall (a b c d : TE) Q,
       trace_elems_commute a b ->
