@@ -609,20 +609,3 @@ Section properties.
       destruct c1; inversion Hc.
   Qed.
 End properties.
-
-Section tests.
-  Context {S TE} `{StateSpace S TE}.
-
-  Goal forall (a b c d : TE) Q,
-      trace_elems_commute a b ->
-      trace_elems_commute c b ->
-      trace_elems_commute a d ->
-      trace_elems_commute c d ->
-      -{{const True}} UniqueInterleaving [a; c] [b; d] {{Q}}.
-    intros. intros t Ht. unfold_ht.
-    match goal with
-    | [H : UniqueInterleaving ?a ?b ?c |- _] =>
-      inversion_ H; try contradiction
-    end.
-  Abort.
-End tests.
