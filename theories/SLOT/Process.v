@@ -51,18 +51,14 @@ Section defn.
       ThreadGenerator pid t' trace ->
       ThreadGenerator pid t (te :: trace).
 
-  Global Instance threadGen pid : Generator Thread :=
-    { unfolds_to := ThreadGenerator pid;
-    }.
-
   Global Instance runnableThread : Runnable Thread :=
     {| runnable_step := threadStep |}.
 
   Global Instance runnableHoare {A} `{Runnable A} : StateSpace A TE :=
     {| chain_rule := runnable_step |}.
 
-  Global Instance runnableGenerator {A} `{Runnable A} : Generator A :=
-    {| unfolds_to g t := exists g', LongStep g t g' |}.
+  (* Global Instance runnableGenerator {A} `{Runnable A} : Generator A := *)
+  (*   {| unfolds_to g t := exists g', LongStep g t g' |}. *)
 
   Definition finale {T : Type} (_ : T) := t_dead.
 

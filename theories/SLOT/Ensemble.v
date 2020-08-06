@@ -24,10 +24,6 @@ Section defn.
 
   Definition TraceEnsemble := list TE -> Prop.
 
-  Class Generator (A : Type) :=
-    { unfolds_to : A -> TraceEnsemble;
-    }.
-
   (** Hoare logic of trace ensembles consists of a single rule: *)
   Definition EHoareTriple (pre : S -> Prop) (g : TraceEnsemble) (post : S -> Prop) :=
     forall t, g t ->
@@ -62,6 +58,9 @@ Section defn.
     Proof. repeat constructor. Qed.
 
     Goal Interleaving [a;b] [c;d] [a;c;d;b].
+    Proof. repeat constructor. Qed.
+
+    Goal Interleaving [a;b] [c;d] [c;a;b;d].
     Proof. repeat constructor. Qed.
 
     Goal Interleaving [a;b] [c;d] [c;a;d;b].
@@ -534,17 +533,20 @@ Section properties.
       trace_elems_commute a d ->
       trace_elems_commute a c ->
       LongStep s t s' ->
-      UniqueInterleaving [a; b; e; f; g] [c; d; i] t ->
+      Interleaving [a; b; e; f; g] [c; d; i] t ->
       False.
   Proof.
     intros.
     Compute num_interleavings 5 3. (* 56 *)
     repeat (match goal with
-            | [H : UniqueInterleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
+            | [H : Interleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
               destruct_interleaving H
-            | [H : UniqueInterleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
+            | [H : Interleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
               inversion_ H; clear H
-            end; try contradiction).
+            | [H : Interleaving [] [] ?t |- _ ] =>
+              inversion H; clear H
+            end; try contradiction);
+    let n := numgoals in guard n = 56.
   Abort.
 
   Let comm_diff a b := num_interleavings a b - (num_interleavings (a - 1) (b - 1)).
