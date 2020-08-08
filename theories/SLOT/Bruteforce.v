@@ -15,7 +15,7 @@ From Coq Require Import
 From Coq Require
      Vector.
 
-Import ListNotations Vector.VectorNotations.
+Import ListNotations Vector.VectorNotations Vectors.VectorSpec.
 Module Vec := Vector.
 
 Open Scope list_scope.
@@ -93,6 +93,8 @@ Section supplementary_definitions.
       end.
   End defn.
 
+  Global Arguments Traces {_}.
+
   Section props.
     Context `{Hssp : StateSpace}.
 
@@ -100,14 +102,43 @@ Section supplementary_definitions.
 
     Definition MultiEnsOrig {N} := @MultiEns _ _ Hssp can_switch N.
 
-    Lemma push_shiftin {N} t0 traces (te : TE) (i : Fin.t N) :
-       (push (Vec.shiftin t0 traces)%vector te (Fin.FS i)) = Vec.shiftin t0 (push traces te i).
-    Admitted.
+    Section boring_lemmas.
+      Program Definition maxout N :=
+        let H : N < S N := _ in
+        Fin.of_nat_lt H.
 
-    Lemma can_switch_shiftin {N} te t2 (prev_i : Fin.t N) prev_te traces :
-      can_switch' can_switch prev_te te traces prev_i ->
-      can_switch' can_switch prev_te te (Vec.shiftin t2 traces) (Fin.FS prev_i).
-    Admitted.
+      Lemma push_shiftin {N} t traces (te : TE) (i : Fin.t N) :
+         (push (Vec.shiftin t traces)%vector te (Fin.FS i)) = Vec.shiftin t (push traces te i).
+      Admitted.
+
+      Lemma can_switch_shiftin {N} te t (prev_i : Fin.t N) prev_te traces :
+        can_switch' can_switch prev_te te traces prev_i ->
+        can_switch' can_switch prev_te te (Vec.shiftin t traces) (Fin.FS prev_i).
+      Admitted.
+
+      Lemma push_at_maxout N t (traces : Traces N) (te : TE) :
+        push (Vec.shiftin t traces) te (maxout N) = Vec.shiftin (te :: t) traces.
+      Admitted.
+
+      Lemma mens_add_nil : forall {N} traces t,
+          @MultiEnsOrig (S N) ([]%list :: traces)%vector t ->
+          @MultiEnsOrig N traces t.
+      Admitted.
+
+      Lemma nonempty_add_nil : forall {N} (traces : Vec.t (list TE) (S N)),
+          None = find_nonempty ([]%list :: traces)%vector ->
+          None = find_nonempty traces.
+      Admitted.
+
+      Lemma empty_traces : forall {N} (traces : Traces N),
+          None = find_nonempty traces ->
+          Vec.Forall (eq []) traces.
+      Admitted.
+
+      Lemma vec_shiftin_same : forall {A N} (a : A),
+          vec_same (S N) a = Vec.shiftin a (vec_same N a).
+      Admitted.
+    End boring_lemmas.
 
     Hint Resolve can_switch_shiftin : slot_gen.
 
@@ -115,6 +146,25 @@ Section supplementary_definitions.
     Admitted.
 
     Hint Resolve fin_eq_fs : slot_gen.
+
+    Lemma mens_orig_can_start_anywhere : forall {N} (traces : Traces N) t pte1 pi1 pte2 pi2,
+        MultiEns_ can_switch pte1 pi1 traces t ->
+        MultiEns_ can_switch pte2 pi2 traces t.
+    Proof.
+      intros.
+      destruct (Fin.eq_dec pi1 pi2).
+      - subst.
+        inversion_ H; constructor; auto.
+      - inversion_ H.
+        + constructor.
+        + constructor; auto.
+          unfold can_switch', can_switch.
+          now destruct traces0[@pi2].
+        + destruct (Fin.eq_dec i pi2); subst;
+          constructor; auto.
+          unfold can_switch', can_switch.
+          now destruct traces0[@pi2].
+    Qed.
 
     Fixpoint interleaving_to_mult0_fix (t1 t2 t : list TE)
         (H : Interleaving t1 t2 t) prev_te prev_i :
@@ -145,16 +195,14 @@ Section supplementary_definitions.
         inversion_ H.
     Qed.
 
-    Fixpoint interleaving_to_mult_fix N (traces : Vec.t (list TE) N) (t1 t2 t : list TE)
-             prev_te prev_i :
-        MultiEnsOrig traces t1 ->
-        Interleaving t1 t2 t ->
-        MultiEns_ can_switch prev_te prev_i (Vec.shiftin t2 traces) t.
-    (*Proof.
-      intros Ht1 H.
+    Fixpoint interleaving_to_mult_fix N (traces : Traces N) (t1 t2 t : list TE)
+             prev_te prev_i
+             (Ht1 : MultiEns_ can_switch prev_te prev_i traces t1)
+             (H : Interleaving t1 t2 t) :
+      MultiEns_ can_switch prev_te (Fin.FS prev_i) (Vec.shiftin t2 traces) t.
+    Proof.
       destruct H.
-      - specialize (Ht1 prev_te prev_i).
-        inversion_ Ht1; subst traces'0.
+      { inversion_ Ht1; subst traces'0.
         + replace (Vec.shiftin t2 (push traces0 te prev_i))
             with (push (Vec.shiftin t2 traces0) te (Fin.FS prev_i))
             by apply push_shiftin.
@@ -162,25 +210,22 @@ Section supplementary_definitions.
         + replace (Vec.shiftin t2 (push traces0 te i))
             with (push (Vec.shiftin t2 traces0) te (Fin.FS i))
             by apply push_shiftin.
-            constructor; eauto with slot_gen.
-      - assert (i : N < S N) by auto.
-        apply Fin.of_nat_lt in i.
-        replace (Vec.shiftin (te :: t2) traces) with
-            (push (Vec.shiftin t2 traces) te i).
-        inversion
-        { constructor.
-          3:{ specialize (interleaving_to_mult N traces t1 t2 t te prev_i Ht1 H). *)
-    Admitted.
-
-    Lemma mens_add_nil : forall {N} traces t,
-        @MultiEnsOrig (S N) ([]%list :: traces)%vector t ->
-        @MultiEnsOrig N traces t.
-    Admitted.
-
-    Lemma nonempty_add_nil : forall {N} (traces : Vec.t (list TE) (S N)),
-        None = find_nonempty ([]%list :: traces)%vector ->
-        None = find_nonempty traces.
-    Admitted.
+          constructor; eauto with slot_gen.
+      }
+      { set (i := maxout N).
+        apply mens_orig_can_start_anywhere with (pte1 := te) (pi1 := i).
+        replace (Vec.shiftin (te :: t2) traces) with (push (Vec.shiftin t2 traces) te i)
+          by apply push_at_maxout.
+        constructor.
+        apply mens_orig_can_start_anywhere with (pte1 := prev_te) (pi1 := Fin.FS prev_i).
+        eauto.
+      }
+      { inversion_ Ht1.
+        replace (Vec.shiftin [] (vec_same N [])) with (@vec_same (list TE) (S N) [])
+          by apply vec_shiftin_same.
+        constructor.
+      }
+    Defined.
 
     Lemma interleaving_to_mult N (traces : Vec.t (list TE) N) (t1 t2 t : list TE) :
         MultiEnsOrig traces t1 ->
@@ -188,12 +233,18 @@ Section supplementary_definitions.
         MultiEnsOrig (Vec.shiftin t2 traces) t.
     Proof.
       intros * Ht1 Ht.
-      unfold MultiEnsOrig, MultiEns.
+      unfold MultiEnsOrig, MultiEns in *.
       remember (find_nonempty (Vec.shiftin t2 traces)) as Ne.
       destruct Ne as [[i elem]|].
-      - eapply interleaving_to_mult_fix.
-        + apply Ht1.
-        + assumption.
+      { remember (find_nonempty traces) as Ne'.
+        destruct Ne' as [[i' elem']|].
+        - apply mens_orig_can_start_anywhere with (pte1 := elem') (pi1 := Fin.FS i').
+          apply interleaving_to_mult_fix with (t1 := t1); auto.
+        - subst. apply interleaving_nil in Ht. subst.
+          apply empty_traces in HeqNe'.
+          give_up.
+      }
+
       - induction traces.
         + destruct t2; cbv in HeqNe; try discriminate.
           cbv in Ht1.
