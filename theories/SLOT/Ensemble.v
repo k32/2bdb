@@ -5,19 +5,26 @@
     traces that it can produce.
 
  *)
-From Coq Require Import
+From Coq Require
      Program.Basics
-     List.
+     List
+     Vector.
 
-Import ListNotations.
+Import List ListNotations Basics.
+
+Module Vec := Vector.
 
 From LibTx Require Import
+     FoldIn
      Misc
      EventTrace
      Permutation
      SLOT.Hoare.
 
 Open Scope hoare_scope.
+
+Global Arguments Vec.nil {_}.
+Global Arguments Vec.cons {_}.
 
 Section defn.
   Context {S TE} `{StateSpace S TE}.
@@ -75,6 +82,9 @@ Section defn.
       inversion_ Hint.
     Qed.
   End tests.
+
+  Definition vec_modify {N} {A} (v : Vec.t A N) i (f : A -> A) :=
+    Vec.replace v i (f (Vec.nth v i)).
 
   (* Left-biased version of [Interleaving] that doesn't make
   distinction between schedulings of commuting elements: *)

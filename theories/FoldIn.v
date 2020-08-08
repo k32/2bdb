@@ -91,6 +91,12 @@ Definition seq_vec : forall (N : nat), Vec.t (Fin.t N) N.
     apply (Vec.cons _ aid N (Vec.map Fin.FS IHN)).
 Defined.
 
+Definition vec_same {A} (N : nat) (a : A) : Vec.t A N.
+  induction N; constructor.
+  - exact a.
+  - assumption.
+Defined.
+
 (* Definition find' {K V} `{OrderedType K} (k : K) (m : Map[K,V]) (HIn : MapInterface.In k m) : V. *)
 (*   refine ( *)
 (*       let v := MapInterface.find k m in *)
