@@ -131,19 +131,29 @@ Section supplementary_definitions.
       Admitted.
 
       Lemma empty_traces : forall {N} (traces : Traces N),
-          None = find_nonempty traces ->
+          None = find_nonempty traces <->
           Vec.Forall (eq []) traces.
+      Admitted.
+
+      Lemma vec_forall_shiftin {N} P (t : list TE) (traces : Traces N) :
+        Vec.Forall P (Vec.shiftin t traces) ->
+        Vec.Forall P traces /\ P t.
       Admitted.
 
       Lemma vec_shiftin_same : forall {A N} (a : A),
           vec_same (S N) a = Vec.shiftin a (vec_same N a).
       Admitted.
+
+      Lemma shiftin_to_empty {N pe pi} (traces : Traces N) t :
+        Vec.Forall (eq []) traces ->
+        MultiEns_ can_switch pe pi (Vec.shiftin t traces) t.
+      Admitted.
+
+      Lemma fin_eq_fs {N} (a b : Fin.t N) : a <> b -> Fin.FS a <> Fin.FS b.
+      Admitted.
     End boring_lemmas.
 
     Hint Resolve can_switch_shiftin : slot_gen.
-
-    Lemma fin_eq_fs {N} (a b : Fin.t N) : a <> b -> Fin.FS a <> Fin.FS b.
-    Admitted.
 
     Hint Resolve fin_eq_fs : slot_gen.
 
@@ -242,18 +252,15 @@ Section supplementary_definitions.
           apply interleaving_to_mult_fix with (t1 := t1); auto.
         - subst. apply interleaving_nil in Ht. subst.
           apply empty_traces in HeqNe'.
-          give_up.
+          apply shiftin_to_empty; auto.
       }
-
-      - induction traces.
-        + destruct t2; cbv in HeqNe; try discriminate.
-          cbv in Ht1.
-          apply interleaving_symm, interleaving_nil in Ht; subst.
-          reflexivity.
-        + destruct h; simpl in HeqNe; try discriminate.
-          apply mens_add_nil in Ht1.
-          apply nonempty_add_nil in HeqNe.
-          eauto.
+      { apply empty_traces,vec_forall_shiftin in HeqNe.
+        destruct HeqNe as [Htraces Ht2].
+        subst. apply interleaving_symm,interleaving_nil in Ht.
+        apply empty_traces in Htraces.
+        destruct (find_nonempty traces); try discriminate.
+        now subst.
+      }
     Qed.
   End props.
 
