@@ -179,9 +179,9 @@ Section props.
       -{{P}} e1 ->> e2 {{Q}}.
     Proof.
       intros. intros t Hseq.
-      specialize (H t). apply H. clear H.
+      eapply H. clear H.
       destruct Hseq as [t1 t2].
-      apply ilv_par with (t3 := t1) (t4 := t2); auto with hoare.
+      eapply ilv_par; eauto with hoare.
       clear H H0.
       induction t1; induction t2; simpl; auto with hoare.
     Qed.
@@ -191,10 +191,10 @@ Section props.
         -{{P}} e2 -|| e1 {{Q}}.
     Proof.
       intros. intros t Hpar.
-      specialize (H t). apply H. clear H.
+      eapply H. clear H.
       destruct Hpar as [t1 t2 t H1 H2 Hint].
       apply interleaving_symm in Hint.
-      apply ilv_par with (t3 := t2) (t4 := t1); easy.
+      eapply ilv_par; eauto.
     Qed.
 
     Lemma interl_app_tl : forall (b c__hd c__tl t : list TE),
@@ -337,10 +337,10 @@ Section props.
           { forward s'...
             forward s0...
           }
-          specialize (Hcomm s s0). apply Hcomm in Hx. clear Hcomm.
+          eapply Hcomm in Hx.
           repeat long_step Hx. subst.
-          specialize (uilv_append_r te t1 t2 t Ht s1 s0 s'' Hls Hcr1).
-          destruct uilv_append_r as [t' [Ht' Hls']].
+          eapply uilv_append_r in Hcr1; eauto.
+          destruct Hcr1 as [t' [Ht' Hls']].
           exists (l :: t').
           split...
           forward s1...

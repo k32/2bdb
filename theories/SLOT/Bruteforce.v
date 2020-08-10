@@ -40,18 +40,27 @@ Section supplementary_definitions.
       let H : 1 < 2 := _ in
       Fin.of_nat_lt H.
 
-    Goal forall (a : nat) b, [[a]%list; b]%vector = push [nil; b]%vector a fin2_zero : Set.
-    Proof.
-      intros.
-      cbv.
-      reflexivity.
-    Qed.
-
     Definition can_switch' (te1 te2 : TE) (traces : Traces) (pred_n : Idx) : Prop :=
       match Vec.nth traces pred_n with
       | [] => True
       | _ => can_switch te1 te2
       end.
+
+    Notation "[ F !! I ] V" := (vec_update F I V) (at level 0, right associativity) : vector_scope.
+
+    Check fun f1 f2 i1 i2 c => (vec_update f2 i2 (vec_update f1 i1 c)).
+
+    Inductive MultiEns_ (i : Idx) : Traces -> @TraceEnsemble TE :=
+    | mens_nil :
+        MultiEns_ i (vec_same N []) []
+    | mens_keep : forall te1 te2 traces trace,
+        MultiEns_ i ([cons te1 !! i] traces) trace ->
+        MultiEns_ i ([cons te2 !! i] [cons te1 !! i] traces) trace
+    | mens_switch : forall j te1 te2 traces trace,
+        i <> j ->
+        can_switch' te1 te2 traces j ->
+        MultiEns_ j ([cons te1 !! j] traces) trace ->
+        MultiEns_ i ([cons te2 !! i] [cons te1 !! j] traces) trace.
 
     Inductive MultiEns_ (prev_te : TE) (prev_i : Idx) : Traces -> @TraceEnsemble TE :=
     | mens_nil :
@@ -98,9 +107,9 @@ Section supplementary_definitions.
   Section props.
     Context `{Hssp : StateSpace}.
 
-    Let can_switch (_ _ : TE) := True.
+    Definition always_can_switch (_ _ : TE) := True.
 
-    Definition MultiEnsOrig {N} := @MultiEns _ _ Hssp can_switch N.
+    Definition MultiEnsOrig {N} := @MultiEns _ _ Hssp always_can_switch N.
 
     Section boring_lemmas.
       Program Definition maxout N :=
@@ -112,8 +121,8 @@ Section supplementary_definitions.
       Admitted.
 
       Lemma can_switch_shiftin {N} te t (prev_i : Fin.t N) prev_te traces :
-        can_switch' can_switch prev_te te traces prev_i ->
-        can_switch' can_switch prev_te te (Vec.shiftin t traces) (Fin.FS prev_i).
+        can_switch' always_can_switch prev_te te traces prev_i ->
+        can_switch' always_can_switch prev_te te (Vec.shiftin t traces) (Fin.FS prev_i).
       Admitted.
 
       Lemma push_at_maxout N t (traces : Traces N) (te : TE) :
@@ -146,7 +155,7 @@ Section supplementary_definitions.
 
       Lemma shiftin_to_empty {N pe pi} (traces : Traces N) t :
         Vec.Forall (eq []) traces ->
-        MultiEns_ can_switch pe pi (Vec.shiftin t traces) t.
+        MultiEns_ always_can_switch pe pi (Vec.shiftin t traces) t.
       Admitted.
 
       Lemma fin_eq_fs {N} (a b : Fin.t N) : a <> b -> Fin.FS a <> Fin.FS b.
@@ -158,8 +167,8 @@ Section supplementary_definitions.
     Hint Resolve fin_eq_fs : slot_gen.
 
     Lemma mens_orig_can_start_anywhere : forall {N} (traces : Traces N) t pte1 pi1 pte2 pi2,
-        MultiEns_ can_switch pte1 pi1 traces t ->
-        MultiEns_ can_switch pte2 pi2 traces t.
+        MultiEns_ always_can_switch pte1 pi1 traces t ->
+        MultiEns_ always_can_switch pte2 pi2 traces t.
     Proof.
       intros.
       destruct (Fin.eq_dec pi1 pi2).
@@ -168,26 +177,26 @@ Section supplementary_definitions.
       - inversion_ H.
         + constructor.
         + constructor; auto.
-          unfold can_switch', can_switch.
+          unfold can_switch', always_can_switch.
           now destruct traces0[@pi2].
         + destruct (Fin.eq_dec i pi2); subst;
           constructor; auto.
-          unfold can_switch', can_switch.
+          unfold can_switch', always_can_switch.
           now destruct traces0[@pi2].
     Qed.
 
     Fixpoint interleaving_to_mult0_fix (t1 t2 t : list TE)
         (H : Interleaving t1 t2 t) prev_te prev_i :
-        MultiEns_ can_switch prev_te prev_i [t1; t2]%vector t.
+        MultiEns_ always_can_switch prev_te prev_i [t1; t2]%vector t.
     Proof.
       destruct H.
       - replace [(te :: t1)%list; t2]%vector with (push [t1; t2]%vector te fin2_zero) by reflexivity.
         destruct (Fin.eq_dec prev_i fin2_zero); subst; constructor; eauto.
-        unfold can_switch', can_switch.
+        unfold can_switch', always_can_switch.
         now destruct ([t1; t2]%vector)[@prev_i].
       - replace [t1; (te :: t2)%list]%vector with (push [t1; t2]%vector te fin2_one) by reflexivity.
         destruct (Fin.eq_dec prev_i fin2_one); subst; constructor; eauto.
-        unfold can_switch', can_switch.
+        unfold can_switch', always_can_switch.
         now destruct ([t1; t2]%vector)[@prev_i].
       - constructor.
     Qed.
@@ -207,9 +216,9 @@ Section supplementary_definitions.
 
     Fixpoint interleaving_to_mult_fix N (traces : Traces N) (t1 t2 t : list TE)
              prev_te prev_i
-             (Ht1 : MultiEns_ can_switch prev_te prev_i traces t1)
+             (Ht1 : MultiEns_ always_can_switch prev_te prev_i traces t1)
              (H : Interleaving t1 t2 t) :
-      MultiEns_ can_switch prev_te (Fin.FS prev_i) (Vec.shiftin t2 traces) t.
+      MultiEns_ always_can_switch prev_te (Fin.FS prev_i) (Vec.shiftin t2 traces) t.
     Proof.
       destruct H.
       { inversion_ Ht1; subst traces'0.
@@ -258,7 +267,7 @@ Section supplementary_definitions.
         destruct HeqNe as [Htraces Ht2].
         subst. apply interleaving_symm,interleaving_nil in Ht.
         apply empty_traces in Htraces.
-        destruct (find_nonempty traces); try discriminate.
+        rewrite <-Htraces in Ht1.
         now subst.
       }
     Qed.
@@ -268,19 +277,80 @@ Section supplementary_definitions.
     Context `{Hssp : StateSpace}
             (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).
 
-    Definition MultiEnsUniq {N} := @MultiEns _ _ Hssp trace_elems_commute N.
+    Lemma te_comm_dec : forall `{StateSpace} a b, trace_elems_commute a b \/ not (trace_elems_commute a b).
+    Proof.
+      intros. apply classic.
+    Qed.
+
+    Definition can_switch_comm a b := not (trace_elems_commute a b).
+
+    Definition MultiEnsUniq {N} := @MultiEns _ _ Hssp can_switch_comm N.
+
+    Fixpoint canonicalize_mens_ {N} (t : list TE) (traces : Traces N)
+             s s' pe pi
+             (Ht : MultiEns_ always_can_switch pe pi traces t)
+             (Hls : LongStep s t s') :
+      exists t', MultiEns_ can_switch_comm pe pi traces t' /\ LongStep s t' s'.
+    Proof with eauto.
+      destruct Ht.
+      { exists [].
+        split; auto.
+        constructor.
+      }
+      { long_step Hls.
+        eapply canonicalize_mens_ in Hls...
+        destruct Hls as [t' [Huniq Ht']].
+        exists (te :: t').
+        split.
+        - constructor...
+        - forward s0...
+      }
+      { long_step Hls.
+        destruct (Hcomm_dec pe te) as [Hcomm|Hcomm].
+        2:{ (* Solve case when trace elems don't commute, we can do it
+        simply by definition: *)
+          eapply canonicalize_mens_ in Hls...
+            destruct Hls as [t' [Huniq Ht']].
+            exists (te :: t').
+            split.
+            - constructor...
+              unfold can_switch', can_switch_comm.
+              destruct (traces[@pi]); auto.
+            - forward s0...
+        }
+        {
+          eapply Hcomm in Hls0.
+          long_step Hls0. long_step Hls0. inversion_ Hls0.
+          eapply canonicalize_mens_ in Hls; eauto.
+
+          give_up.
+    Admitted.
+
+    Lemma canonicalize_mens {N} (t : list TE) (traces : Traces N)
+          (Ht : MultiEnsOrig traces t)
+          s s' (Hls : LongStep s t s') :
+      exists t', MultiEnsUniq traces t' /\ LongStep s t' s'.
+    Proof.
+      unfold MultiEnsOrig,MultiEns in *.
+      remember (find_nonempty traces) as Ne.
+      destruct Ne as [[pi pe]|];
+        unfold MultiEnsUniq,MultiEns;
+        rewrite <- HeqNe.
+      2:{ exists []. now subst. }
+      eapply canonicalize_mens_ in Hls; eauto.
+
+    Qed.
 
     Lemma uniq_ilv_correct {N} P Q (traces : Vec.t (list TE) N) :
-      -{{P}} MultiEnsOrig traces {{Q}} ->
-      -{{P}} MultiEnsUniq traces {{Q}}.
-    Admitted.
+      -{{P}} MultiEnsUniq traces {{Q}} ->
+      -{{P}} MultiEnsOrig traces {{Q}}.
+    Proof.
+      intros * Horig t Ht. unfold_ht.
+      eapply canonicalize_mens in Ht; eauto.
+      destruct Ht as [t' [Huniq Ht']].
+      eapply Horig; eauto.
+    Qed.
   End uniq_props.
-
-  Lemma te_comm_dec : forall `{StateSpace} a b, trace_elems_commute a b \/ not (trace_elems_commute a b).
-  Proof.
-    intros.
-    apply classic.
-  Qed.
 End supplementary_definitions.
 
 Ltac remove_commuting_interleavings :=

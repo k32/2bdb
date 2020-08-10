@@ -460,11 +460,11 @@ Module ListStorage.
       intros.
       induction s...
       destruct a as [k v].
-      destruct (eq_dec k k1); subst.
+      destruct (eq_dec k k1) as [|Hneq_k_k1]; subst.
       - simpl...
-        destruct (eq_dec k1 k1); destruct (eq_dec k2 k1); unfold not; firstorder.
-        + symmetry in e0. firstorder.
-        + simpl. destruct (eq_dec k1 k1); firstorder.
+        destruct (eq_dec k1 k1); destruct (eq_dec k2 k1) as [Heq12|Hneq12];
+          unfold not; firstorder.
+        simpl...
       - simpl...
         destruct (eq_dec k k1); destruct (eq_dec k2 k); firstorder.
         simpl.
@@ -492,7 +492,6 @@ Module ListStorage.
         - exists v. simpl...
         - destruct IHs.
           + simpl in H. destruct H as [H|H]; firstorder.
-            symmetry in H. firstorder.
           + exists x.
             simpl.
             destruct (eq_dec k' k)...

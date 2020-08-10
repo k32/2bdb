@@ -13,7 +13,7 @@ Section defs.
   Definition Trace := list TraceElem.
 End defs.
 
-Global Notation "pid '@' ret '<~' req" := (trace_elem pid req ret)(at level 30).
+Notation "pid '@' ret '<~' req" := (trace_elem pid req ret)(at level 30) : hoare_scope.
 
 (* Require Import ssreflect ssrfun. *)
 

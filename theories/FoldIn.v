@@ -6,7 +6,8 @@ common list processing functions that provide this hypothesis *)
 From Coq Require
      Omega
      Vector
-     List.
+     List
+     Program.
 
 (* From Containers Require Import *)
 (*      OrderedType *)
@@ -15,7 +16,7 @@ From Coq Require
 (*      MapFacts *)
 (*      MapAVLInstance. *)
 
-Import List ListNotations Omega.
+Import List ListNotations Omega Program.
 Module Vec := Vector.
 Module Fin := Fin.
 
@@ -110,3 +111,7 @@ Defined.
 (*   apply in_find_iff in HIn. *)
 (*   contradiction. *)
 (* Qed. *)
+
+Definition vec_update {A N} (f : A -> A) (i : Fin.t N) (vec : Vector.t A N) :=
+  let t := Vec.nth vec i in
+  Vec.replace vec i (f t).
