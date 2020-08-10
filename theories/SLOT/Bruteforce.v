@@ -21,16 +21,12 @@ Module Vec := Vector.
 Open Scope list_scope.
 Open Scope hoare_scope.
 
-Section supplementary_definitions.
+Section multi_interleaving.
   Section defn.
     Context `{Hssp : StateSpace} (can_switch : TE -> TE -> Prop) {N : nat}.
 
     Definition Traces := Vec.t (list TE) N.
     Let Idx := Fin.t N.
-
-    Definition push {A N} (vec : Vector.t (list A) N) (a : A) (i : Fin.t N) :=
-      let t := Vec.nth vec i in
-      Vec.replace vec i (a :: t).
 
     Program Definition fin2_zero : Fin.t 2 :=
       let H : 0 < 2 := _ in
@@ -40,76 +36,163 @@ Section supplementary_definitions.
       let H : 1 < 2 := _ in
       Fin.of_nat_lt H.
 
-    Definition can_switch' (te1 te2 : TE) (traces : Traces) (pred_n : Idx) : Prop :=
-      match Vec.nth traces pred_n with
-      | [] => True
-      | _ => can_switch te1 te2
-      end.
-
-    Notation "[ F !! I ] V" := (vec_update F I V) (at level 0, right associativity) : vector_scope.
-
-    Check fun f1 f2 i1 i2 c => (vec_update f2 i2 (vec_update f1 i1 c)).
-
-    Inductive MultiEns_ (i : Idx) : Traces -> @TraceEnsemble TE :=
-    | mens_nil :
-        MultiEns_ i (vec_same N []) []
-    | mens_keep : forall te1 te2 traces trace,
-        MultiEns_ i ([cons te1 !! i] traces) trace ->
-        MultiEns_ i ([cons te2 !! i] [cons te1 !! i] traces) trace
-    | mens_switch : forall j te1 te2 traces trace,
-        i <> j ->
-        can_switch' te1 te2 traces j ->
-        MultiEns_ j ([cons te1 !! j] traces) trace ->
-        MultiEns_ i ([cons te2 !! i] [cons te1 !! j] traces) trace.
-
-    Inductive MultiEns_ (prev_te : TE) (prev_i : Idx) : Traces -> @TraceEnsemble TE :=
-    | mens_nil :
-        MultiEns_ prev_te prev_i (vec_same N []) []
-    | mens_keep : forall traces te t,
-        MultiEns_ te prev_i traces t ->
-        let traces' := push traces te prev_i in
-        MultiEns_ prev_te prev_i traces' (te :: t)
-    | mens_switch : forall traces te t i,
-        i <> prev_i ->
-        can_switch' prev_te te traces prev_i ->
-        MultiEns_ te i traces t ->
-        let traces' := push traces te i in
-        MultiEns_ prev_te prev_i traces' (te :: t).
-
-    Program Fixpoint find_nonempty_ {M} (traces : Vec.t (list TE) M) (H : M <= N) : option (Idx * TE) :=
-      match traces with
-      | Vec.nil _ => None
-      | Vec.cons _ trace M' rest =>
-        match trace with
-        | te :: _ =>
-          let idx : (M' < N) := _ in
-          Some (Fin.of_nat_lt idx, te)
-        | [] => find_nonempty_ rest _
-        end
-      end.
-    Obligation 2.
-      firstorder.
-    Defined.
-
-    Definition find_nonempty (traces : Traces) : option (Idx * TE).
-      eapply (find_nonempty_ traces). auto.
-    Defined.
-
-    Definition MultiEns (traces : Traces) : @TraceEnsemble TE :=
-      match find_nonempty traces with
-      | Some (i, te) => MultiEns_ te i traces
-      | None => eq []
-      end.
+    Inductive MInt_ (i : Idx) : Traces -> @TraceEnsemble TE :=
+    | mint_nil : forall traces,
+        Vec.Forall (eq []) traces ->
+        MInt_ i traces []
+    | mint_keep : forall te rest traces t,
+        Vec.nth traces i = (te :: rest) ->
+        MInt_ i (Vec.replace traces i rest) t ->
+        MInt_ i traces (te :: t)
+    | mint_switch : forall j te1 te2 rest traces t,
+        i <> j -> can_switch te1 te2 ->
+        Vec.nth traces i = (te2 :: rest) ->
+        MInt_ j (Vec.replace traces i rest) (te1 :: t) ->
+        MInt_ i traces (te2 :: te1 :: t).
   End defn.
 
   Global Arguments Traces {_}.
 
+  Definition always_can_switch {A} (_ _ : A) := True.
+
+  Definition MultiEns `{StateSpace} {N} (tt : Traces N) (t : list TE) :=
+    exists i, MInt_ always_can_switch i tt t.
+Section multi_interleaving.
+
+Ltac resolve_fin_neq :=
+  match goal with
+    |- ?a <> ?b => now destruct (Fin.eq_dec a b)
+  end.
+
+Ltac resolve_vec_all_nil :=
+  match goal with
+  | |- Vec.Forall (eq []) ?vec => now repeat constructor
+  | [H: Vec.Forall (eq []) ?vec |- _] =>
+    repeat (inversion H; clear H; subst); discriminate
+  end.
+
+Hint Extern 3 (_ <> _) => resolve_fin_neq : slot_gen.
+Hint Extern 3 (Vec.Forall _ _) => resolve_vec_all_nil : slot_gen.
+
+Ltac destruct_mint H :=
+  match type of H with
+    MInt_ _ ?i ?vec0 ?t =>
+    let traces := fresh "traces" in
+    let Htraces := fresh "Htraces" in
+    let te := fresh "te" in
+    let t' := fresh "t'" in
+    let rest := fresh "rest" in
+    let Hte := fresh "Hte" in
+    let te_pred := fresh "te_pred" in
+    let Hij := fresh "Hij" in
+    let Hswitch := fresh "Hswitch" in
+    inversion H as [traces Htraces
+                   |te rest traces t' Hte Htraces
+                   |j te te_pred rest traces t' Hij Hswitch Hte Htraces];
+    [resolve_vec_all_nil
+    |repeat dependent destruction i;
+     simpl in Hte;
+     inversion Hte;
+     subst;
+     simpl in Htraces..
+    ]
+  end.
+
+
+Section tests.
+  Context `{Hssp : StateSpace} (a b c d e f : TE).
+
+  Eval cbv in Vec.nth [a;b]%vector (fin2_zero).
+
+  Let fin1_zero : Fin.t 1 := Fin.F1.
+
+  Ltac mint2_helper :=
+     simpl; unfold always_can_switch; auto with slot_gen.
+
+  Ltac mint2_keep :=
+    lazymatch goal with
+    | |- MInt_ _ fin2_zero [(?a :: ?tail)%list; _]%vector (?a :: _) =>
+      apply mint_keep with (rest := tail)
+    | |- MInt_ _ fin2_one [_; (?a :: ?tail)%list]%vector (?a :: _) =>
+      apply mint_keep with (rest := tail)
+    end; mint2_helper.
+
+  Ltac mint2_switch :=
+    lazymatch goal with
+    | |- MInt_ _ fin2_zero [(?a :: ?tail)%list; _]%vector (?a :: _) =>
+      apply mint_switch with (rest := tail) (j := fin2_one)
+    | |- MInt_ _ fin2_one [_; (?a :: ?tail)%list]%vector (?a :: _) =>
+      apply mint_switch with (rest := tail) (j := fin2_zero)
+    end; mint2_helper.
+
+  Ltac mint2 :=
+      (apply mint_nil; now resolve_vec_all_nil)
+    || (mint2_keep; mint2)
+    || (mint2_switch; mint2).
+
+  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [a; b; c; d].
+  Proof. exists fin2_zero. mint2. Qed.
+
+  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [a; c; b; d].
+  Proof. exists fin2_zero. mint2. Qed.
+
+  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [a; c; d; b].
+  Proof. exists fin2_zero. mint2. Qed.
+
+  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [c; a; b; d].
+  Proof. exists fin2_one. mint2. Qed.
+
+  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [c; a; d; b].
+  Proof. exists fin2_one. mint2. Qed.
+
+  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [c; d; a; b].
+  Proof. exists fin2_one. mint2. Qed.
+
+  Goal forall t,
+      let t1 := [a; b] in
+      let t2 := [c; d] in
+      MultiEns [t1; t2]%vector t ->
+      False.
+  Proof.
+    intros * H. subst t1; subst t2.
+    destruct H as [i0 H].
+    destruct_mint H.
+    2:{
+
+    destruct_mint
+    inversion H as [traces Htraces
+                   |te rest traces t' Hte Hcont
+                   |j te1 te2 rewt traces t' Hij Hswitch Hte Hcont];
+      [resolve_vec_all_nil|repeat dependent destruction i0..].
+    - resolve_vec_all_nil.
+
+  Goal forall t,
+      let t1 := [a; b] in
+      let t2 := [c; d] in
+      let t3 := [e; f] in
+      MultiEns [t1; t2; t3]%vector t ->
+      False.
+  Proof.
+    intros * H. subst t1; subst t2; subst t3.
+    destruct H as [i0 H].
+    inversion H as [traces Htraces
+                   |te rest traces t' Hte Hcont
+                   |j te1 te2 rewt traces t' Hij Hswitch Hte Hcont].
+    - resolve_vec_all_nil.
+    - repeat dependent destruction i0;
+        simpl in Hte; inversion Hte; subst; simpl in Hcont.
+      give_up.
+      give_up.
+      give_up.
+    - repeat dependent destruction i0;
+        simpl in Hte; inversion Hte; subst; simpl in Hcont.
+  Abort.
+End tests.
+
   Section props.
     Context `{Hssp : StateSpace}.
 
-    Definition always_can_switch (_ _ : TE) := True.
-
-    Definition MultiEnsOrig {N} := @MultiEns _ _ Hssp always_can_switch N.
+    Definition MultiEnsOrig {N} := @MultiEns_ _ always_can_switch N.
 
     Section boring_lemmas.
       Program Definition maxout N :=
@@ -134,16 +217,6 @@ Section supplementary_definitions.
           @MultiEnsOrig N traces t.
       Admitted.
 
-      Lemma nonempty_add_nil : forall {N} (traces : Vec.t (list TE) (S N)),
-          None = find_nonempty ([]%list :: traces)%vector ->
-          None = find_nonempty traces.
-      Admitted.
-
-      Lemma empty_traces : forall {N} (traces : Traces N),
-          None = find_nonempty traces <->
-          Vec.Forall (eq []) traces.
-      Admitted.
-
       Lemma vec_forall_shiftin {N} P (t : list TE) (traces : Traces N) :
         Vec.Forall P (Vec.shiftin t traces) ->
         Vec.Forall P traces /\ P t.
@@ -153,44 +226,39 @@ Section supplementary_definitions.
           vec_same (S N) a = Vec.shiftin a (vec_same N a).
       Admitted.
 
-      Lemma shiftin_to_empty {N pe pi} (traces : Traces N) t :
-        Vec.Forall (eq []) traces ->
-        MultiEns_ always_can_switch pe pi (Vec.shiftin t traces) t.
-      Admitted.
-
       Lemma fin_eq_fs {N} (a b : Fin.t N) : a <> b -> Fin.FS a <> Fin.FS b.
       Admitted.
     End boring_lemmas.
 
-    Hint Resolve can_switch_shiftin : slot_gen.
+    Let zero_two := fin2_zero.
 
+    Hint Resolve can_switch_shiftin : slot_gen.
+    Hint Constructors MultiEns_ : slot_gen.
     Hint Resolve fin_eq_fs : slot_gen.
 
-    Lemma mens_orig_can_start_anywhere : forall {N} (traces : Traces N) t pte1 pi1 pte2 pi2,
-        MultiEns_ always_can_switch pte1 pi1 traces t ->
-        MultiEns_ always_can_switch pte2 pi2 traces t.
-    Proof.
-      intros.
-      destruct (Fin.eq_dec pi1 pi2).
-      - subst.
-        inversion_ H; constructor; auto.
-      - inversion_ H.
-        + constructor.
-        + constructor; auto.
-          unfold can_switch', always_can_switch.
-          now destruct traces0[@pi2].
-        + destruct (Fin.eq_dec i pi2); subst;
-          constructor; auto.
-          unfold can_switch', always_can_switch.
-          now destruct traces0[@pi2].
-    Qed.
-
+    Open Scope list_scope.
     Fixpoint interleaving_to_mult0_fix (t1 t2 t : list TE)
-        (H : Interleaving t1 t2 t) prev_te prev_i :
-        MultiEns_ always_can_switch prev_te prev_i [t1; t2]%vector t.
-    Proof.
-      destruct H.
-      - replace [(te :: t1)%list; t2]%vector with (push [t1; t2]%vector te fin2_zero) by reflexivity.
+             (H : Interleaving t1 t2 t) :
+      MultiEnsOrig [t1; t2]%vector t.
+    Proof with subst; unfold MultiEnsOrig; auto with slot_gen.
+      destruct H as [te2 t1' t2' t' Ht'|te2 t1' t2' t' Ht'|]...
+      3:{ constructor. }
+      { eapply interleaving_to_mult0_fix in Ht'.
+        inversion Ht' as [|te1 t1'' t2'' Ht''| ]...
+        - replace ([[te2]; []]%vector) with ([cons te2 !! zero_two] [[]; []]%vector).
+
+      - exists fin2_zero.
+        eapply interleaving_to_mult0_fix in Ht'.
+        destruct Ht' as [i Ht'].
+        remember Ht' as Ht'0.
+        destruct (Fin.eq_dec fin2_zero i) as [Heq|Hneq];
+          destruct Ht' as [|te1 t1'' t2'' Ht''| ]...
+        3:{
+        .
+        + subst.
+
+
+        replace [(te :: t1)%list; t2]%vector with (push [t1; t2]%vector te fin2_zero) by reflexivity.
         destruct (Fin.eq_dec prev_i fin2_zero); subst; constructor; eauto.
         unfold can_switch', always_can_switch.
         now destruct ([t1; t2]%vector)[@prev_i].
