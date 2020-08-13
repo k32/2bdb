@@ -9,13 +9,6 @@ From Coq Require
      List
      Program.
 
-(* From Containers Require Import *)
-(*      OrderedType *)
-(*      OrderedTypeEx *)
-(*      MapInterface *)
-(*      MapFacts *)
-(*      MapAVLInstance. *)
-
 Import List ListNotations Omega Program.
 Module Vec := Vector.
 Module Fin := Fin.

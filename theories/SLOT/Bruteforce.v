@@ -5,7 +5,8 @@ From LibTx Require Import
      EventTrace
      Permutation
      SLOT.Hoare
-     SLOT.Ensemble.
+     SLOT.Ensemble
+     SLOT.Generator.
 
 From Coq Require Import
      List
@@ -13,7 +14,11 @@ From Coq Require Import
      Logic.Classical_Prop.
 
 From Coq Require
-     Vector.
+     Vector
+     VectorSpec.
+
+From Hammer Require Import
+     Tactics.
 
 Import ListNotations Vector.VectorNotations Vectors.VectorSpec.
 Module Vec := Vector.
@@ -45,17 +50,29 @@ Section multi_interleaving.
         MInt_ i (Vec.replace traces i rest) t ->
         MInt_ i traces (te :: t)
     | mint_switch : forall j te1 te2 rest traces t,
-        i <> j -> can_switch te1 te2 ->
+        i <> j ->
+        can_switch te1 te2 ->
         Vec.nth traces i = (te2 :: rest) ->
         MInt_ j (Vec.replace traces i rest) (te1 :: t) ->
         MInt_ i traces (te2 :: te1 :: t).
+
+    Lemma mint_empty_trace (traces : Traces) i t :
+      Vec.Forall (eq []) traces ->
+      MInt_ i traces t ->
+      t = [].
+    Proof.
+      intros Hnil Ht.
+      destruct Ht.
+      - easy.
+      - give_up.
+    Admitted.
   End defn.
 
   Global Arguments Traces {_}.
 
-  Definition always_can_switch {A} (_ _ : A) := True.
+  Definition always_can_switch {A} (_ _ : A) : Prop := True.
 
-  Definition MultiEns `{StateSpace} {N} (tt : Traces N) (t : list TE) :=
+  Definition MultiIlv `{StateSpace} {N} (tt : Traces N) (t : list TE) :=
     exists i, MInt_ always_can_switch i tt t.
 Section multi_interleaving.
 
@@ -64,40 +81,69 @@ Ltac resolve_fin_neq :=
     |- ?a <> ?b => now destruct (Fin.eq_dec a b)
   end.
 
+Ltac vec_forall_contradiction H :=
+  match type of H with
+  | Vec.Forall ?P []%vector =>
+    fail 0 "No contradiction found"
+  | Vec.Forall ?P (?a :: ?rest)%vector =>
+    let vec := fresh in
+    remember (a :: rest)%vector as vec;
+    destruct H; [discriminate|idtac]
+  end.
+
+Section tests.
+  Context A (a b c : A).
+
+  Goal Vec.Forall (eq []) [[]%list; [a]%list; [b]%list]%vector -> False.
+  Proof.
+    intros H.
+    dependent destruction H.
+    dependent destruction H0.
+  Qed.
+End tests.
+
 Ltac resolve_vec_all_nil :=
-  match goal with
-  | |- Vec.Forall (eq []) ?vec => now repeat constructor
+  multimatch goal with
+  | |- Vec.Forall (eq []) ?vec =>
+    now repeat constructor
   | [H: Vec.Forall (eq []) ?vec |- _] =>
-    repeat (inversion H; clear H; subst); discriminate
+    repeat (inversion H; clear H); subst; gen_contradiction
+  | _ =>
+    fail 0 "I can't solve this goal"
   end.
 
 Hint Extern 3 (_ <> _) => resolve_fin_neq : slot_gen.
 Hint Extern 3 (Vec.Forall _ _) => resolve_vec_all_nil : slot_gen.
 
-Ltac destruct_mint H :=
+Ltac mint_destruct H te rest Hte j :=
   match type of H with
-    MInt_ _ ?i ?vec0 ?t =>
-    let traces := fresh "traces" in
-    let Htraces := fresh "Htraces" in
-    let te := fresh "te" in
+  | MInt_ _ _ _ ?t =>
+    apply mint_empty_trace in H;
+    [idtac|resolve_vec_all_nil];
+    subst t
+  | MInt_ _ _ ?traces ?t =>
     let t' := fresh "t'" in
-    let rest := fresh "rest" in
-    let Hte := fresh "Hte" in
     let te_pred := fresh "te_pred" in
     let Hij := fresh "Hij" in
     let Hswitch := fresh "Hswitch" in
-    inversion H as [traces Htraces
-                   |te rest traces t' Hte Htraces
-                   |j te te_pred rest traces t' Hij Hswitch Hte Htraces];
-    [resolve_vec_all_nil
-    |repeat dependent destruction i;
-     simpl in Hte;
-     inversion Hte;
-     subst;
-     simpl in Htraces..
-    ]
+    let traces0 := fresh "traces0" in
+    let Htraces := fresh "Htraces" in
+    let traces' := fresh "traces" in
+    remember traces as traces0;
+    destruct H as [traces' Htraces
+                  |te rest traces' t' Hte Htraces
+                  |j te_pred te rest traces' t' Hij Hswitch Hte Htraces];
+    subst traces';
+    clear H; rename Htraces into H
   end.
 
+Ltac mint_case_analysis i H te rest Hte :=
+  repeat dependent destruction i;
+  simpl in Hte;
+  lazymatch type of Hte with
+  | ?t_x = te :: rest =>
+    gen_consume t_x te rest; simpl in H; clear Hte
+  end.
 
 Section tests.
   Context `{Hssp : StateSpace} (a b c d e f : TE).
@@ -130,34 +176,69 @@ Section tests.
     || (mint2_keep; mint2)
     || (mint2_switch; mint2).
 
-  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [a; b; c; d].
+  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [a; b; c; d].
   Proof. exists fin2_zero. mint2. Qed.
 
-  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [a; c; b; d].
+  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [a; c; b; d].
   Proof. exists fin2_zero. mint2. Qed.
 
-  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [a; c; d; b].
+  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [a; c; d; b].
   Proof. exists fin2_zero. mint2. Qed.
 
-  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [c; a; b; d].
+  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [c; a; b; d].
   Proof. exists fin2_one. mint2. Qed.
 
-  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [c; a; d; b].
+  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [c; a; d; b].
   Proof. exists fin2_one. mint2. Qed.
 
-  Goal MultiEns [[a;b]%list; [c;d]%list]%vector [c; d; a; b].
+  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [c; d; a; b].
   Proof. exists fin2_one. mint2. Qed.
+
+  Goal forall t1 t2 t3 t (P : list TE -> Prop),
+      Generator (eq [a; b]) t1 ->
+      Generator (eq [c; d]) t2 ->
+      Generator (eq [e; f]) t3 ->
+      MultiIlv [t1; t2; t3]%vector t ->
+      P t.
+  Proof.
+    intros * Gt1 Gt2 Gt3 H.
+    destruct H as [i H].
+    mint_destruct H te rest Hte j.
+    { resolve_vec_all_nil. }
+    { mint_case_analysis i H te rest Hte.
+      - mint_destruct H te2 rest2 Hte j2.
+        + resolve_vec_all_nil.
+        + mint_case_analysis i H te2 rest2 Hte.
+          { mint_destruct H te3 rest3 Hte j3.
+            - dependent destruction H.
+              dependent destruction H0.
+              gen_contradiction.
+            - simpl in Hte.
+              remember [[]%list; t2; t3]%vector as traces.
+              discriminate.
+            -
+  Abort.
 
   Goal forall t,
       let t1 := [a; b] in
       let t2 := [c; d] in
-      MultiEns [t1; t2]%vector t ->
-      False.
+      MultiIlv [t1; t2]%vector t ->
+      t = [].
   Proof.
     intros * H. subst t1; subst t2.
     destruct H as [i0 H].
-    destruct_mint H.
-    2:{
+    repeat destruct_mint H.
+    3:{
+    3:{ destruct_mint H.
+        2:{ destruct_mint H.
+            2:{ destruct_mint H;
+                destruct_mint H.
+                subst t'.
+                - apply mint_empty_trace in H.
+
+
+
+
 
     destruct_mint
     inversion H as [traces Htraces
@@ -165,28 +246,6 @@ Section tests.
                    |j te1 te2 rewt traces t' Hij Hswitch Hte Hcont];
       [resolve_vec_all_nil|repeat dependent destruction i0..].
     - resolve_vec_all_nil.
-
-  Goal forall t,
-      let t1 := [a; b] in
-      let t2 := [c; d] in
-      let t3 := [e; f] in
-      MultiEns [t1; t2; t3]%vector t ->
-      False.
-  Proof.
-    intros * H. subst t1; subst t2; subst t3.
-    destruct H as [i0 H].
-    inversion H as [traces Htraces
-                   |te rest traces t' Hte Hcont
-                   |j te1 te2 rewt traces t' Hij Hswitch Hte Hcont].
-    - resolve_vec_all_nil.
-    - repeat dependent destruction i0;
-        simpl in Hte; inversion Hte; subst; simpl in Hcont.
-      give_up.
-      give_up.
-      give_up.
-    - repeat dependent destruction i0;
-        simpl in Hte; inversion Hte; subst; simpl in Hcont.
-  Abort.
 End tests.
 
   Section props.

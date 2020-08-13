@@ -111,6 +111,7 @@ Section defn.
 
   Definition EnsembleInvariant (prop : S -> Prop) (E : TraceEnsemble) : Prop :=
     forall (t : list TE), E t -> TraceInvariant prop t.
+
 End defn.
 
 Hint Constructors Interleaving Parallel TraceEnsembleConcat : hoare.
