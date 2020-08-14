@@ -114,8 +114,9 @@ Section defn.
 
 End defn.
 
-Hint Constructors Interleaving Parallel TraceEnsembleConcat : hoare.
+Hint Constructors Interleaving Parallel TraceEnsembleConcat : slot.
 
+Delimit Scope hoare_scope with hoare.
 Notation "'-{{' a '}}' e '{{' b '}}'" := (EHoareTriple a e b)(at level 40) : hoare_scope.
 Notation "'-{{}}' e '{{' b '}}'" := (EHoareTriple (const True) e b)(at level 40) : hoare_scope.
 Notation "'-{{}}' e '{{}}'" := (forall t, e t -> exists s s', LongStep s t s')(at level 38) : hoare_scope.
@@ -165,7 +166,7 @@ Section props.
         Interleaving t1 t2 t ->
         exists t' t1_hd t1_tl,
           t = t1_hd ++ t' /\ t1 = t1_hd ++ t1_tl /\ Interleaving t1_tl t2 t'.
-    Proof with firstorder.
+    Proof with auto with slot; firstorder.
       intros *. intros Hint.
       induction Hint.
       - destruct IHHint as [t' [t1_hd [t1_tl IH]]].
@@ -182,9 +183,9 @@ Section props.
       intros. intros t Hseq.
       eapply H. clear H.
       destruct Hseq as [t1 t2].
-      eapply ilv_par; eauto with hoare.
+      eapply ilv_par; eauto with slot.
       clear H H0.
-      induction t1; induction t2; simpl; auto with hoare.
+      induction t1; induction t2; simpl; auto with slot.
     Qed.
 
     Lemma e_hoare_par_symm : forall e1 e2 P Q,
@@ -203,13 +204,13 @@ Section props.
         Interleaving b (c__hd ++ c__tl) (c__hd ++ t).
     Proof.
       intros.
-      induction c__hd; simpl; auto with hoare.
+      induction c__hd; simpl; auto with slot.
     Qed.
 
     Lemma interl_app_hd : forall (a c__hd c__tl t : list TE),
         Interleaving a c__hd t ->
         Interleaving a (c__hd ++ c__tl) (t ++ c__tl).
-    Proof with simpl; auto with hoare.
+    Proof with simpl; auto with slot.
       intros.
       induction H...
       induction c__tl...
@@ -258,7 +259,7 @@ Section props.
         exists c1 c2 t1 t2,
           t1 ++ t2 = t /\ c1 ++ c2 = c /\
           Interleaving a c1 t1 /\ Interleaving b c2 t2.
-    Proof with firstorder.
+    Proof with auto with slot; firstorder.
       intros.
       remember (a ++ b) as ab.
       generalize dependent b.
@@ -421,7 +422,7 @@ Ltac interleaving_nil :=
          | [H: Interleaving ?t1 [] ?t |- _] => apply interleaving_symm, interleaving_nil in H; try subst t
          end.
 
-Hint Extern 4 => interleaving_nil : hoare.
+Hint Extern 4 => interleaving_nil : slot.
 
 Ltac unfold_interleaving H tac :=
   simpl in H;
@@ -527,8 +528,8 @@ Ltac resolve_forall :=
     apply Forall_inv in H; assumption
   end.
 
-Hint Extern 1 (Forall (trace_elems_commute _) _) => resolve_forall : hoare.
-Hint Extern 3 (trace_elems_commute _ _) => resolve_forall : hoare.
+Hint Extern 1 (Forall (trace_elems_commute _) _) => resolve_forall : slot.
+Hint Extern 3 (trace_elems_commute _ _) => resolve_forall : slot.
 
 Section properties.
   Context `{HSSp : StateSpace}.
@@ -567,16 +568,15 @@ Section properties.
     Interleaving [a] t t' ->
     LongStep s t' s' ->
     LongStep s (a :: t) s'.
-  Proof with auto with hoare.
+  Proof with auto with slot.
     intros Hcomm Ht Ht'.
     generalize dependent s'.
     generalize dependent s.
     remember [a] as t1.
-    induction Ht; intros; inversion_ Heqt1.
-    - now interleaving_nil.
-    - apply trace_elems_commute_head...
-      inversion_ Ht'.
-      forward s'0...
+    induction Ht; intros; inversion_ Heqt1...
+    apply trace_elems_commute_head...
+    inversion_ Ht'.
+    forward s'0...
   Qed.
 
   Lemma ilv_singleton_comm_all a t2 P Q :
@@ -584,7 +584,7 @@ Section properties.
     {{P}} [a] {{P}} ->
     {{P}} t2 {{Q}} ->
     -{{P}} Interleaving [a] t2 {{Q}}.
-  Proof with auto with hoare.
+  Proof with auto with slot.
     intros Hcomm Ha Ht2 t Ht.
     remember [a] as t1.
     destruct Ht; inversion_ Heqt1.
@@ -604,7 +604,7 @@ Section properties.
     -{{P}} Interleaving a [x] ->> eq b {{Q}} ->
     -{{P}} eq a ->> Interleaving b [x] {{Q}} ->
     -{{P}} Interleaving (a ++ b) [x] {{Q}}.
-  Proof with auto with hoare.
+  Proof with auto with slot.
     intros H1 H2 t Ht.
     remember [x] as t1.
     apply interleaving_par_seq in Ht.
@@ -612,13 +612,8 @@ Section properties.
     subst.
     destruct c1; destruct c2; try discriminate;
       autorewrite with list in *; simpl in *;
-      inversion_ Hc;
-      interleaving_nil; unfold_ht;
-      apply ls_split in Hls;
-      destruct Hls as [s' [Hls1 Hls2]].
-    - refine (H2 (a ++ t3) _ s_begin s_end _ _)...
-    - refine (H1 (t2 ++ b) _ s_begin s_end _ _)...
-    - exfalso.
-      destruct c1; inversion Hc.
+      inversion_ Hc.
+    exfalso.
+    destruct c1; inversion H3.
   Qed.
 End properties.

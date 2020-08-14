@@ -211,7 +211,7 @@ Module KV.
     Lemma kv_rw_comm : forall (p1 p2 : PID) k1 k2 v1 v2,
         k1 <> k2 ->
         trace_elems_commute (p1 @ v1 <~ read k1) (p2 @ I <~ write k2 v2).
-    Proof with firstorder.
+    Proof with auto with slot; firstorder.
       split; intros; repeat trace_step H0.
       - forward (put k2 v2 s)...
         forward (put k2 v2 s)...
@@ -225,7 +225,7 @@ Module KV.
     Lemma kv_rd_comm : forall (p1 p2 : PID) k1 k2 v1,
         k1 <> k2 ->
         trace_elems_commute (p1 @ v1 <~ read k1) (p2 @ I <~ delete k2).
-    Proof with firstorder.
+    Proof with auto with slot; firstorder.
       split; intros; repeat trace_step H0.
       - forward (Storage.delete k2 s)...
         forward (Storage.delete k2 s)...

@@ -259,8 +259,7 @@ Section uniq.
         vec_forall_nil;
         eapply mint_keep; simpl; eauto;
         eapply mint_nil; simpl;
-       (* Resolve [Vec.Forall (eq []) [[]%list; []%list]%vector]: *)
-        repeat constructor
+        resolve_vec_all_nil
        |eapply mint_switch with (j := i); eauto; easy
        ]
       ]).
@@ -269,14 +268,50 @@ Section uniq.
   Definition MIntUniq_ {N} (tt : Traces N) (t : list TE) :=
     exists i, MInt_ trace_elems_commute i tt t.
 
+  Lemma vec_replace_nth {A N} i a vec : (@Vec.replace A N vec i a)[@i] = a.
+  Admitted. (* TODO *)
+
+  Lemma vec_replace_forall {A N} P i a (vec : @Vec.t A N) :
+    Vec.Forall P (Vec.replace vec i a) ->
+    P a.
+  Admitted.
+
   Fixpoint umint_append {N} (i j : Fin.t N) te rest (traces : Traces N) (t : list TE)
            (Ht : MInt_ trace_elems_commute j (Vec.replace traces i rest) t)
            s s' s'' (Hls : LongStep s' t s'')
            (Hte : s ~[te]~> s')
-           (Hij : i <> j)
            {struct Ht} :
     exists t', MInt_ trace_elems_commute i (Vec.replace traces i (te :: rest)) t' /\ LongStep s t' s''.
+  Proof with eauto with slot; try apply vec_replace_nth.
+    remember (Vec.replace traces i rest) as traces0.
+    destruct Ht; subst traces0.
+    { exists [te].
+      long_step Hls. subst.
+      replace rest with ([] : list TE) in *.
+      - split...
+        apply mint_keep with (rest0 := [])...
+        rewrite Vec.replace_replace_eq.
+        now apply mint_nil.
+      - (* [] = rest *)
+        now apply vec_replace_forall in H.
+    }
+    { long_step Hls.
+      destruct (Fin.eq_dec i j).
+      { subst.
+        replace rest with (te0 :: rest0) in * by now rewrite vec_replace_nth in H.
+        rewrite Vec.replace_replace_eq in Ht.
+        eapply umint_append in Ht...
+        destruct Ht as [t' [Hu Ht']].
+        exists (te :: t').
+        split...
+        apply mint_keep with (rest1 := (te0 :: rest0))...
+        rewrite Vec.replace_replace_eq.
+        assumption.
+      }
+      { destruct (Hcomm_dec te te0).
   Admitted.
+
+
   (* Proof with repeat (try assumption ; constructor); eauto with hoare. *)
   (*   remember (Vec.replace traces i rest) as traces0. *)
   (*   destruct Ht. *)
@@ -290,7 +325,7 @@ Section uniq.
              (Ht : MInt_ always_can_switch i traces t)
              (Hls : LongStep s t s') :
       exists t', MInt_ trace_elems_commute i traces t' /\ LongStep s t' s'.
-    Proof with eauto.
+    Proof with eauto with slot.
       destruct Ht.
       { exists [].
         split...
@@ -301,15 +336,15 @@ Section uniq.
         destruct Hls as [t' [Huniq Ht']].
         exists (te :: t').
         split...
-        - eapply mint_keep...
-        - forward s0...
+        eapply mint_keep...
       }
       { long_step Hls.
         eapply canonicalize_mens_ in Hls...
         destruct Hls as [t' [Huniq Ht']].
         replace traces with (Vec.replace traces i (te2 :: rest)).
         - eapply umint_append...
-        - apply replace_id.
+        - rewrite <-H1, Vec.replace_id.
+          reflexivity.
       }
     Defined.
 

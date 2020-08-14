@@ -18,7 +18,7 @@ Global Arguments In {_}.
 Global Arguments Complement {_}.
 Global Arguments Disjoint {_}.
 
-Ltac inversion_ a := inversion a; subst; auto.
+Ltac inversion_ a := inversion a; subst; auto with slot.
 
 Class StateSpace (S TE : Type) :=
   { chain_rule : S -> S -> TE -> Prop;
@@ -42,7 +42,7 @@ Section defn.
       LongStep s' trace  s'' ->
       LongStep s (te :: trace) s''.
 
-  Hint Constructors LongStep.
+  Hint Constructors LongStep : slot.
 
   Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
     forall s s',
@@ -65,7 +65,7 @@ Section defn.
     generalize dependent s.
     induction t1; intros.
     - exists s.
-      split; auto.
+      split; auto with slot.
     - inversion_clear H.
       specialize (IHt1 s' H1).
       destruct IHt1.
@@ -122,7 +122,7 @@ Section defn.
       TraceInvariant prop t ->
       TraceInvariant prop (te :: t).
 
-  Hint Constructors TraceInvariant.
+  Hint Constructors TraceInvariant : slot.
 
   Definition SystemInvariant (prop : S -> Prop) (E0 : Ensemble S) : Prop :=
     forall t,
@@ -133,7 +133,7 @@ Section defn.
       TraceInvariant prop t1 /\ TraceInvariant prop t2.
   Proof.
     intros.
-    induction t1; split; auto;
+    induction t1; split; auto with slot;
     inversion_ H; specialize (IHt1 H3);
     try constructor; firstorder.
   Qed.
@@ -144,7 +144,7 @@ Section defn.
       TraceInvariant prop (t1 ++ t2).
   Proof.
     intros.
-    induction t1; simpl in *; auto.
+    induction t1; simpl in *; auto with slot.
     inversion_ H.
   Qed.
 
@@ -175,16 +175,16 @@ Section defn.
       trace_elems_commute a b ->
       LongStep s (b :: a :: trace) s'' ->
       LongStep s (a :: b :: trace) s''.
-  Proof.
+  Proof with auto with slot.
     intros.
     inversion_ H0.
     inversion_ H6.
     specialize (H s s'0).
     replace (a :: b :: trace) with ([a; b] ++ trace) by auto.
-    apply ls_concat with (s' := s'0); auto.
+    apply ls_concat with (s' := s'0)...
     apply H.
-    apply ls_cons with (s' := s'); auto.
-    apply ls_cons with (s' := s'0); auto.
+    apply ls_cons with (s' := s')...
+    apply ls_cons with (s' := s'0)...
   Qed.
 
   Lemma trace_elems_commute_head_ht : forall P Q b a trace,
@@ -229,7 +229,7 @@ Section defn.
         ExpandedTrace trace trace' ->
         {{pre}} trace {{post}} ->
         {{pre}} trace' {{post}}.
-    Proof.
+    Proof with auto with slot.
       (* Human-readable proof: using [ChainRuleLocality] hypothesis,
       we can "pop up" all non-matching trace elements and get from a
       trace that looks like this:
@@ -253,19 +253,19 @@ Section defn.
           specialize (IHHexp s s'').
           specialize (Hcr a b).
           assert (Hls : LongStep s (l' ++ a :: b :: r') s'').
-          { apply ls_concat with (s' := s'); auto.
-            apply trace_elems_commute_head; auto.
+          { apply ls_concat with (s' := s')...
+            apply trace_elems_commute_head...
             destruct H.
-            apply Hcr; auto.
+            apply Hcr...
           }
-          apply IHHexp; auto.
+          apply IHHexp...
       }
       1:{ induction expansion.
           - easy.
           - simpl.
             inversion_ Hcomp.
             apply hoare_cons with (mid := pre).
-            apply Hl_pre; auto.
+            apply Hl_pre...
             firstorder.
       }
     Qed.
@@ -308,7 +308,7 @@ Ltac resolve_concat :=
     apply (ls_concat s1 s2 s3 t1 t2); assumption
   end.
 
-Hint Extern 3 (LongStep _ (_ ++ _) _) => resolve_concat : hoare.
+Hint Extern 3 (LongStep _ (_ ++ _) _) => resolve_concat : slot.
 
 Ltac long_step f tac :=
   cbn in f;
@@ -350,9 +350,9 @@ Ltac ls_advance tac :=
 Tactic Notation "ls_advance" tactic3(tac) := ls_advance tac.
 Tactic Notation "ls_advance" := ls_advance (fun _ => idtac).
 
-Hint Transparent Ensembles.In Ensembles.Complement.
-Hint Constructors LongStep : hoare.
-Hint Resolve trace_elems_commute_symm : hoare.
+Hint Transparent Ensembles.In Ensembles.Complement : slot.
+Hint Constructors LongStep : slot.
+Hint Resolve trace_elems_commute_symm : slot.
 
 Ltac unfold_ht :=
   match goal with
