@@ -14,18 +14,15 @@ From Coq Require Import
      Logic.Classical_Prop.
 
 From Coq Require
-     Vector
-     VectorSpec.
+     Vector.
 
-From Hammer Require Import
-     Tactics.
+Import ListNotations Vector.VectorNotations.
 
-Import ListNotations Vector.VectorNotations Vectors.VectorSpec.
 Module Vec := Vector.
 
 Open Scope list_scope.
 Open Scope hoare_scope.
-
+Print Module Coq.Vectors.VectorSpec.
 Section multi_interleaving.
   Section defn.
     Context `{Hssp : StateSpace} (can_switch : TE -> TE -> Prop) {N : nat}.
@@ -102,12 +99,18 @@ Section tests.
   Qed.
 End tests.
 
+Ltac vec_forall_nil :=
+  repeat match goal with
+           [H : Vec.Forall (eq []) ?vec |- _] =>
+           dependent destruction H
+         end.
+
 Ltac resolve_vec_all_nil :=
   multimatch goal with
   | |- Vec.Forall (eq []) ?vec =>
     now repeat constructor
   | [H: Vec.Forall (eq []) ?vec |- _] =>
-    repeat (inversion H; clear H); subst; gen_contradiction
+    vec_forall_nil; gen_contradiction
   | _ =>
     fail 0 "I can't solve this goal"
   end.
@@ -210,11 +213,8 @@ Section tests.
         + resolve_vec_all_nil.
         + mint_case_analysis i H te2 rest2 Hte.
           { mint_destruct H te3 rest3 Hte j3.
-            - dependent destruction H.
-              dependent destruction H0.
-              gen_contradiction.
+            - resolve_vec_all_nil.
             - simpl in Hte.
-              remember [[]%list; t2; t3]%vector as traces.
               discriminate.
             -
   Abort.
@@ -224,29 +224,102 @@ Section tests.
       let t2 := [c; d] in
       MultiIlv [t1; t2]%vector t ->
       t = [].
-  Proof.
-    intros * H. subst t1; subst t2.
-    destruct H as [i0 H].
-    repeat destruct_mint H.
-    3:{
-    3:{ destruct_mint H.
-        2:{ destruct_mint H.
-            2:{ destruct_mint H;
-                destruct_mint H.
-                subst t'.
-                - apply mint_empty_trace in H.
-
-
-
-
-
-    destruct_mint
-    inversion H as [traces Htraces
-                   |te rest traces t' Hte Hcont
-                   |j te1 te2 rewt traces t' Hij Hswitch Hte Hcont];
-      [resolve_vec_all_nil|repeat dependent destruction i0..].
-    - resolve_vec_all_nil.
+  Abort.
 End tests.
+
+Lemma te_comm_dec : forall `{StateSpace} a b, trace_elems_commute a b \/ not (trace_elems_commute a b).
+Proof.
+  intros. apply classic.
+Qed.
+
+Section uniq.
+  Context `{Hssp : StateSpace}
+          (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).
+
+  Fixpoint interleaving_to_mens_ t1 t2 t (H : Interleaving t1 t2 t) :
+    MultiIlv [t1; t2]%vector t.
+  Proof with simpl; eauto.
+    destruct H;
+      [pose (i0 := fin2_zero); pose (tx := t1)
+      |pose (i0 := fin2_one); pose (tx := t2)
+      |exists fin2_zero; eapply mint_nil; repeat constructor
+      ];
+      (* Resolve goals 1-2: *)
+      exists i0;
+      (* Obtain induction hypothesis: *)
+      eapply interleaving_to_mens_ in H; destruct H as [i H];
+      (* Check if we keep direction or switch it: *)
+      (destruct (Fin.eq_dec i i0);
+       [(* Keep direction, resolve by contructor: *)
+         subst; apply mint_keep with (rest := tx); simpl; auto
+       |(* Switch direction: *)
+       remember [t1; t2]%vector as t_;
+       destruct t; subst t_;
+       [inversion H;
+        vec_forall_nil;
+        eapply mint_keep; simpl; eauto;
+        eapply mint_nil; simpl;
+       (* Resolve [Vec.Forall (eq []) [[]%list; []%list]%vector]: *)
+        repeat constructor
+       |eapply mint_switch with (j := i); eauto; easy
+       ]
+      ]).
+  Defined.
+
+  Definition MIntUniq_ {N} (tt : Traces N) (t : list TE) :=
+    exists i, MInt_ trace_elems_commute i tt t.
+
+  Fixpoint umint_append {N} (i j : Fin.t N) te rest (traces : Traces N) (t : list TE)
+           (Ht : MInt_ trace_elems_commute j (Vec.replace traces i rest) t)
+           s s' s'' (Hls : LongStep s' t s'')
+           (Hte : s ~[te]~> s')
+           (Hij : i <> j)
+           {struct Ht} :
+    exists t', MInt_ trace_elems_commute i (Vec.replace traces i (te :: rest)) t' /\ LongStep s t' s''.
+  Admitted.
+  (* Proof with repeat (try assumption ; constructor); eauto with hoare. *)
+  (*   remember (Vec.replace traces i rest) as traces0. *)
+  (*   destruct Ht. *)
+  (*   - exists []. *)
+  (*     subst. *)
+  (*     split. *)
+  (*     + constructor. *)
+
+  Fixpoint canonicalize_mens_ {N} (t : list TE) (traces : Traces N)
+             s s' i
+             (Ht : MInt_ always_can_switch i traces t)
+             (Hls : LongStep s t s') :
+      exists t', MInt_ trace_elems_commute i traces t' /\ LongStep s t' s'.
+    Proof with eauto.
+      destruct Ht.
+      { exists [].
+        split...
+        constructor...
+      }
+      { long_step Hls.
+        eapply canonicalize_mens_ in Hls...
+        destruct Hls as [t' [Huniq Ht']].
+        exists (te :: t').
+        split...
+        - eapply mint_keep...
+        - forward s0...
+      }
+      { long_step Hls.
+        eapply canonicalize_mens_ in Hls...
+        destruct Hls as [t' [Huniq Ht']].
+        replace traces with (Vec.replace traces i (te2 :: rest)).
+        - eapply umint_append...
+        - apply replace_id.
+      }
+    Defined.
+
+  Lemma mint_uniq_correct_ : forall {N} P Q (traces : Traces N),
+      -{{P}} MIntUniq_ traces {{Q}} ->
+      -{{P}} MultiIlv traces {{Q}}.
+  Proof.
+    intros * H t Ht. unfold_ht.
+
+
 
   Section props.
     Context `{Hssp : StateSpace}.
@@ -404,10 +477,6 @@ End tests.
     Context `{Hssp : StateSpace}
             (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).
 
-    Lemma te_comm_dec : forall `{StateSpace} a b, trace_elems_commute a b \/ not (trace_elems_commute a b).
-    Proof.
-      intros. apply classic.
-    Qed.
 
     Definition can_switch_comm a b := not (trace_elems_commute a b).
 
