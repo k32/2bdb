@@ -105,6 +105,12 @@ Ltac vec_forall_nil :=
            dependent destruction H
          end.
 
+Lemma vec_forall_nth {N A} P i a (vec : Vec.t A N) :
+  vec[@i] = a ->
+  Vec.Forall P vec ->
+  P a.
+Admitted.
+
 Ltac resolve_vec_all_nil :=
   multimatch goal with
   | |- Vec.Forall (eq []) ?vec =>
@@ -265,11 +271,20 @@ Section uniq.
       ]).
   Defined.
 
+  Definition trace_elems_don't_commute a b :=
+    not (trace_elems_commute a b).
+
   Definition MIntUniq_ {N} (tt : Traces N) (t : list TE) :=
-    exists i, MInt_ trace_elems_commute i tt t.
+    exists i, MInt_ trace_elems_don't_commute i tt t.
 
   Lemma vec_replace_nth {A N} i a vec : (@Vec.replace A N vec i a)[@i] = a.
   Admitted. (* TODO *)
+
+  Lemma vec_replace_nth_neq {A N} i j a b (vec : Vec.t A N) :
+    j <> i ->
+    vec[@i] = a ->
+    (Vec.replace vec j b)[@i] = a.
+  Admitted.
 
   Lemma vec_replace_forall {A N} P i a (vec : @Vec.t A N) :
     Vec.Forall P (Vec.replace vec i a) ->
@@ -280,31 +295,49 @@ Section uniq.
     Vec.Forall (eq []) (Vec.replace vec i (hd :: tl)) -> False.
   Admitted.
 
-  Lemma mint_head_elem {N} te rest t j (vec : Traces N) :
-    MInt_ trace_elems_commute j (Vec.replace vec j (te :: rest)) t ->
+  Lemma mint_head_elem {N P} (te : TE) rest t j (vec : Traces N) :
+    vec[@j] = te :: rest ->
+    MInt_ P j (vec) t ->
     exists t', t = te :: t'.
   Proof with eauto.
-    intros H.
+    intros Hj H.
     destruct t as [|te_ t'].
-    - exfalso.
-      inversion_ H.
-      eapply vec_all_cons_false...
+    - inversion_ H.
+      eapply vec_forall_nth in Hj...
     - exists t'.
       replace te_ with te...
-      inversion_ H.
+      inversion_ H; congruence.
+  Qed.
+
+  Lemma mint_head_elem_replace {N P} (te : TE) rest t j (vec : Traces N) :
+    MInt_ P j (Vec.replace vec j (te :: rest)) t ->
+    exists t', t = te :: t'.
+  Proof.
+    intros H.
+    destruct t as [|te_ t'].
+    - inversion H.
+      apply vec_replace_forall in H0.
+      discriminate.
+    - exists t'.
+      replace te_ with te; auto.
+      inversion H.
       + rewrite vec_replace_nth in H3.
         congruence.
       + rewrite vec_replace_nth in H5.
         congruence.
   Qed.
 
-  Fixpoint umint_append {N} (i j : Fin.t N) te rest (traces : Traces N) (t : list TE)
-           (Ht : MInt_ trace_elems_commute j (Vec.replace traces i rest) t)
-           s s' s'' (Hls : LongStep s' t s'')
-           (Hte : s ~[te]~> s')
-           {struct Ht} :
+  (* Let umint_append_t :=
+    fun {N} (i j : Fin.t N) te rest (traces : Traces N) (t : list TE)
+      (Ht : MInt_ trace_elems_commute j (Vec.replace traces i rest) t)
+      s s' s'' (Hls : LongStep s' t s'')
+      (Hte : s ~[te]~> s') =>
     exists t', MInt_ trace_elems_commute i (Vec.replace traces i (te :: rest)) t' /\ LongStep s t' s''.
+
+  Fixpoint umint_append {N} (i j : Fin.t N) te rest traces t Ht s s' s'' Hls Hte {struct Ht} :
+    umint_append_t i j te rest traces t Ht s s' s'' Hls Hte.
   Proof with eauto with slot; try apply vec_replace_nth.
+    subst umint_append_t. simpl.
     remember (Vec.replace traces i rest) as traces0.
     destruct Ht; subst traces0.
     { exists [te].
@@ -317,7 +350,8 @@ Section uniq.
       - (* [] = rest *)
         now apply vec_replace_forall in H.
     }
-    { long_step Hls.
+    { subst.
+      long_step Hls.
       destruct (Fin.eq_dec i j).
       { subst.
         replace rest with (te0 :: rest0) in * by now rewrite vec_replace_nth in H.
@@ -336,10 +370,114 @@ Section uniq.
           assumption.
         - forward s'...
       }
-      { destruct (Hcomm_dec te te0) as [Hcomm|Hcomm].
+      {  *)
+
+  Fixpoint umint_append {N} (i j : Fin.t N) te rest (traces : Traces N) (t : list TE)
+           (Ht : MInt_ trace_elems_don't_commute j (Vec.replace traces i rest) t)
+           s s' s'' (Hls : LongStep s' t s'')
+           (Hte : s ~[te]~> s')
+           {struct Ht} :
+    exists t', MInt_ trace_elems_don't_commute i (Vec.replace traces i (te :: rest)) t' /\ LongStep s t' s''.
+  Proof with eauto with slot; try apply vec_replace_nth.
+    destruct (Fin.eq_dec i j) as [Hij|Hij].
+    { (* [i = j]: *)
+      subst.
+      exists (te :: t).
+      split...
+      eapply mint_keep...
+      rewrite Vec.replace_replace_eq...
+    }
+    { inversion Ht as [vec Hvec|? ? ? ? Hj Hcont|? ? ? ? ? ? Hjj0 Hswitch Hj Hcont]; subst.
+      { exists [te].
+        split...
+        eapply mint_keep...
+        rewrite Vec.replace_replace_eq.
+        apply mint_nil...
+      }
+      { long_step Hls.
+        remember (Vec.replace traces i rest) as traces'.
+        destruct (Hcomm_dec te0 te) as [Hcomm|Hcomm].
+        2:{ apply umint_append with (te := te0) (s := s') (s' := s0) (s'' := s'') in Hcont;
+              [idtac|assumption..].
+            destruct Hcont as [t' [Hu Ht']].
+            apply mint_head_elem_replace in Hu as Ht''.
+            destruct Ht'' as [t'' Ht'']. subst t'.
+            exists (te :: te0 :: t'').
+            split...
+            apply mint_switch with (j0 := j) (rest1 := rest);
+              try assumption;
+              try apply vec_replace_nth.
+            rewrite Vec.replace_replace_eq.
+            apply mint_keep with (rest1 := rest0); try assumption.
+
+
+        }
+        { eapply umint_append in Hcont...
+
+            destruct Ht' as [t' Ht']; subst.
+
+
+
+        rewrite Vec.replace_replace_neq in Hcont; [idtac|assumption].
+        apply mint_head_elem in Hcont.
+
+
+
+
+  Fixpoint umint_append {N} (i j : Fin.t N) te rest (traces : Traces N) (t : list TE)
+           (Ht : MInt_ trace_elems_don't_commute j (Vec.replace traces i rest) t)
+           s s' s'' (Hls : LongStep s' t s'')
+           (Hte : s ~[te]~> s')
+           {struct Ht} :
+    exists t', MInt_ trace_elems_don't_commute i (Vec.replace traces i (te :: rest)) t' /\ LongStep s t' s''.
+  Proof with eauto with slot; try apply vec_replace_nth.
+    remember (Vec.replace traces i rest) as traces0.
+    destruct Ht; subst traces0.
+    { exists [te].
+      long_step Hls. subst.
+      replace rest with ([] : list TE) in *.
+      - split...
+        apply mint_keep with (rest0 := [])...
+        rewrite Vec.replace_replace_eq.
+        now apply mint_nil.
+      - (* [] = rest *)
+        now apply vec_replace_forall in H.
+    }
+    { subst.
+      long_step Hls.
+      destruct (Fin.eq_dec i j).
+      { subst.
+        replace rest with (te0 :: rest0) in * by now rewrite vec_replace_nth in H.
+        rewrite Vec.replace_replace_eq in Ht.
+        eapply umint_append in Ht...
+        destruct Ht as [t' [Hu Ht']].
+        (* Destruct t': *)
+        eapply mint_head_elem_replace in Hu as Ht''.
+        destruct Ht'' as [t''].
+        subst t'.
+        (* Apply constructor: *)
+        exists (te :: te0 :: t'').
+        split.
+        - eapply mint_keep...
+          rewrite Vec.replace_replace_eq.
+          assumption.
+        - forward s'...
+      }
+      { destruct (Hcomm_dec te0 te) as [Hcomm|Hcomm].
+        2:{ eapply umint_append in Ht...
+            destruct Ht as [t' [Hu Ht']].
+            eapply mint_head_elem in Hu as Ht''...
+            destruct Ht'' as [t'' Ht'']. subst.
+            exists (te :: te0 :: t'').
+            split.
+            - eapply mint_switch...
+
+              rewrite Vec.replace_replace_neq in Hu...
+
+              apply mint_switch.
         { (* Apply commutativity hypothesis: *)
-          assert (Htete0 : LongStep s [te; te0] s0).
-          { forward s'; auto.
+          assert (Htete0 : LongStep s [te; te0] forward).
+          { s0 s'; auto.
             forward s0; auto.
             constructor.
           }
