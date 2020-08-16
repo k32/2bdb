@@ -198,6 +198,26 @@ Section defn.
     - now apply trace_elems_commute_symm.
   Qed.
 
+  Definition trace_elems_commute_s te1 te2 s s' s'' :
+    s ~[te1]~> s' ->
+    s' ~[te2]~> s'' ->
+    trace_elems_commute te1 te2 ->
+    exists s'_, s ~[te2]~> s'_ /\ s'_ ~[te1]~> s''.
+  Proof with auto.
+    intros H1 H2 H.
+    assert (Hls : LongStep s [te1; te2] s'').
+    { apply ls_cons with (s' := s')...
+      apply ls_cons with (s' := s'')...
+      constructor.
+    }
+    apply H in Hls.
+    inversion_ Hls.
+    inversion_ H7.
+    inversion_ H9.
+    exists s'0.
+    split...
+  Qed.
+
   Section ExpandTrace.
     Variable te_subset : Ensemble TE.
 
