@@ -38,7 +38,7 @@ Section vector.
 
   Lemma vec_replace_nth_rewr {A N} i j b (vec : Vec.t A N) :
     j <> i ->
-    vec[@i] = (Vec.replace vec j b)[@i].
+    (Vec.replace vec j b)[@i] = vec[@i].
   Admitted.
 
   Lemma vec_all_cons_false {A N} i hd tl (vec : @Vec.t (list A) N) :
@@ -91,3 +91,4 @@ Hint Rewrite @vec_replace_nth : vector.
 Hint Rewrite Vec.replace_id : vector.
 Hint Rewrite Vec.replace_replace_eq : vector.
 Hint Resolve @vec_replace_nth_neq : vector.
+(* Hint Rewrite @vec_replace_nth_rewr : vector. *)

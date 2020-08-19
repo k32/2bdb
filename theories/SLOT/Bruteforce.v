@@ -11,7 +11,8 @@ From LibTx Require Import
 From Coq Require Import
      List
      Program
-     Logic.Classical_Prop.
+     Logic.Classical_Prop
+     Logic.Decidable.
 
 From Coq Require
      Vector.
@@ -310,28 +311,136 @@ Section uniq.
   Definition push_te {N} (traces : Traces N) i (te : TE) :=
     Vec.replace traces i (te :: traces[@i]).
 
+  Let trivial_add {N} (i j : Fin.t N) t te :=
+    i = j \/
+    match t with
+    | [] => i <> j
+    | te1 :: _ => i <> j /\ trace_elems_don't_commute te1 te
+    end.
+
+  Lemma trivial_add_dec {N} (i j : Fin.t N) t te : decidable (trivial_add i j t te).
+  Proof.
+    unfold trivial_add.
+    destruct (Fin.eq_dec i j) as [Hij|Hij].
+    { left. firstorder. }
+    { destruct t as [|te0 t].
+      - firstorder.
+      - destruct (Hcomm_dec te0 te).
+        + right. firstorder.
+        + left. firstorder.
+    }
+  Qed.
+
+  Definition uilv_add_by_contr {N} te (t : list TE) (traces : Traces N)
+             i j (Ht : MInt_ trace_elems_don't_commute j traces t)
+             s s' (Hls : LongStep s (te :: t) s')
+             (H : trivial_add i j t te) :
+    MInt_ trace_elems_don't_commute i (push_te traces i te) (te :: t).
+  Proof with autorewrite with vector; eauto with vector.
+    unfold push_te.
+    destruct H as [Hij|H].
+    (* [i=j], solving by constructor: *)
+    { subst.
+      eapply mint_keep with (rest := traces[@j])...
+    }
+    destruct t as [|te0 t].
+    (* [t] is empty, solving by constructor: *)
+    { inversion_ Ht.
+      eapply mint_keep with (rest := [])...
+      { replace traces[@i] with ([]:list TE)...
+        eapply vec_forall_nth...
+      }
+      eapply mint_nil...
+      eapply vec_replace_forall_rev...
+    }
+    destruct H as [Hij Hte].
+    (* [te] and [te0] don't commute, solving by constructor: *)
+    eapply mint_switch with (rest := traces[@i])...
+  Defined.
+
   Fixpoint uilv_add {N} te (t : list TE) (traces : Traces N)
            i j (Ht : MInt_ trace_elems_don't_commute j traces t)
            s s' (Hls : LongStep s (te :: t) s')
            {struct Ht} :
     (exists t', MInt_ trace_elems_don't_commute j (push_te traces i te) t' /\
            LongStep s t' s') \/
-    (exists t', MInt_ trace_elems_don't_commute i (push_te traces i te) t' /\
-           LongStep s t' s').
+    (MInt_ trace_elems_don't_commute i (push_te traces i te) (te :: t) /\
+     LongStep s (te :: t) s' /\ trivial_add i j t te).
   Proof with autorewrite with vector; eauto with vector.
     unfold push_te.
+    destruct (trivial_add_dec i j t te) as [Htriv|Htriv].
+    { right. clear uilv_add.
+      eapply uilv_add_by_contr in Htriv as H...
+    }
+    { (* Simplify [Htriv]: *)
+      unfold trivial_add in Htriv.
+      destruct (Fin.eq_dec i j) as [Hij|Hij]; [exfalso; firstorder|idtac].
+      destruct t as [|te0 t]; [exfalso; firstorder|idtac].
+      destruct (Hcomm_dec te0 te) as [Hcomm|Hcomm]; [idtac|exfalso; firstorder].
+      (* Use commutativity hypothesis: *)
+      apply trace_elems_commute_head in Hls; [idtac|assumption].
+      long_step Hls.
+      inversion Ht as [vec Hvec|? ? ? ? Hj Hcont|? ? ? ? ? ? Hjj0 Hswitch Hj Hcont];
+        subst; clear Ht.
+      { eapply uilv_add with (te := te) (i := i) (s := s0) (s' := s') in Hcont...
+        destruct Hcont as [[t' [Hu Ht']]|[Hu [Ht' Htriv']]].
+        { left.
+          unfold push_te in Hu.
+          autorewrite with vector in Hu.
+          rewrite vec_replace_nth_rewr, Vec.replace_replace_neq in Hu...
+          exists (te0 :: t').
+          split.
+          - eapply mint_keep...
+          - forward s0...
+        }
+        { unfold trivial_add in Htriv'.
+          destruct Htriv'; [contradiction Hij|idtac].
+
+          inversion
+
+          destruct t as [|te0_ t].
+          2:{ destruct H as [? nonsense].
+              contradiction nonsense.
+
+          left.
+
+          unfold push_te in Hu.
+          autorewrite with vector in Hu.
+          rewrite vec_replace_nth_rewr, Vec.replace_replace_neq in Hu...
+          exists (te0 :: te :: t').
+          split.
+          - eapply mint_switch with (rest0 := rest)...
+            left.
+
+
+
+
+
+
+
+
+        2:{ unfold trivial_add in Htriv'.
+            destruct Htriv' as [nonsense|H]; try contradiction n.
+
+        { left.
+
+
+
+
     (* Let's solve "easy" cases first: *)
     destruct (Fin.eq_dec i j) as [Hij|Hij].
     (* [i=j], solving by constructor: *)
-    { subst.
+    { clear uilv_add.
+      subst.
       right. exists (te :: t).
-      split...
+      split; try split...
       eapply mint_keep with (rest := traces[@j])...
     }
     destruct t as [|te0 t].
     (* [t] is empty, solving by constructor: *)
-    { right. exists [te].
-      split...
+    { clear uilv_add.
+      right. exists [te].
+      split; try split...
       inversion_ Ht.
       eapply mint_keep with (rest := [])...
       { replace traces[@i] with ([]:list TE)...
@@ -342,20 +451,44 @@ Section uniq.
     }
     destruct (Hcomm_dec te0 te).
     (* [te] and [te0] don't commute, solving by constructor: *)
-    2:{ right. exists (te :: te0 :: t).
-        split...
+    2:{ clear uilv_add.
+        right. exists (te :: te0 :: t).
+        split; try split...
         eapply mint_switch with (rest := traces[@i])...
     }
-    (* Real magic happens : *)
+    (* Now to the interesting part: *)
     { left.
       apply trace_elems_commute_head in Hls...
       long_step Hls.
       inversion Ht as [vec Hvec|? ? ? ? Hj Hcont|? ? ? ? ? ? Hjj0 Hswitch Hj Hcont];
         clear Ht; subst.
-      - eapply uilv_add with (te := te) (i := i) (s := s0) (s' := s') in Hcont...
-        unfold push_te in Hcont; autorewrite with vector in Hcont.
-        destruct Hcont as [[t' [Hu Ht']]|[t' [Hu Ht']]].
-        2:{
+      - eapply uilv_add with (te := te) (i := i) (s := s0) (s' := s') in Hcont as Hcont'...
+        clear uilv_add.
+        unfold push_te in Hcont'; autorewrite with vector in Hcont'.
+        destruct Hcont' as [[t' [Hu Ht']]|[t' [Hu [Ht' Hcontr]]]].
+        { rewrite vec_replace_nth_rewr, Vec.replace_replace_neq in Hu...
+          exists (te0 :: t').
+          split.
+          - eapply mint_keep...
+          - forward s0...
+        }
+        { rewrite vec_replace_nth_rewr, Vec.replace_replace_neq in Hu...
+          destruct Hcontr as [Hcontr|Hcontr].
+          { contradiction Hij. }
+          { destruct t as [|te_ t]; subst.
+            - inversion_ Hcont.
+              replace rest with ([] : list TE) in * by
+                  now apply vec_replace_forall in H0.
+              exists [te0; te].
+              split.
+              + eapply mint_switch...
+              + forward s0...
+            -
+
+
+
+
+
 
   (*Fixpoint uilv_add {N} te1 te2 (t : list TE) (traces : Traces N)
            i j (Ht : MInt_ trace_elems_don't_commute j traces (te1 :: t))
