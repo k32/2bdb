@@ -39,31 +39,51 @@ Section defn.
     match z with
     | (l, v, r) => P v /\ List.Forall P l /\ List.Forall P r
     end.
+
+  Definition filter (P : V -> bool) (z : t) : t :=
+    match z with
+    | (l, v, r) => (List.filter P l, v, List.filter P r)
+    end.
+
+  Definition zipper_of (z : t) (l : list V) : Prop :=
+    match l with
+    | a :: t =>
+      let z0 := ([], a, t) in
+      z = z0 \/ left_of z0 z
+    | [] => False
+    end.
 End defn.
 
+Infix "<-" := (left_of)(at level 30).
+
 Global Arguments t : clear implicits.
+Hint Constructors left_of : slot.
 
 Section tests.
   Let foo := ([2; 1], 3, [4]).
 
-  Goal left_of ([], 1, [2; 3; 4]) foo.
+  Goal ([], 1, [2; 3; 4]) <- foo.
     repeat constructor.
   Qed.
 
-  Goal left_of ([1], 2, [3; 4]) foo.
+  Goal ([1], 2, [3; 4]) <- foo.
     repeat constructor.
   Qed.
 
-  Goal not(left_of ([3; 2; 1], 4, []) foo).
+  Goal not(([3; 2; 1], 4, []) <- foo).
     intros H. subst foo.
     inversion H; subst. inversion H2; subst. inversion H3.
   Qed.
 
-  Goal right_of foo ([], 1, [2; 3; 4]).
-    repeat constructor.
+  Goal zipper_of ([], 1, [2; 3]) [1; 2; 3].
+    firstorder.
   Qed.
 
-  Goal right_of foo ([1], 2, [3; 4]).
-    repeat constructor.
+  Goal zipper_of ([1], 2, [3]) [1; 2; 3].
+    right. constructor.
+  Qed.
+
+  Goal zipper_of ([2; 1], 3, []) [1; 2; 3].
+    right. repeat constructor.
   Qed.
 End tests.

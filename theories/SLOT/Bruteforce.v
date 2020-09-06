@@ -33,27 +33,34 @@ Section multi_interleaving.
       | (l, v, r) => (l, te :: v, r)
       end.
 
+    Definition is_nonempty (l : list TE) :=
+      match l with
+      | [] => false
+      | _ :: _ => true
+      end.
+
+    Definition nonempty z := Zip.filter is_nonempty z.
+
     Inductive MInt_ : Traces -> @TraceEnsemble TE :=
-    | mint_nil : forall traces,
-        Zip.Forall (eq []) traces ->
-        MInt_ traces []
-    | mint_cons1 : forall traces traces' te t,
-        traces' = traces \/ Zip.left_of traces' traces ->
-        MInt_ traces' t ->
-        MInt_ (push te traces) (te :: t)
-    | mint_cons2 : forall traces traces' te1 te2 t,
+    | mint_nil : forall t,
+        MInt_ ([], t, []) t
+    | mint_cons_l : forall l r rest traces' te t,
+        traces' = (l, rest, r) \/ traces' <- (l, rest, r) ->
+        MInt_ (nonempty traces') t ->
+        MInt_ (l, te :: rest, r) (te :: t)
+    | mint_cons_r : forall l r rest traces' te1 te2 t,
         can_switch te1 te2 ->
-        Zip.left_of traces traces' ->
-        MInt_ traces' (te1 :: t) ->
-        MInt_ (push te2 traces) (te2 :: te1 :: t).
+        (l, rest, r) <- traces' ->
+        MInt_ (nonempty traces') (te1 :: t) ->
+        MInt_ (l, te2 :: rest, r) (te2 :: te1 :: t).
   End defn.
 
   Global Arguments Traces {_}.
 
   Definition always_can_switch {A} (_ _ : A) : Prop := True.
 
-  Definition MultiIlv `{StateSpace} (tt : Traces) (t : list TE) :=
-    MInt_ always_can_switch tt t.
+  Definition MultiIlv `{StateSpace} (tt : list (list TE)) (t : list TE) :=
+    exists z, zipper_of z tt -> MInt_ always_can_switch z t.
 End multi_interleaving.
 
 Ltac mint_case_analysis i H te rest Hte :=
@@ -68,89 +75,29 @@ Section tests.
   Context `{Hssp : StateSpace} (a b c d e f : TE).
 
   Ltac mint2_helper :=
-    simpl; unfold always_can_switch; auto with slot.
+    simpl; unfold always_can_switch; auto with slot; repeat constructor.
 
-  Ltac mint2_step :=
-    lazymatch goal with
-    | |- MInt_ _  (?l, ?a :: ?rest, ?r) (?a :: _) =>
-      apply mint_cons1 with(traces' := (l, rest, r))
-    end.
+  Goal MultiIlv [[a;b]; [c;d]] [a; b; c; d].
+  Proof with mint2_helper.
+    exists ([], [a;b], [[c; d]]). intros H.
+    apply mint_cons_l with (traces' := ([], [b], [[c; d]]))...
+    apply mint_cons_r with (traces' := ([[]], [c;d], []))...
+  Qed.
 
-    | |- MInt_ _ fin2_one [_; (?a :: ?tail)%list]%vector (?a :: _) =>
-      apply mint_cons with (rest := tail) (j := fin2_one)
-    | |- MInt_ _ fin2_zero [(?a :: ?tail)%list; _]%vector (?a :: _) =>
-      apply mint_cons with (rest := tail) (j := fin2_one)
-    | |- MInt_ _ fin2_one [_; (?a :: ?tail)%list]%vector (?a :: _) =>
-      apply mint_cons with (rest := tail) (j := fin2_zero)
-    end; mint2_helper.
+  Goal MultiIlv [[a;b]; [c;d]] [c; d; a; b].
+  Proof with mint2_helper.
+    exists ([[a;b]], [c; d], []). intros H.
+    apply mint_cons_l with (traces' := ([[a; b]], [d], []))...
+    apply mint_cons_l with (traces' := ([], [a; b], [[]]))...
+  Qed.
 
-
-  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [a; b; c; d].
-  Proof. exists fin2_zero. repeat mint2_step. mint2_step. mint2. Qed.
-
-
-  Ltac mint2_step :=
-    lazymatch goal with
-    | |- MInt_ _ fin2_zero [(?a :: ?tail)%list; _]%vector (?a :: _) =>
-      apply mint_cons with (rest := tail) (j := fin2_zero)
-    | |- MInt_ _ fin2_one [_; (?a :: ?tail)%list]%vector (?a :: _) =>
-      apply mint_cons with (rest := tail) (j := fin2_one)
-    | |- MInt_ _ fin2_zero [(?a :: ?tail)%list; _]%vector (?a :: _) =>
-      apply mint_cons with (rest := tail) (j := fin2_one)
-    | |- MInt_ _ fin2_one [_; (?a :: ?tail)%list]%vector (?a :: _) =>
-      apply mint_cons with (rest := tail) (j := fin2_zero)
-    end; mint2_helper.
-
-  Ltac mint2 :=
-      (apply mint_nil; now resolve_vec_all_nil)
-    || (mint2_step; mint2).
-
-  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [a; b; c; d].
-  Proof. exists fin2_zero. repeat mint2_step. mint2_step. mint2. Qed.
-
-  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [a; c; b; d].
-  Proof. exists fin2_zero. mint2. Qed.
-
-  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [a; c; d; b].
-  Proof. exists fin2_zero. mint2. Qed.
-
-  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [c; a; b; d].
-  Proof. exists fin2_one. mint2. Qed.
-
-  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [c; a; d; b].
-  Proof. exists fin2_one. mint2. Qed.
-
-  Goal MultiIlv [[a;b]%list; [c;d]%list]%vector [c; d; a; b].
-  Proof. exists fin2_one. mint2. Qed.
-
-  Goal forall t1 t2 t3 t (P : list TE -> Prop),
-      Generator (eq [a; b]) t1 ->
-      Generator (eq [c; d]) t2 ->
-      Generator (eq [e; f]) t3 ->
-      MultiIlv [t1; t2; t3]%vector t ->
-      P t.
-  Proof.
-    intros * Gt1 Gt2 Gt3 H.
-    destruct H as [i H].
-    mint_destruct H te rest Hte j.
-    { resolve_vec_all_nil. }
-    { mint_case_analysis i H te rest Hte.
-      - mint_destruct H te2 rest2 Hte j2.
-        + resolve_vec_all_nil.
-        + mint_case_analysis i H te2 rest2 Hte.
-          { mint_destruct H te3 rest3 Hte j3.
-            - resolve_vec_all_nil.
-            - simpl in Hte.
-              discriminate.
-            -
-  Abort.
-
-  Goal forall t,
-      let t1 := [a; b] in
-      let t2 := [c; d] in
-      MultiIlv [t1; t2]%vector t ->
-      t = [].
-  Abort.
+  Goal MultiIlv [[a;b]; [c;d]] [a;c;b;d].
+  Proof with mint2_helper.
+    exists ([], [a;b], [[c; d]]). intros H.
+    apply mint_cons_r with (traces' := ([[b]], [c; d], []))...
+    apply mint_cons_l with (traces' := ([], [b], [[d]]))...
+    apply mint_cons_r with (traces' := ([[]], [d], []))...
+  Qed.
 End tests.
 
 Lemma te_comm_dec : forall `{StateSpace} a b, trace_elems_commute a b \/ not (trace_elems_commute a b).
@@ -197,32 +144,63 @@ Section uniq.
   Definition trace_elems_don't_commute a b :=
     not (trace_elems_commute a b).
 
-  Definition MIntUniq_ {N} (tt : Traces N) (t : list TE) :=
-    exists i, MInt_ trace_elems_don't_commute i tt t.
+  Definition MIntUniq_ (tt : list (list TE)) (t : list TE) :=
+    exists z, zipper_of z tt ->
+         MInt_ trace_elems_don't_commute z t.
 
-  Lemma mint_head_elem {N P} (te : TE) rest t j (vec : Traces N) :
-    vec[@j] = te :: rest ->
-    MInt_ P j (vec) t ->
-    exists t', t = te :: t'.
-  Proof with eauto.
-    intros Hj H.
-    destruct t as [|te_ t'].
-    - inversion_ H.
-      eapply vec_forall_nth in Hj...
-    - exists t'.
-      replace te_ with te...
-      inversion_ H; congruence.
+  Fixpoint canonicalize_mint (t : list TE) traces
+             s s'
+             (Ht : MInt_ always_can_switch traces t)
+             (Hls : LongStep s t s') :
+    exists t', MInt_ trace_elems_don't_commute traces t' /\ LongStep s t' s'.
+  Proof with eauto with slot.
+    destruct Ht as [t|l r rest traces' te t Htraces' Ht|l r rest traces' te1 te2 t Hte12 Htraces Ht].
+    { exists t.
+      firstorder.
+      constructor.
+    }
+    { long_step Hls.
+      eapply canonicalize_mint in Hls...
+      destruct Hls as [t' Ht'].
+      exists (te :: t').
+      split.
+      - apply mint_cons_l with (traces'0 := nonempty traces').
+        destruct Htraces'.
+        2:{ right.
+        + left.
+
+
+
+
+
+    destruct Ht as [vec Hvec|? ? ? ? Hj Hcont|? ? te ? ? ? Hjj0 Hswitch Hj Hcont].
+    { exists []. exists i.
+      split...
+      constructor...
+    }
+    { long_step Hls.
+      eapply canonicalize_mens_ in Hls...
+      destruct Hls as [t' [k [Huniq Ht']]].
+      remember (Vec.replace traces i rest) as traces0.
+      replace traces with (Vec.replace traces0 i (te :: traces0[@i])).
+      - eapply uilv_add...
+      - subst.
+        rewrite Vec.replace_replace_eq, vec_replace_nth, <- Hj, Vec.replace_id.
+        reflexivity.
+    }
+    { long_step Hls.
+      eapply canonicalize_mens_ in Hls...
+      destruct Hls as [t' [k [Huniq Ht']]].
+      remember (Vec.replace traces i rest) as traces0.
+      replace traces with (Vec.replace traces0 i (te :: traces0[@i])).
+      - eapply uilv_add...
+      - subst.
+        rewrite Vec.replace_replace_eq, vec_replace_nth, <- Hj, Vec.replace_id.
+        reflexivity.
+    }
   Qed.
 
-  Definition push_te {N} (traces : Traces N) i (te : TE) :=
-    Vec.replace traces i (te :: traces[@i]).
 
-  Let trivial_add {N} (i j : Fin.t N) t te :=
-    i <= j \/
-    match t with
-    | [] => i <> j
-    | te1 :: _ => i <> j /\ trace_elems_don't_commute te1 te
-    end.
 
   Definition uilv_add_by_constr {N} te (t : list TE) (traces : Traces N)
              i j (Ht : MInt_ trace_elems_don't_commute j traces t)
