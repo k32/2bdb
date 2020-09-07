@@ -33,6 +33,23 @@ Record te_commut_rel A :=
 Section mutually_holding_prop.
   Context A (P : relation A).
 
+  Definition Forall_dec a l :
+    (forall a b, decidable (P a b)) ->
+    decidable (Forall (P a) l).
+  Proof.
+    intros Hdec.
+    induction l.
+    { left. constructor. }
+    { destruct IHl as [Hl|Hl].
+      - destruct (Hdec a a0).
+        + left. constructor; auto.
+        + right. intros H'.
+          inversion_ H'.
+      - right. intros H.
+        inversion_ H.
+    }
+  Defined.
+
   Inductive NonCommSet : list A -> list A -> Prop :=
   | nc_nil : NonCommSet [] []
   | nc_cons : forall a l r,
