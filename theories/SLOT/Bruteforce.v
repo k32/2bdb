@@ -13,7 +13,8 @@ From Coq Require Import
      List
      Program
      Logic.Classical_Prop
-     Logic.Decidable.
+     Logic.Decidable
+     Relations.
 
 Import ListNotations.
 
@@ -23,9 +24,40 @@ Open Scope list_scope.
 Open Scope hoare_scope.
 Open Scope zipper_scope.
 
+Record te_commut_rel A :=
+  { comm_rel : relation A;
+    _ : symmetric _ comm_rel;
+    comm_rel_dec : forall a b, decidable (comm_rel a b);
+  }.
+
+Section mutually_holding_prop.
+  Context A (P : relation A).
+
+  Inductive NonCommSet : list A -> list A -> Prop :=
+  | nc_nil : NonCommSet [] []
+  | nc_cons : forall a l r,
+      Forall (P a) r ->
+      NonCommSet l r ->
+      NonCommSet (a :: l) (a :: r)
+  | nc_drop : forall a l r,
+      not (Forall (P a) r) ->
+      NonCommSet l r ->
+      NonCommSet (a :: l) r.
+
+
+Section noncomm_set.
+  Context `{Hssp : StateSpace} (can_switch : TE -> TE -> Prop).
+
+  Inductive NonComm : list TE -> list TE -> Prop :=
+  | non_comm_traces : forall te1 te2 rest1 rest2,
+      can_switch te1 te2 ->
+      NonComm (te1 :: rest1) (te2 :: rest2).
+
+
+
 Section multi_interleaving.
   Section defn.
-    Context `{Hssp : StateSpace} (can_switch : TE -> TE -> Prop) {N : nat}.
+    Context `{Hssp : StateSpace} (can_switch : TE -> TE -> Prop).
 
     Definition Traces := Zip.t (list TE).
 
@@ -152,62 +184,57 @@ Section uniq.
   Fixpoint canonicalize_mint (t : list TE) traces
              s s'
              (Ht : MInt_ always_can_switch traces t)
-             (Hls : LongStep s t s') :
+             (Hls : LongStep s t s') {struct Ht} :
     exists t', MInt_ trace_elems_don't_commute traces t' /\ LongStep s t' s'.
   Proof with eauto with slot.
-    destruct Ht as [t|l r rest traces' te t Htraces' Ht|l r rest traces' te1 te2 t Hte12 Htraces Ht].
+    destruct Ht as [t
+                   |l m r t Ht
+                   |l m r t Ht
+                   |l r rest te t Ht
+                   |l r rest traces' te t Htraces' Ht
+                   |l r rest traces' te1 te2 t Hte12 Htraces Ht
+                   ].
     { exists t.
       firstorder.
       constructor.
     }
-    { long_step Hls.
-      eapply canonicalize_mint in Hls...
-      destruct Hls as [t' Ht'].
-      exists (te :: t').
-      split.
-      - apply mint_cons_l with (traces'0 := nonempty traces').
-        destruct Htraces'.
-        2:{ right.
-
-        + left.
-          unfold nonempty, Zip.filter.
-          simpl.
-
-        2:{ right.
-        + left.
-
-
-
-
-
-    destruct Ht as [vec Hvec|? ? ? ? Hj Hcont|? ? te ? ? ? Hjj0 Hswitch Hj Hcont].
-    { exists []. exists i.
+    { apply canonicalize_mint with (s := s) (s' := s') in Ht...
+      destruct Ht as [t' [Ht' Hss']].
+      exists t'.
+      split...
+      constructor...
+    }
+    { apply canonicalize_mint with (s := s) (s' := s') in Ht...
+      destruct Ht as [t' [Ht' Hss']].
+      exists t'.
       split...
       constructor...
     }
     { long_step Hls.
-      eapply canonicalize_mens_ in Hls...
-      destruct Hls as [t' [k [Huniq Ht']]].
-      remember (Vec.replace traces i rest) as traces0.
-      replace traces with (Vec.replace traces0 i (te :: traces0[@i])).
-      - eapply uilv_add...
-      - subst.
-        rewrite Vec.replace_replace_eq, vec_replace_nth, <- Hj, Vec.replace_id.
-        reflexivity.
+      eapply canonicalize_mint in Hls...
+      destruct Hls as [t' [Ht' Hss']].
+      exists (te :: t').
+      split...
+      constructor...
     }
     { long_step Hls.
-      eapply canonicalize_mens_ in Hls...
-      destruct Hls as [t' [k [Huniq Ht']]].
-      remember (Vec.replace traces i rest) as traces0.
-      replace traces with (Vec.replace traces0 i (te :: traces0[@i])).
-      - eapply uilv_add...
-      - subst.
-        rewrite Vec.replace_replace_eq, vec_replace_nth, <- Hj, Vec.replace_id.
-        reflexivity.
+      eapply canonicalize_mint in Hls...
+      destruct Hls as [t' [Ht' Hss']].
+      exists (te :: t').
+      split...
+      eapply mint_cons_l...
     }
-  Qed.
+    {
 
 
+      destruct (Hcomm_dec te1 te2).
+      2:{
+
+      { apply trace_elems_commute_head in Hls; try assumption.
+        long_step Hls.
+        induction Ht.
+        6:{
+        apply canonicalize_mint with
 
   Definition uilv_add_by_constr {N} te (t : list TE) (traces : Traces N)
              i j (Ht : MInt_ trace_elems_don't_commute j traces t)
