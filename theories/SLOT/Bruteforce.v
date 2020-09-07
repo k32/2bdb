@@ -21,6 +21,7 @@ Module Zip := Zipper.
 
 Open Scope list_scope.
 Open Scope hoare_scope.
+Open Scope zipper_scope.
 
 Section multi_interleaving.
   Section defn.
@@ -33,25 +34,26 @@ Section multi_interleaving.
       | (l, v, r) => (l, te :: v, r)
       end.
 
-    Definition is_nonempty (l : list TE) :=
-      match l with
-      | [] => false
-      | _ :: _ => true
-      end.
-
-    Definition nonempty z := Zip.filter is_nonempty z.
-
     Inductive MInt_ : Traces -> @TraceEnsemble TE :=
     | mint_nil : forall t,
         MInt_ ([], t, []) t
+    | mint_nil_l : forall l m r t,
+        MInt_ (l, m, r) t ->
+        MInt_ (l, [], m :: r) t
+    | mint_nil_r : forall l m r t,
+        MInt_ (l, m, r) t ->
+        MInt_ (m :: l, [], r) t
+    | mint_cons_m : forall l r rest te t,
+        MInt_ (l, rest, r) t ->
+        MInt_ (l, te :: rest, r) (te :: t)
     | mint_cons_l : forall l r rest traces' te t,
-        traces' = (l, rest, r) \/ traces' <- (l, rest, r) ->
-        MInt_ (nonempty traces') t ->
+        traces' <- (l, rest, r) ->
+        MInt_ traces' t ->
         MInt_ (l, te :: rest, r) (te :: t)
     | mint_cons_r : forall l r rest traces' te1 te2 t,
         can_switch te1 te2 ->
         (l, rest, r) <- traces' ->
-        MInt_ (nonempty traces') (te1 :: t) ->
+        MInt_ traces' (te1 :: t) ->
         MInt_ (l, te2 :: rest, r) (te2 :: te1 :: t).
   End defn.
 
@@ -80,23 +82,22 @@ Section tests.
   Goal MultiIlv [[a;b]; [c;d]] [a; b; c; d].
   Proof with mint2_helper.
     exists ([], [a;b], [[c; d]]). intros H.
-    apply mint_cons_l with (traces' := ([], [b], [[c; d]]))...
+    apply mint_cons_m.
     apply mint_cons_r with (traces' := ([[]], [c;d], []))...
   Qed.
 
   Goal MultiIlv [[a;b]; [c;d]] [c; d; a; b].
   Proof with mint2_helper.
     exists ([[a;b]], [c; d], []). intros H.
-    apply mint_cons_l with (traces' := ([[a; b]], [d], []))...
+    apply mint_cons_m.
     apply mint_cons_l with (traces' := ([], [a; b], [[]]))...
   Qed.
 
   Goal MultiIlv [[a;b]; [c;d]] [a;c;b;d].
   Proof with mint2_helper.
     exists ([], [a;b], [[c; d]]). intros H.
-    apply mint_cons_r with (traces' := ([[b]], [c; d], []))...
+    apply mint_cons_r with (traces' := ([[b]], [c; d], [])); [easy|constructor|idtac].
     apply mint_cons_l with (traces' := ([], [b], [[d]]))...
-    apply mint_cons_r with (traces' := ([[]], [d], []))...
   Qed.
 End tests.
 
@@ -166,6 +167,12 @@ Section uniq.
       split.
       - apply mint_cons_l with (traces'0 := nonempty traces').
         destruct Htraces'.
+        2:{ right.
+
+        + left.
+          unfold nonempty, Zip.filter.
+          simpl.
+
         2:{ right.
         + left.
 

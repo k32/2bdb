@@ -54,12 +54,15 @@ Section defn.
     end.
 End defn.
 
-Infix "<-" := (left_of)(at level 30).
+Delimit Scope zipper_scope with zipper.
+Infix "<-" := (left_of)(at level 30) : zipper_scope.
 
 Global Arguments t : clear implicits.
 Hint Constructors left_of : slot.
 
 Section tests.
+  Open Scope zipper_scope.
+
   Let foo := ([2; 1], 3, [4]).
 
   Goal ([], 1, [2; 3; 4]) <- foo.
@@ -87,3 +90,17 @@ Section tests.
     right. repeat constructor.
   Qed.
 End tests.
+
+Section zipper_of_lists.
+  Context {V : Type}.
+
+  Let Z := t (list V).
+
+  Definition is_nonempty (l : list V) :=
+    match l with
+    | [] => false
+    | _ :: _ => true
+    end.
+
+  Definition nonempty (z : Z) := filter is_nonempty z.
+End zipper_of_lists.
