@@ -7,7 +7,9 @@ From LibTx Require Import
      SLOT.Hoare
      SLOT.Ensemble
      SLOT.Generator
-     Zipper.
+     SLOT.Zipper.
+
+Module Zip := SLOT.Zipper.
 
 From Coq Require Import
      List
@@ -18,17 +20,44 @@ From Coq Require Import
 
 Import ListNotations.
 
-Module Zip := Zipper.
-
 Open Scope list_scope.
 Open Scope hoare_scope.
-Open Scope zipper_scope.
 
-Record te_commut_rel A :=
+Class te_commut_rel {A} :=
   { comm_rel : relation A;
-    _ : symmetric _ comm_rel;
+    comm_rel_symm : symmetric _ comm_rel;
     comm_rel_dec : forall a b, decidable (comm_rel a b);
   }.
+
+Section restricted_ensemble.
+  Context `{HSsp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
+
+  Definition can_pick l a := Forall (comm_rel a) l.
+
+  Inductive RestrictedEnsemble (e : @TraceEnsemble TE) (non_comm_set : list TE) : TraceEnsemble :=
+  | restr_ens_nil :
+      e [] ->
+      RestrictedEnsemble e non_comm_set []
+  | restr_ens_cons : forall te t,
+      e (te :: t) ->
+      can_pick non_comm_set te ->
+      RestrictedEnsemble e non_comm_set (te :: t).
+
+  Inductive UniqueInterleaving comm_set : list TE -> list TE -> TraceEnsemble :=
+  | uilv_cons_l : forall l t1 t2 t,
+      can_pick comm_set l ->
+      UniqueInterleaving [] t1 t2 t ->
+      UniqueInterleaving comm_set (l :: t1) t2 (l :: t)
+  | uilv_cons_r1 : forall l r t1 t2 t,
+      can_pick (l :: comm_set) r ->
+      UniqueInterleaving [] (l :: t1) t2 (l :: t) ->
+      UniqueInterleaving comm_set (l :: t1) (r :: t2) (r :: l :: t)
+  | uilv_cons_r2 : forall r1 r2 t1 t2 t,
+      can_pick comm_set r2 ->
+      UniqueInterleaving [] t1 (r1 :: t2) (r1 :: t) ->
+      UniqueInterleaving comm_set t1 (r2 :: r1 :: t2) (r2 :: r1 :: t)
+  | uilv_nil : forall t, UniqueInterleaving comm_set [] t t.
+End restricted_ensemble.
 
 Section mutually_holding_prop.
   Context A (P : relation A).
@@ -60,21 +89,26 @@ Section mutually_holding_prop.
       not (Forall (P a) r) ->
       NonCommSet l r ->
       NonCommSet (a :: l) r.
+End mutually_holding_prop.
 
+Section picker_idea.
+  Context `{HSsp : StateSpace} {Hcomm_rel : @te_commut_rel TE}.
 
-Section noncomm_set.
-  Context `{Hssp : StateSpace} (can_switch : TE -> TE -> Prop).
+  Let T := list TE.
+  Let TT := list T.
 
-  Inductive NonComm : list TE -> list TE -> Prop :=
-  | non_comm_traces : forall te1 te2 rest1 rest2,
-      can_switch te1 te2 ->
-      NonComm (te1 :: rest1) (te2 :: rest2).
-
-
+  Fail Inductive Picker (non_comm_set : list TE) : TT -> TT -> TE -> Prop :=
+  | picker_skip : forall (t : T) te (tt tt' : TT)
+                    (p : Picker tt tt' te),
+      Picker non_comm_set (t :: tt) (t :: tt') te
+  | picker_pick : forall te,
+      can_pick non_comm_set te ->
+      Picker non_comm_set te.
+End picker_idea.
 
 Section multi_interleaving.
   Section defn.
-    Context `{Hssp : StateSpace} (can_switch : TE -> TE -> Prop).
+    Context `{Hssp : StateSpace} {Hcomm_rel : @te_commut_rel TE}.
 
     Definition Traces := Zip.t (list TE).
 
@@ -83,7 +117,37 @@ Section multi_interleaving.
       | (l, v, r) => (l, te :: v, r)
       end.
 
-    Inductive MInt_ : Traces -> @TraceEnsemble TE :=
+    Let T := list TE.
+    Let TT := list T.
+
+    Definition can_pick' (tt : TT) (te : TE) : Prop :=
+      Forall (fun l => match l with
+                    | [] => True
+                    | (te' :: _) => comm_rel te te'
+                    end) tt.
+
+    Inductive MInt : Traces -> @TraceEnsemble TE :=
+    | mint_nil : forall t,
+        MInt ([], t, []) t
+    | mint_pick : forall (l r : TT) (te : TE) (rest t : T),
+        can_pick' l te ->
+        let z' := match rest with
+                  | [] => Zip.of_list ((rev l) ++ r) []
+                  | _ => Zip.rewind (l, rest, r)
+                  end in
+        MInt z' t ->
+        MInt (l, te :: rest, r) (te :: t)
+    | mint_skip : forall z t,
+        MInt (Zip.movr z) t ->
+        MInt z t.
+
+    Definition MultiIlv (tt : TT) : @TraceEnsemble TE :=
+      match tt with
+      | [] => eq []
+      | (e :: rest) => MInt ([], e, rest)
+      end.
+
+    (*Inductive MInt_ : Traces -> @TraceEnsemble TE :=
     | mint_nil : forall t,
         MInt_ ([], t, []) t
     | mint_nil_l : forall l m r t,
@@ -103,16 +167,21 @@ Section multi_interleaving.
         can_switch te1 te2 ->
         (l, rest, r) <- traces' ->
         MInt_ traces' (te1 :: t) ->
-        MInt_ (l, te2 :: rest, r) (te2 :: te1 :: t).
+        MInt_ (l, te2 :: rest, r) (te2 :: te1 :: t).*)
   End defn.
 
   Global Arguments Traces {_}.
 
   Definition always_can_switch {A} (_ _ : A) : Prop := True.
-
-  Definition MultiIlv `{StateSpace} (tt : list (list TE)) (t : list TE) :=
-    exists z, zipper_of z tt -> MInt_ always_can_switch z t.
 End multi_interleaving.
+
+Program Instance alwaysCommRel {TE} : @te_commut_rel TE :=
+  { comm_rel := always_can_switch;
+  }.
+Obligation 1.
+easy. Qed.
+Obligation 2.
+cbv. left. easy. Qed.
 
 Ltac mint_case_analysis i H te rest Hte :=
   repeat dependent destruction i;

@@ -52,6 +52,26 @@ Section defn.
       z = z0 \/ left_of z0 z
     | [] => False
     end.
+
+  Definition rewind (z : t) : t :=
+    match z with
+    | (l, e, r) =>
+      match rev l with
+      | [] => ([], e, r)
+      | e' :: l' => ([], e', l' ++ e :: r)
+      end
+    end.
+
+  Definition to_list (z : t) : list V :=
+    match z with
+    | (l, e, r) => rev l ++ (e :: r)
+    end.
+
+  Definition of_list (l : list V) (default : V) : t :=
+    match l with
+    | [] => ([], default, [])
+    | e :: rest => ([], e, rest)
+    end.
 End defn.
 
 Delimit Scope zipper_scope with zipper.
