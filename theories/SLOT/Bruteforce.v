@@ -29,6 +29,28 @@ Class te_commut_rel {A} :=
     comm_rel_dec : forall a b, decidable (comm_rel a b);
   }.
 
+Definition always_can_switch {A} (_ _ : A) : Prop := True.
+
+Definition trace_elems_don't_commute `{StateSpace} a b :=
+  not (trace_elems_commute a b).
+
+Program Instance nonCommRel `{StateSpace} : @te_commut_rel TE :=
+  { comm_rel := trace_elems_don't_commute
+  }.
+Obligation 1.
+unfold symmetric. intros x y Hcomm.
+firstorder. Qed.
+Obligation 2.
+unfold decidable. apply classic. Qed.
+
+Program Instance alwaysCommRel {TE} : @te_commut_rel TE :=
+  { comm_rel := always_can_switch;
+  }.
+Obligation 1.
+easy. Qed.
+Obligation 2.
+cbv. left. easy. Qed.
+
 Section restricted_ensemble.
   Context `{HSsp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
 
@@ -108,7 +130,7 @@ End picker_idea.
 
 Section multi_interleaving.
   Section defn.
-    Context `{Hssp : StateSpace} {Hcomm_rel : @te_commut_rel TE}.
+    Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
 
     Definition Traces := Zip.t (list TE).
 
@@ -146,87 +168,50 @@ Section multi_interleaving.
       | [] => eq []
       | (e :: rest) => MInt ([], e, rest)
       end.
-
-    (*Inductive MInt_ : Traces -> @TraceEnsemble TE :=
-    | mint_nil : forall t,
-        MInt_ ([], t, []) t
-    | mint_nil_l : forall l m r t,
-        MInt_ (l, m, r) t ->
-        MInt_ (l, [], m :: r) t
-    | mint_nil_r : forall l m r t,
-        MInt_ (l, m, r) t ->
-        MInt_ (m :: l, [], r) t
-    | mint_cons_m : forall l r rest te t,
-        MInt_ (l, rest, r) t ->
-        MInt_ (l, te :: rest, r) (te :: t)
-    | mint_cons_l : forall l r rest traces' te t,
-        traces' <- (l, rest, r) ->
-        MInt_ traces' t ->
-        MInt_ (l, te :: rest, r) (te :: t)
-    | mint_cons_r : forall l r rest traces' te1 te2 t,
-        can_switch te1 te2 ->
-        (l, rest, r) <- traces' ->
-        MInt_ traces' (te1 :: t) ->
-        MInt_ (l, te2 :: rest, r) (te2 :: te1 :: t).*)
   End defn.
 
   Global Arguments Traces {_}.
-
-  Definition always_can_switch {A} (_ _ : A) : Prop := True.
 End multi_interleaving.
-
-Program Instance alwaysCommRel {TE} : @te_commut_rel TE :=
-  { comm_rel := always_can_switch;
-  }.
-Obligation 1.
-easy. Qed.
-Obligation 2.
-cbv. left. easy. Qed.
-
-Ltac mint_case_analysis i H te rest Hte :=
-  repeat dependent destruction i;
-  simpl in Hte;
-  lazymatch type of Hte with
-  | ?t_x = te :: rest =>
-    gen_consume t_x te rest; simpl in H; clear Hte
-  end.
 
 Section tests.
   Context `{Hssp : StateSpace} (a b c d e f : TE).
 
-  Ltac mint2_helper :=
-    simpl; unfold always_can_switch; auto with slot; repeat constructor.
-
-  Goal MultiIlv [[a;b]; [c;d]] [a; b; c; d].
-  Proof with mint2_helper.
-    exists ([], [a;b], [[c; d]]). intros H.
-    apply mint_cons_m.
-    apply mint_cons_r with (traces' := ([[]], [c;d], []))...
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; b; c; d].
+  Proof.
+    repeat constructor.
   Qed.
 
-  Goal MultiIlv [[a;b]; [c;d]] [c; d; a; b].
-  Proof with mint2_helper.
-    exists ([[a;b]], [c; d], []). intros H.
-    apply mint_cons_m.
-    apply mint_cons_l with (traces' := ([], [a; b], [[]]))...
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; d; a; b].
+  Proof.
+    repeat constructor.
   Qed.
 
-  Goal MultiIlv [[a;b]; [c;d]] [a;c;b;d].
-  Proof with mint2_helper.
-    exists ([], [a;b], [[c; d]]). intros H.
-    apply mint_cons_r with (traces' := ([[b]], [c; d], [])); [easy|constructor|idtac].
-    apply mint_cons_l with (traces' := ([], [b], [[d]]))...
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a;c;b;d].
+  Proof.
+    repeat constructor.
   Qed.
 End tests.
 
-Lemma te_comm_dec : forall `{StateSpace} a b, trace_elems_commute a b \/ not (trace_elems_commute a b).
-Proof.
-  intros. apply classic.
-Qed.
-
 Section uniq.
-  Context `{Hssp : StateSpace}
-          (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).
+  Context `{Hssp : StateSpace}.
+
+  Fixpoint canonicalize_mint (t : list TE) zip_e zip_r
+             s s'
+             (Ht : MInt alwaysCommRel ([],zip_e,zip_r) t)
+             (Hls : LongStep s t s') {struct Ht} :
+    exists t', MInt nonCommRel ([],zip_e,zip_r) t' /\ LongStep s t' s'.
+  Proof with eauto with slot.
+    destruct Ht as [t
+                   |l r te rest t Hpick Ht
+                   |z t Ht
+                   ].
+    { exists t. split...
+      constructor.
+    }
+    { clear Ht0. clear Hpick.
+
+
+
 
   (*Fixpoint interleaving_to_mens_ t1 t2 t (H : Interleaving t1 t2 t) :
     MultiIlv [t1; t2]%vector t.
@@ -234,7 +219,7 @@ Section uniq.
     destruct H;
       [pose (i0 := fin2_zero); pose (tx := t1)
       |pose (i0 := fin2_one); pose (tx := t2)
-      |exists fin2_zero; eapply mint_nil; repeat constructor
+      |exists fin2_zero; eapply mint_nil; repeat consturctor
       ];
       (* Resolve goals 1-2: *)
       exists i0;
@@ -259,9 +244,6 @@ Section uniq.
         ]
       ]).
   Defined.*)
-
-  Definition trace_elems_don't_commute a b :=
-    not (trace_elems_commute a b).
 
   Definition MIntUniq_ (tt : list (list TE)) (t : list TE) :=
     exists z, zipper_of z tt ->

@@ -17,7 +17,7 @@ Section defn.
   Definition movr (z : t) : t :=
     match z with
     | (l, e, []) => (l, e, [])
-    | (l, e, r :: rest) => (l, r, rest)
+    | (l, e, r :: rest) => (e :: l, r, rest)
     end.
 
   Definition get (z : t) : V :=
