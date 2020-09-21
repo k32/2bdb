@@ -9,7 +9,8 @@ From LibTx Require Import
      SLOT.Generator
      SLOT.Zipper.
 
-Module Zip := SLOT.Zipper.
+Module Zip := SLOT.Zipper.OfLists.
+Module Zip0 := SLOT.Zipper.
 
 From Coq Require Import
      List
@@ -37,18 +38,18 @@ Definition trace_elems_don't_commute `{StateSpace} a b :=
 Program Instance nonCommRel `{StateSpace} : @te_commut_rel TE :=
   { comm_rel := trace_elems_don't_commute
   }.
-Obligation 1.
+Next Obligation.
 unfold symmetric. intros x y Hcomm.
 firstorder. Qed.
-Obligation 2.
+Next Obligation.
 unfold decidable. apply classic. Qed.
 
 Program Instance alwaysCommRel {TE} : @te_commut_rel TE :=
   { comm_rel := always_can_switch;
   }.
-Obligation 1.
+Next Obligation.
 easy. Qed.
-Obligation 2.
+Next Obligation.
 cbv. left. easy. Qed.
 
 Section restricted_ensemble.
@@ -81,18 +82,18 @@ Section restricted_ensemble.
   | uilv_nil : forall t, UniqueInterleaving comm_set [] t t.
 End restricted_ensemble.
 
-Section mutually_holding_prop.
-  Context A (P : relation A).
+Section forall_dec.
+  Context {A} (P : A -> Prop).
 
-  Definition Forall_dec a l :
-    (forall a b, decidable (P a b)) ->
-    decidable (Forall (P a) l).
+  Definition Forall_dec l :
+    (forall a, decidable (P a)) ->
+    decidable (Forall P l).
   Proof.
     intros Hdec.
     induction l.
     { left. constructor. }
     { destruct IHl as [Hl|Hl].
-      - destruct (Hdec a a0).
+      - destruct (Hdec a).
         + left. constructor; auto.
         + right. intros H'.
           inversion_ H'.
@@ -100,18 +101,7 @@ Section mutually_holding_prop.
         inversion_ H.
     }
   Defined.
-
-  Inductive NonCommSet : list A -> list A -> Prop :=
-  | nc_nil : NonCommSet [] []
-  | nc_cons : forall a l r,
-      Forall (P a) r ->
-      NonCommSet l r ->
-      NonCommSet (a :: l) (a :: r)
-  | nc_drop : forall a l r,
-      not (Forall (P a) r) ->
-      NonCommSet l r ->
-      NonCommSet (a :: l) r.
-End mutually_holding_prop.
+End forall_dec.
 
 Section picker_idea.
   Context `{HSsp : StateSpace} {Hcomm_rel : @te_commut_rel TE}.
@@ -132,7 +122,7 @@ Section multi_interleaving.
   Section defn.
     Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
 
-    Definition Traces := Zip.t (list TE).
+    Definition Traces := @Zip.t TE.
 
     Definition push te (traces : Traces) :=
       match traces with
@@ -142,22 +132,21 @@ Section multi_interleaving.
     Let T := list TE.
     Let TT := list T.
 
+    Definition can_pick_ te l :=
+      match l with
+      | [] => True
+      | (te' :: _) => comm_rel te te'
+      end.
+
     Definition can_pick' (tt : TT) (te : TE) : Prop :=
-      Forall (fun l => match l with
-                    | [] => True
-                    | (te' :: _) => comm_rel te te'
-                    end) tt.
+      Forall (can_pick_ te) tt.
 
     Inductive MInt : Traces -> @TraceEnsemble TE :=
     | mint_nil : forall t,
         MInt ([], t, []) t
     | mint_pick : forall (l r : TT) (te : TE) (rest t : T),
         can_pick' l te ->
-        let z' := match rest with
-                  | [] => Zip.of_list ((rev l) ++ r) []
-                  | _ => Zip.rewind (l, rest, r)
-                  end in
-        MInt z' t ->
+        MInt (Zip.rewind (l, rest, r)) t ->
         MInt (l, te :: rest, r) (te :: t)
     | mint_skip : forall z t,
         MInt (Zip.movr z) t ->
@@ -195,11 +184,87 @@ End tests.
 Section uniq.
   Context `{Hssp : StateSpace}.
 
-  Fixpoint canonicalize_mint (t : list TE) zip_e zip_r
-             s s'
-             (Ht : MInt alwaysCommRel ([],zip_e,zip_r) t)
-             (Hls : LongStep s t s') {struct Ht} :
-    exists t', MInt nonCommRel ([],zip_e,zip_r) t' /\ LongStep s t' s'.
+  Lemma always_can_pick l (te : TE) : can_pick' alwaysCommRel l te.
+  Proof.
+    unfold can_pick', comm_rel, alwaysCommRel, always_can_switch.
+    induction l.
+    - constructor.
+    - constructor.
+      + destruct a; easy.
+      + assumption.
+  Qed.
+
+  Hint Resolve always_can_pick : slot.
+
+  Fixpoint ilv_to_mint (t : list TE)
+           t1 t2 (Ht : Interleaving t1 t2 t)
+           s s' (Hls : LongStep s t s') {struct Ht} :
+    exists t', MInt alwaysCommRel (Zip.of_list [t1; t2]) t' /\ LongStep s t' s'.
+  Proof with eauto with slot.
+    destruct t1 as [|te1 t1].
+    { exists t2.
+      split...
+      destruct t2; repeat constructor.
+    }
+    destruct t2 as [|te2 t2].
+    { exists (te1 :: t1). simpl. split...
+      constructor.
+    }
+    simpl.
+    remember (te1 :: t1) as t_.
+    destruct Ht as [te t1' t2' t Ht
+                   |te t1' t2' t Ht
+                   |].
+    - inversion_ Hls.
+      eapply ilv_to_mint in Ht...
+      destruct Ht as [t' [Ht' Hls']].
+      exists (te :: t'). split...
+      constructor...
+    - inversion_ Hls.
+      eapply ilv_to_mint in Ht...
+      destruct Ht as [t' [Ht' Hls']].
+      exists (te :: t'). split...
+      apply mint_skip.
+      simpl.
+      apply mint_pick...
+    - discriminate.
+  Qed.
+
+  Lemma can_pick_dec te a : decidable (can_pick_ nonCommRel te a).
+  Proof.
+    (* TODO: don't abuse classic *)
+    apply classic.
+  Qed.
+
+  Fixpoint canonicalize_mint2 (t : list TE) z
+           (Ht : MInt alwaysCommRel z t)
+           s s' (Hls : LongStep s t s') {struct Ht} :
+    exists t', MInt nonCommRel z t' /\ LongStep s t' s'.
+  Proof with eauto with slot.
+    destruct Ht as [t
+                   |l r te rest t Hpick Ht
+                   |z t Ht
+                   ].
+    1:{ exists t. split... constructor. }
+    (* Skip case is relatively easy: *)
+    2:{ eapply canonicalize_mint2 in Ht...
+        destruct Ht as [t' [Ht' Hls']].
+        exists t'. split...
+        constructor. assumption.
+    }
+    (* Welcome to the hell proof *)
+    destruct (Forall_dec (can_pick_ nonCommRel te) l).
+    { apply can_pick_dec. }
+    { eapply canonicalize_mint2 in Ht...
+
+
+
+
+
+  Fixpoint canonicalize_mint_ (t : list TE)
+           z (Ht : MInt alwaysCommRel z t)
+           s s' (Hls : LongStep s t s') {struct Ht} :
+    exists t', MInt nonCommRel z t' /\ LongStep s t' s'.
   Proof with eauto with slot.
     destruct Ht as [t
                    |l r te rest t Hpick Ht
@@ -208,7 +273,13 @@ Section uniq.
     { exists t. split...
       constructor.
     }
+    2:{ apply (canonicalize_mint_ t z Ht s s' Hls).
+
     { clear Ht0. clear Hpick.
+
+      destruct rest.
+      - simpl in *.
+
 
 
 

@@ -1,5 +1,6 @@
 From Coq Require Import
-     List.
+     List
+     Program.
 
 Import ListNotations.
 
@@ -23,6 +24,11 @@ Section defn.
   Definition get (z : t) : V :=
     match z with
     | (_, v, _) => v
+    end.
+
+  Definition get_l (z : t) : list V :=
+    match z with
+    | (l, _, _) => l
     end.
 
   Inductive left_of : t -> t -> Prop :=
@@ -111,16 +117,65 @@ Section tests.
   Qed.
 End tests.
 
-Section zipper_of_lists.
-  Context {V : Type}.
+Module OfLists.
+  (** * Zipper of nonempty lists *)
+  Section defns.
+    Context {V : Type}.
 
-  Let Z := t (list V).
+    Definition t := t (list V).
 
-  Definition is_nonempty (l : list V) :=
-    match l with
-    | [] => false
-    | _ :: _ => true
-    end.
+    Definition movl (z : t) : t :=
+      match z with
+      | ([], e, r) => ([], e, r)
+      | (l :: rest, [], r) => (rest, l, r)
+      | (l :: rest, e, r) => (rest, l, e :: r)
+      end.
 
-  Definition nonempty (z : Z) := filter is_nonempty z.
-End zipper_of_lists.
+    Definition movr (z : t) : t :=
+      match z with
+      | (l, e, []) => (l, e, [])
+      | (l, [], r :: rest) => (l, r, rest)
+      | (l, e, r :: rest) => (e :: l, r, rest)
+      end.
+
+    Definition get (z : t) : list V :=
+      match z with
+      | (_, v, _) => v
+      end.
+
+    Let rewind_ (z : t) : t :=
+      (* equivalent to repeating movl many times: *)
+      let fix go l m r :=
+          match l, m with
+          | [],     _  => ([], m, r)
+          | e :: l', [] => go l' e r
+          | e :: l', _  => go l' e (m :: r)
+          end in
+      match z with
+      | (l, m, r) => go l m r
+      end.
+
+    Definition nonempty (l : list V) : bool :=
+      match l with
+      | [] => false
+      | _ :: _ => true
+      end.
+
+    Definition of_list (l : list (list V)) : t :=
+      match l with
+      | [] => ([], [], [])
+      | e :: rest => ([], e, List.filter nonempty rest)
+      end.
+
+    Definition rewind (z : t) : t :=
+      of_list (to_list z).
+
+    Goal forall a b l r, rewind ([a :: l], [], [b :: r]) = ([], a :: l, [b :: r]).
+      intros. reflexivity.
+    Qed.
+
+    Goal forall a b c l m r, rewind ([a :: l], c :: m, [b :: r]) = ([], a :: l, [c :: m; b :: r]).
+      intros. reflexivity.
+    Qed.
+  End defns.
+End OfLists.
