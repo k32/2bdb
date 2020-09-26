@@ -52,72 +52,6 @@ easy. Qed.
 Next Obligation.
 cbv. left. easy. Qed.
 
-Section restricted_ensemble.
-  Context `{HSsp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
-
-  Definition can_pick l a := Forall (comm_rel a) l.
-
-  Inductive RestrictedEnsemble (e : @TraceEnsemble TE) (non_comm_set : list TE) : TraceEnsemble :=
-  | restr_ens_nil :
-      e [] ->
-      RestrictedEnsemble e non_comm_set []
-  | restr_ens_cons : forall te t,
-      e (te :: t) ->
-      can_pick non_comm_set te ->
-      RestrictedEnsemble e non_comm_set (te :: t).
-
-  Inductive UniqueInterleaving comm_set : list TE -> list TE -> TraceEnsemble :=
-  | uilv_cons_l : forall l t1 t2 t,
-      can_pick comm_set l ->
-      UniqueInterleaving [] t1 t2 t ->
-      UniqueInterleaving comm_set (l :: t1) t2 (l :: t)
-  | uilv_cons_r1 : forall l r t1 t2 t,
-      can_pick (l :: comm_set) r ->
-      UniqueInterleaving [] (l :: t1) t2 (l :: t) ->
-      UniqueInterleaving comm_set (l :: t1) (r :: t2) (r :: l :: t)
-  | uilv_cons_r2 : forall r1 r2 t1 t2 t,
-      can_pick comm_set r2 ->
-      UniqueInterleaving [] t1 (r1 :: t2) (r1 :: t) ->
-      UniqueInterleaving comm_set t1 (r2 :: r1 :: t2) (r2 :: r1 :: t)
-  | uilv_nil : forall t, UniqueInterleaving comm_set [] t t.
-End restricted_ensemble.
-
-Section forall_dec.
-  Context {A} (P : A -> Prop).
-
-  Definition Forall_dec l :
-    (forall a, decidable (P a)) ->
-    decidable (Forall P l).
-  Proof.
-    intros Hdec.
-    induction l.
-    { left. constructor. }
-    { destruct IHl as [Hl|Hl].
-      - destruct (Hdec a).
-        + left. constructor; auto.
-        + right. intros H'.
-          inversion_ H'.
-      - right. intros H.
-        inversion_ H.
-    }
-  Defined.
-End forall_dec.
-
-Section picker_idea.
-  Context `{HSsp : StateSpace} {Hcomm_rel : @te_commut_rel TE}.
-
-  Let T := list TE.
-  Let TT := list T.
-
-  Fail Inductive Picker (non_comm_set : list TE) : TT -> TT -> TE -> Prop :=
-  | picker_skip : forall (t : T) te (tt tt' : TT)
-                    (p : Picker tt tt' te),
-      Picker non_comm_set (t :: tt) (t :: tt') te
-  | picker_pick : forall te,
-      can_pick non_comm_set te ->
-      Picker non_comm_set te.
-End picker_idea.
-
 Section multi_interleaving2.
   Section defn.
     Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
@@ -140,7 +74,8 @@ Section multi_interleaving2.
     | mint_pick : forall (l r : TT) (te : TE) (rest t : T),
         MInt (Zip.rewind (l, rest, r)) t ->
         MInt (l, te :: rest, r) (te :: t)
-    | mint_skip : forall z te t,
+    | mint_skip : forall (l r : TT) te r_hd m t,
+        let z := (l, m, r_hd :: r) in
         can_skip_to z te ->
         MInt (Zip.movr z) (te :: t) ->
         MInt z (te :: t).
@@ -227,9 +162,23 @@ Section uniq.
       exists (te :: t'). split.
       + constructor...
       + apply perm_cons...
-    - destruct IHHt as [t' [Ht' Hperm]]. clear Ht.
-      destruct t' as [|te' t'].
+    - subst z.
+      destruct IHHt as [t' [Ht' Hperm]].
+      destruct t' as [|te_r t'].
       { exfalso. inversion_ Hperm. symmetry in H0. now apply app_cons_not_nil in H0. }
+      destruct m as [|te_l m].
+      { exists (te_r :: t'). split... constructor... }
+      clear H. simpl in Ht, Ht'.
+      destruct r. (* TODO: induction *)
+      + inversion_ Ht'.
+        inversion_ Ht.
+        destruct (@comm_rel_dec _ nonCommRel te te_l).
+        * exists (te :: t'). split... constructor...
+        * simpl in H. apply not_not in H.
+          --
+
+
+
       destruct z as [[l m] r].
       destruct m as [|te0 rest].
       + exists (te' :: t'). split... constructor...

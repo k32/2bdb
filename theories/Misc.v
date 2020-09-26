@@ -1,9 +1,11 @@
 From Coq Require
      List
      Vector
-     VectorSpec.
+     VectorSpec
+     Logic.Decidable
+     Relations.
 
-Import Vector.VectorNotations List ListNotations.
+Import Vector.VectorNotations List ListNotations Decidable.
 Module Vec := Vector.
 
 Ltac symm_not :=
@@ -82,6 +84,29 @@ Ltac resolve_vec_forall_replace :=
     [assumption|now apply vec_replace_nth]
   (* | [Hforall : Vec.Forall ?P (Vec.replace ?vec ?i _) |- ?P (?vec[@?j])] => *)
   end.
+
+
+Section forall_dec.
+  Context {A} (P : A -> Prop).
+
+  Definition Forall_dec l :
+    (forall a, decidable (P a)) ->
+    decidable (Forall P l).
+  Proof.
+    intros Hdec.
+    induction l.
+    { left. constructor. }
+    { destruct IHl as [Hl|Hl].
+      - destruct (Hdec a).
+        + left. constructor; auto.
+        + right. intros H'.
+          inversion H'. auto.
+      - right. intros H.
+        inversion H. auto.
+    }
+  Defined.
+End forall_dec.
+
 
 Hint Extern 3 => resolve_vec_forall_replace : vector.
 Hint Extern 3 => resolve_vec_eq_replace : vector.
