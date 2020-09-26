@@ -87,16 +87,31 @@ Section multi_interleaving2.
   Global Arguments Traces {_}.
 End multi_interleaving2.
 
-Section tests.
-  Context `{Hssp : StateSpace} (a b c d e f : TE).
+Section sanity_check.
+  Context `{Hssp : StateSpace} (a b c d e f : TE)
+          (Hac_neq : a <> c)
+          (Had_neq : a <> d)
+          (Hbc_neq : b <> c)
+          (Hbd_neq : b <> d)
+          (Hac : trace_elems_commute a c)
+          (Hbd : trace_elems_commute b d).
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; b; c; d].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; c; b; d].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; c; d; b].
   Proof. repeat constructor. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; d; a; b].
   Proof. repeat constructor. Qed.
 
-  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a;c;b;d].
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; d; b].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; b; d].
   Proof. repeat constructor. Qed.
 
   Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [a;b;c].
@@ -113,7 +128,28 @@ Section tests.
 
   Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;b;a].
   Proof. repeat constructor. Qed.
-End tests.
+
+  Goal ~MultiIlv nonCommRel [[a]; [c]] [c; a].
+  Proof. intros H. inversion_ H. Qed.
+
+  Goal ~MultiIlv nonCommRel [[a; b]; [c; d]] [a; c; d; b].
+  Proof.
+    intros H. unfold MultiIlv in H.
+    repeat
+      (match goal with
+       | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
+       end; simpl); firstorder.
+  Qed.
+
+  Goal Permutation trace_elems_commute [a; c; b; d] [a; c; d; b].
+  Proof.
+    replace [a; c; d; b] with ([a;c] ++ [d; b]) by reflexivity.
+    replace [a; c; b; d] with ([a;c] ++ [b; d]) by reflexivity.
+    apply perm_shuf.
+    - apply perm_orig.
+    - assumption.
+  Qed.
+End sanity_check.
 
 Section uniq.
   Context `{Hssp : StateSpace}.
@@ -175,7 +211,7 @@ Section uniq.
         destruct (@comm_rel_dec _ nonCommRel te te_l).
         * exists (te :: t'). split... constructor...
         * simpl in H. apply not_not in H.
-          --
+          -- exists (te_l ::
 
 
 
