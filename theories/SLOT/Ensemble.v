@@ -54,7 +54,6 @@ Section defn.
     (** Let's briefly check that our definition of [Interleaving] has
     desired properties: *)
     Variables (a b c d : TE).
-
     Goal Interleaving [a;b] [c;d] [a;b;c;d].
     Proof. repeat constructor. Qed.
 
@@ -316,6 +315,37 @@ Section props.
       destruct Ht as [t1 t2 t Ht1 Ht2 Hint].
     Abort. (* This is wrong? *)
   End perm_props.
+
+  Section ensemble_equiv.
+    Context (e1 e2 : @TraceEnsemble TE).
+
+    Definition sufficient_replacement :=
+      forall t s s', e1 t ->
+                LongStep s t s' ->
+                exists t', e2 t' /\ LongStep s t' s'.
+
+    Definition sufficient_replacement_p :=
+      forall t, e1 t ->
+           exists t', e2 t' /\ Permutation trace_elems_commute t t'.
+
+    Theorem ht_sufficient_replacement P Q :
+      sufficient_replacement ->
+      -{{P}} e2 {{Q}} -> -{{P}} e1 {{Q}}.
+    Proof.
+      intros He2 H t Ht s s' Hls Hpre.
+      destruct (He2 t s s' Ht Hls) as [t' [Ht' Hls']].
+      eapply H; eauto.
+    Qed.
+
+    Lemma comm_perm_sufficient_replacement :
+      sufficient_replacement_p ->
+      sufficient_replacement.
+    Proof.
+      intros H t s s' Ht Hls.
+      destruct (H t Ht) as [t' [Ht' Hperm]].
+      eapply ht_comm_perm in Hperm; eauto.
+    Qed.
+  End ensemble_equiv.
 
   Section uniq_correct.
     Context (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).

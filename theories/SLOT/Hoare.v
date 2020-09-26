@@ -171,6 +171,8 @@ Section defn.
       trace_elems_commute te2 te1.
   Proof. firstorder. Qed.
 
+  Hint Resolve trace_elems_commute_symm : slot.
+
   Lemma trace_elems_commute_head : forall s s'' b a trace,
       trace_elems_commute a b ->
       LongStep s (b :: a :: trace) s'' ->
@@ -216,6 +218,20 @@ Section defn.
     inversion_ H9.
     exists s'0.
     split...
+  Qed.
+
+  Lemma ht_comm_perm s s' t t' :
+    LongStep s t s' ->
+    Permutation trace_elems_commute t t' ->
+    LongStep s t' s'.
+  Proof with eauto with slot.
+    intros Hls Hperm.
+    induction Hperm.
+    - trivial.
+    - apply ls_split in IHHperm.
+      destruct IHHperm as [s0 [Hss0 Hs0s']].
+      apply trace_elems_commute_head in Hs0s'...
+      eapply ls_concat...
   Qed.
 
   Section ExpandTrace.

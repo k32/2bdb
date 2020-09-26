@@ -216,6 +216,51 @@ Section uniq.
     - discriminate.
   Qed.
 
+  Theorem mint_sufficient_replacement tt :
+    sufficient_replacement_p (MultiIlv alwaysCommRel tt) (MultiIlv nonCommRel tt).
+  Proof with eauto with slot.
+    intros t Ht.
+    unfold MultiIlv in *.
+    induction Ht.
+    - exists t. split; constructor...
+    - destruct IHHt as [t' [Ht' HPerm]].
+      exists (te :: t'). split.
+      + constructor...
+      + apply perm_cons...
+    - destruct IHHt as [t' [Ht' Hperm]]. clear Ht.
+      destruct t' as [|te' t'].
+      { exfalso. inversion_ Hperm. symmetry in H0. now apply app_cons_not_nil in H0. }
+      destruct z as [[l m] r].
+      destruct m as [|te0 rest].
+      + exists (te' :: t'). split... constructor...
+      +
+
+        inversion_ Hperm.
+        * exists (te' :: t'). split... constructor...
+
+        exists (te' :: t'). split...
+
+        constructor...
+        unfold can_skip_to.
+
+
+        simpl in *.
+        destruct m as [|m_h m].
+        * simpl in *.
+
+
+
+      destruct t as [].
+      2:{
+      + exists [te]. split.
+        * constructor. unfold can_skip_to
+
+    remember tt as tt_.
+    induction Ht.
+    - exists t. split...
+      apply mint_nil.
+
+
   Fixpoint canonicalize_mint (t : list TE) z
            (Ht : MInt alwaysCommRel z t)
            s s' (Hls : LongStep s t s') {struct Ht} :
@@ -225,14 +270,21 @@ Section uniq.
                    |l r te rest t Ht
                    |z te t Hpick Ht
                    ].
-    { exists t. split... constructor... }
-    { inversion_ Hls.
+    - exists t. split... constructor...
+    - inversion_ Hls.
       eapply canonicalize_mint with (s := s'0) (s' := s') in Ht...
       destruct Ht as [t' [Ht' Hls']].
       exists (te :: t'). split...
       constructor. assumption.
-    }
-    (* Welcome to the hell proof: *)
+    - (* Welcome to the hell proof: *)
+      remember (te :: t) as t_.
+      eapply canonicalize_mint in Ht...
+      destruct Ht as [[|te_r t'] [Ht' Hls']].
+      +
+        inversion_ Ht'.
+
+
+
     destruct z as [[l [|te' m]] r].
     { eapply canonicalize_mint in Ht...
       destruct Ht as [[|te' t'] [Ht' Hls']].
@@ -240,13 +292,14 @@ Section uniq.
         cbn in Ht'.
         destruct r as [|r].
         + inversion_ Ht'.
-        + inversion_ Ht'. constructor...
+        + inversion_ Ht'.  constructor...
       - exists (te' :: t'). split...
         constructor...
     }
+
+
     destruct (@comm_rel_dec _ nonCommRel te te').
-    { eapply canonicalize_mint in Ht...
-      destruct Ht as [t' [Ht' Hls']].
+    {
       exists t'. split...
 
 
