@@ -74,10 +74,10 @@ Section multi_interleaving2.
     | mint_pick : forall (l r : TT) (te : TE) (rest t : T),
         MInt (Zip.rewind (l, rest, r)) t ->
         MInt (l, te :: rest, r) (te :: t)
-    | mint_skip : forall z z' te t,
-        left_of z z' ->
+    | mint_skip : forall (l r : TT) te r_hd m t,
+        let z := (l, m, r_hd :: r) in
         can_skip_to z te ->
-        MInt z' (te :: t) ->
+        MInt (Zip.movr z) (te :: t) ->
         MInt z (te :: t).
 
     Definition MultiIlv (tt : TT) : @TraceEnsemble TE :=
@@ -90,30 +90,29 @@ End multi_interleaving2.
 Section tests.
   Context `{Hssp : StateSpace} (a b c d e f : TE).
 
-  Ltac mint2 :=
-    unfold MultiIlv;
-    cbn;
-    lazymatch goal with
-    | [ |- MInt _ ([], ?m, [?te :: ?r]) (?te :: ?t)] =>
-      apply mint_skip with (z' := ([m], te :: r, [])); [constructor|easy|idtac]
-    | _ =>
-      constructor
-    end.
-
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; b; c; d].
-  Proof. repeat mint2. Qed.
+  Proof. repeat constructor. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; d; a; b].
-  Proof. repeat mint2. Qed.
+  Proof. repeat constructor. Qed.
 
-  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; c; b; d].
-  Proof. repeat mint2. Qed.
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a;c;b;d].
+  Proof. repeat constructor. Qed.
 
-  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; b; d].
-  Proof. repeat mint2. Qed.
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [a;b;c].
+  Proof. repeat constructor. Qed.
 
-  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; d; b].
-  Proof. repeat mint2. Qed.
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;a;c].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;c;a].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;a;b].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;b;a].
+  Proof. repeat constructor. Qed.
 End tests.
 
 Section uniq.
@@ -133,8 +132,6 @@ Section uniq.
     destruct t1 as [|te1 t1].
     { apply interleaving_nil in Ht. subst.
       destruct t; repeat constructor.
-      simpl. apply mint_skip with (z' := ([[]], t :: t0, []))...
-
     }
     destruct t2 as [|te2 t2].
     { apply interleaving_symm, interleaving_nil in Ht. subst.
