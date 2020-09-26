@@ -118,6 +118,152 @@ Section picker_idea.
       Picker non_comm_set te.
 End picker_idea.
 
+Section multi_interleaving2.
+  Section defn.
+    Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
+
+    Definition Traces := @Zip.t TE.
+
+    Let T := list TE.
+    Let TT := list T.
+
+    Definition can_skip_to (z : Traces) (te : TE) : Prop :=
+      match z with
+      | (_, [], _) => True
+      | (_, te' :: _, _) => comm_rel te te'
+      end.
+
+    Inductive MInt : Traces -> @TraceEnsemble TE :=
+    | mint_nil : forall t r,
+        filter Zip.nonempty r = [] ->
+        MInt ([], t, r) t
+    | mint_pick : forall (l r : TT) (te : TE) (rest t : T),
+        MInt (Zip.rewind (l, rest, r)) t ->
+        MInt (l, te :: rest, r) (te :: t)
+    | mint_skip : forall z te t,
+        can_skip_to z te ->
+        MInt (Zip.movr z) (te :: t) ->
+        MInt z (te :: t).
+
+    Definition MultiIlv (tt : TT) : @TraceEnsemble TE :=
+      MInt (Zip.of_list tt).
+  End defn.
+
+  Global Arguments Traces {_}.
+End multi_interleaving2.
+
+Section tests.
+  Context `{Hssp : StateSpace} (a b c d e f : TE).
+
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; b; c; d].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; d; a; b].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a;c;b;d].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [a;b;c].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;a;c].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;c;a].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;a;b].
+  Proof. repeat constructor. Qed.
+
+  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;b;a].
+  Proof. repeat constructor. Qed.
+End tests.
+
+Section uniq.
+  Context `{Hssp : StateSpace}.
+
+  Lemma always_can_skip_to z (te : TE) : can_skip_to alwaysCommRel z te.
+  Proof.
+    now destruct z as [[l [|m]] r].
+  Qed.
+
+  Hint Resolve always_can_skip_to : slot.
+
+  Fixpoint ilv_to_mint (t : list TE)
+           t1 t2 (Ht : Interleaving t1 t2 t) {struct Ht} :
+    MInt alwaysCommRel (Zip.of_list [t1; t2]) t.
+  Proof with eauto with slot.
+    destruct t1 as [|te1 t1].
+    { apply interleaving_nil in Ht. subst.
+      destruct t; repeat constructor.
+    }
+    destruct t2 as [|te2 t2].
+    { apply interleaving_symm, interleaving_nil in Ht. subst.
+      constructor...
+    }
+    simpl.
+    remember (te1 :: t1) as t1_.
+    remember (te2 :: t2) as t2_.
+    destruct Ht as [te t1' t2' t Ht
+                   |te t1' t2' t Ht
+                   |]; subst.
+    - eapply ilv_to_mint in Ht.
+      now constructor.
+    - eapply ilv_to_mint in Ht...
+      apply mint_skip...
+      constructor...
+    - discriminate.
+  Qed.
+
+  Fixpoint canonicalize_mint (t : list TE) z
+           (Ht : MInt alwaysCommRel z t)
+           s s' (Hls : LongStep s t s') {struct Ht} :
+    exists t', MInt nonCommRel z t' /\ LongStep s t' s'.
+  Proof with eauto with slot.
+    destruct Ht as [t
+                   |l r te rest t Ht
+                   |z te t Hpick Ht
+                   ].
+    { exists t. split... constructor... }
+    { inversion_ Hls.
+      eapply canonicalize_mint with (s := s'0) (s' := s') in Ht...
+      destruct Ht as [t' [Ht' Hls']].
+      exists (te :: t'). split...
+      constructor. assumption.
+    }
+    (* Welcome to the hell proof: *)
+    destruct z as [[l [|te' m]] r].
+    { eapply canonicalize_mint in Ht...
+      destruct Ht as [[|te' t'] [Ht' Hls']].
+      - exists []. split...
+        cbn in Ht'.
+        destruct r as [|r].
+        + inversion_ Ht'.
+        + inversion_ Ht'. constructor...
+      - exists (te' :: t'). split...
+        constructor...
+    }
+    destruct (@comm_rel_dec _ nonCommRel te te').
+    { eapply canonicalize_mint in Ht...
+      destruct Ht as [t' [Ht' Hls']].
+      exists t'. split...
+
+
+
+    { eapply canonicalize_mint in Ht...
+      destruct Ht as [t' [Ht' Hls']].
+
+
+
+      exists t'. split...
+      destruct t' as [|t'].
+      -
+
+
+(**** GOMI GOMI ***************************************************)
+
+
 Section multi_interleaving.
   Section defn.
     Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
@@ -253,9 +399,15 @@ Section uniq.
         constructor. assumption.
     }
     (* Welcome to the hell proof *)
+    destruct l.
+    - eapply canonicalize_mint2
+
+
     destruct (Forall_dec (can_pick_ nonCommRel te) l).
     { apply can_pick_dec. }
-    { eapply canonicalize_mint2 in Ht...
+    { eapply canonicalize_mint2 in Hls...
+      destruct l.
+      -
 
 
 

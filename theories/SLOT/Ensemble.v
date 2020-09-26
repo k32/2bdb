@@ -7,12 +7,9 @@
  *)
 From Coq Require
      Program.Basics
-     List
-     Vector.
+     List.
 
 Import List ListNotations Basics.
-
-Module Vec := Vector.
 
 From LibTx Require Import
      FoldIn
@@ -214,6 +211,19 @@ Section props.
       intros.
       induction H...
       induction c__tl...
+    Qed.
+
+    Example no_swapping_heads_is_not_always_impossible : forall (a b c : TE),
+        a <> b -> b <> c -> a <> c ->
+        exists t,
+          Interleaving [a; b] [c] t ->
+          ~Interleaving [b] [a; c] t.
+    Proof.
+      intros a b c Hab Hbc Hac.
+      exists [c; a; b]. intros H H'.
+      repeat match goal with
+             | [H : Interleaving _ _ _ |- _] => inversion H; clear H
+             end; subst; contradiction.
     Qed.
 
     Lemma interleaving_nil_r : forall (a b : list TE),
