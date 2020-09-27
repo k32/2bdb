@@ -215,6 +215,18 @@ Section uniq.
     end.
   Qed.
 
+  Lemma mint_head CR (te : TE) l m r (t : list TE) :
+    MInt CR (l, m, r) (te :: t) ->
+    exists m', m = te :: m'.
+  Proof with reflexivity.
+    intros H.
+    inversion_ H.
+    - exists t...
+    - exists rest...
+    - exists rest...
+    - exists rest...
+  Qed.
+
   Theorem mint_sufficient_replacement z :
     sufficient_replacement_p (MInt alwaysCommRel z) (MInt nonCommRel z).
   Proof with eauto with slot.
@@ -230,10 +242,11 @@ Section uniq.
     - destruct IHHt as [t' [Ht' Hperm']].
       cbv in Hcomm. clear Hcomm.
       destruct z' as [[l' mid'] r'].
-      eapply mint_head_eq in Ht' as Ht''; eauto.
-      destruct Ht'' as [t'' Ht'']. subst t'.
+      eapply mint_head_eq in Ht' as Ht''; eauto. destruct Ht'' as [t'' Ht'']. subst t'.
+      apply mint_head in Ht' as Ht''. destruct Ht'' as [m' Hm']. subst mid'.
 
-      destruct (@comm_rel_dec _ nonCommRel te_l te_r').
+
+      destruct (@comm_rel_dec _ nonCommRel te_l te_r).
       + exists (te_l :: te_r' :: t'). split.
         * apply mint_right with (z'0 := z')...
         * apply perm_cons...
