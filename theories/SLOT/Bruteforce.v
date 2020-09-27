@@ -242,20 +242,16 @@ Section uniq.
     - destruct IHHt as [t' [Ht' Hperm']].
       cbv in Hcomm. clear Hcomm.
       destruct z' as [[l' mid'] r'].
-      eapply mint_head_eq in Ht' as Ht''; eauto. destruct Ht'' as [t'' Ht'']. subst t'.
+      eapply mint_head_eq in Ht' as Ht''; eauto. destruct Ht'' as [t'' Ht'']. subst t'. clear Ht.
       apply mint_head in Ht' as Ht''. destruct Ht'' as [m' Hm']. subst mid'.
-
-
       destruct (@comm_rel_dec _ nonCommRel te_l te_r).
-      + exists (te_l :: te_r' :: t'). split.
-        * apply mint_right with (z'0 := z')...
+      + exists (te_l :: te_r :: t''). split.
+        * apply mint_right with (z' := (l', te_r :: m', r'))...
         * apply perm_cons...
       + cbn in H. apply not_not in H. 2:{ apply classic. }
-
-        inversion_ Ht'.
-        destruct t'.
-        * exists [te_r'; te_l]. split.
-          -- inversion_ Hperm'.
+        destruct m'.
+        * exists (te_r :: te_l :: t''). split.
+          --
 
   Theorem mint_sufficient_replacement tt :
     sufficient_replacement_p (MultiIlv alwaysCommRel tt) (MultiIlv nonCommRel tt).
