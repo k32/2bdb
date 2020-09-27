@@ -49,6 +49,15 @@ Section defn.
     Proof.
       intros. intros H. subst z. inversion H. subst. inversion H2.
     Qed.
+
+    Goal forall a b c z, left_of z ([a; b], c, []) -> get z = a \/ get z = b.
+    Proof.
+      intros. inversion H; subst.
+      - simpl. now left.
+      - inversion H2; subst; simpl.
+        + now right.
+        + inversion H3.
+    Qed.
   End tests.
 
   Lemma left_of_length z z' :
