@@ -68,24 +68,30 @@ Section multi_interleaving2.
       end.
 
     Inductive MInt : Traces -> @TraceEnsemble TE :=
-    | mint_nil : forall t r,
+    | mint_nil : forall l r t,
         filter Zip.nonempty r = [] ->
-        MInt ([], t, r) t
-    | mint_pick : forall (l r : TT) (te : TE) (rest t : T),
-        MInt (Zip.rewind (l, rest, r)) t ->
-        MInt (l, te :: rest, r) (te :: t)
-    | mint_skip : forall z z' te t,
-        left_of z z' ->
-        can_skip_to z te ->
-        MInt z' (te :: t) ->
-        MInt z (te :: t).
+        filter Zip.nonempty l = [] ->
+        MInt (l, t, r) t
+    | mint_right : forall te_l te_r rest l r z' t,
+        comm_rel te_l te_r ->
+        left_of (l, rest, r) z' ->
+        MInt z' (te_r :: t) ->
+        MInt (l, te_l :: rest, r) (te_l :: te_r :: t)
+    | mint_left : forall te l r rest z' t,
+        (l, rest, r) = z' \/ left_of z' (l, rest, r) ->
+        MInt z' t ->
+        MInt (l, te :: rest, r) (te :: t).
 
     Definition MultiIlv (tt : TT) : @TraceEnsemble TE :=
-      MInt (Zip.of_list tt).
+      match tt with
+      | [] => eq []
+      | _ => fun t => exists z, zipper_of z tt /\ MInt z t
+      end.
   End defn.
 
   Global Arguments Traces {_}.
 End multi_interleaving2.
+
 
 Section sanity_check.
   Context `{Hssp : StateSpace} (a b c d e f : TE)
@@ -96,52 +102,60 @@ Section sanity_check.
           (Hac : trace_elems_commute a c)
           (Hbd : trace_elems_commute b d).
 
-  Ltac mint3 :=
-    unfold MultiIlv;
-    cbn;
+  Ltac mint2 :=
     lazymatch goal with
-    | [ |- MInt _ (?l, ?m, (?te :: ?r) :: ?r_tl) (?te :: ?t)] =>
-      apply mint_skip with (z' := (m :: l, te :: r, r_tl)); [constructor|easy|idtac]
-    | [ |- MInt _ (?l, ?m, [?r_hd; (?te :: ?r)]) (?te :: ?t)] =>
-      apply mint_skip with (z' := (r_hd :: m :: l, te :: r, [])); [repeat constructor|easy|idtac]
-    | _ =>
-      constructor
+    | |- MInt _ (?l, ?a :: ?rest, (?b :: ?r1) :: ?r) (?a :: ?b :: _) =>
+      apply mint_right with (z' := (rest :: l, b :: r1, r)); [easy|constructor|idtac]
+    | |- MInt _ ((?b :: ?l1) :: ?l, ?a :: ?rest, ?r) (?a :: ?b :: _) =>
+      apply mint_left with (z' := (l, b :: l1, rest :: r)); [right; constructor|idtac]
+    | |- _ => constructor || eapply mint_left; eauto
     end.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; b; c; d].
-  Proof. repeat mint3. Qed.
+  Proof.
+    exists ([], [a;b], [[c;d]]). split.
+    - now left.
+    - repeat mint2.
+  Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; c; b; d].
-  Proof. repeat mint3. Qed.
+  Proof.
+    exists ([], [a;b], [[c;d]]). split.
+    - now left.
+    - repeat mint2.
+  Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; c; d; b].
-  Proof. repeat mint3. Qed.
+  Proof.
+    exists ([], [a;b], [[c;d]]). split.
+    - now left.
+    - repeat mint2.
+  Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; d; a; b].
-  Proof. repeat mint3. Qed.
+  Proof.
+    exists ([[a;b]], [c;d], []). split.
+    - right. constructor.
+    - repeat mint2.
+  Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; d; b].
-  Proof. repeat mint3. Qed.
+  Proof.
+    exists ([[a;b]], [c;d], []). split.
+    - right. constructor.
+    - repeat mint2.
+  Qed.
+
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; b; d].
-  Proof. repeat mint3. Qed.
+  Proof.
+    exists ([[a;b]], [c;d], []). split.
+    - right. constructor.
+    - repeat mint2.
+  Qed.
 
-  Goal MultiIlv alwaysCommRel [[a;d]; [b;e]; [c;f]] [a;b;c;d;f;e].
-  Proof. repeat mint3.  Qed.
 
-  Goal MultiIlv alwaysCommRel [[a;d]; [b]; [c]] [b;a;d;c].
-  Proof. repeat mint3. Qed.
-
-  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;c;a].
-  Proof. repeat mint3. Qed.
-
-  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;a;b].
-  Proof. repeat mint3. Qed.
-
-  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;b;a].
-  Proof. repeat mint3. Qed.
-
-  Goal ~MultiIlv nonCommRel [[a]; [c]] [c; a].
+  Goal ~MInt nonCommRel ([], [a], [[c]]) [c; a].
   Proof. intros H. inversion_ H. Qed.
 
   Goal Permutation trace_elems_commute [a; c; b; d] [a; c; d; b].
@@ -153,39 +167,125 @@ Section sanity_check.
     - assumption.
   Qed.
 
-  Goal forall (P : list TE -> Prop) t, MultiIlv nonCommRel [[a; b]; [c; d]] t -> P t.
-  Proof.
-    intros P t H. unfold MultiIlv in H. cbn in *.
-    match goal with
-    | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
-    end; cbn in *; try discriminate.
-    2:{ match goal with
-        | [H: left_of ?z ?z' |- _] =>
-          inversion H; subst; clear H
-        end.
-        1:{ inversion_ H2.
-        2:{
-          inversion H. subst. clear H.
+  (* Goal forall (P : list TE -> Prop) t, MultiIlv nonCommRel [[a; b]; [c; d]] t -> P t. *)
+  (* Proof. *)
+  (*   intros P t H. unfold MultiIlv in H. cbn in *. *)
+  (*   match goal with *)
+  (*   | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H *)
+  (*   end; cbn in *; try discriminate. *)
+  (*   2:{ match goal with *)
+  (*       | [H: left_of ?z ?z' |- _] => *)
+  (*         inversion H; subst; clear H *)
+  (*       end. *)
+  (*       1:{ inversion H2. *)
+  (*           subst te. subst. clear H2. cbn in H0. *)
+
+
+  (*       2:{ *)
+  (*         inversion H. subst. clear H. *)
 
 
 
-    inversion_ H; clear H; try discriminate.
+  (*   inversion_ H; clear H; try discriminate. *)
 
-    2:{
+  (*   2:{ *)
 
-    repeat
-    1:{
-  Qed.
+  (*   repeat *)
+  (*   1:{ *)
+  (* Qed. *)
 
-  Goal ~MultiIlv nonCommRel [[a; b]; [c; d]] [a; c; d; b].
-  Proof.
-    intros H. unfold MultiIlv in H.
-    repeat
-      (match goal with
-       | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
-       end; simpl); firstorder.
-  Qed.
+  (* Goal ~MultiIlv nonCommRel [[a; b]; [c; d]] [a; c; d; b]. *)
+  (* Proof. *)
+  (*   intros H. unfold MultiIlv in H. *)
+  (*   repeat *)
+  (*     (match goal with *)
+  (*      | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H *)
+  (*      end; simpl); firstorder. *)
+  (* Qed. *)
 End sanity_check.
+
+Section uniq.
+  Context `{Hssp : StateSpace}.
+
+  Lemma always_can_skip_to z (te : TE) : can_skip_to alwaysCommRel z te.
+  Proof.
+    now destruct z as [[l [|m]] r].
+  Qed.
+
+  Hint Resolve always_can_skip_to : slot.
+
+  Theorem mint_sufficient_replacement tt :
+    sufficient_replacement_p (MultiIlv alwaysCommRel tt) (MultiIlv nonCommRel tt).
+  Proof with eauto with slot.
+    intros t Ht.
+    destruct tt as [|t0 tt].
+    { exists []. split...
+      - reflexivity.
+      - inversion Ht. constructor.
+    }
+    cbn in *.
+    destruct Ht as [z [Hz Ht]].
+    induction Ht as [l r t Hr Hl
+                    |te_l te_r rest l r z' t Hgarbage Hz' Ht
+                    |te l r rest z' t Hz' Ht
+                    ].
+    - exists t. exists
+
+    - destruct IHHt as [t' [Ht' HPerm]].
+      exists (te :: t'). split.
+      + constructor...
+      + apply perm_cons...
+    - destruct IHHt as [t' [Ht' Hperm]].
+      destruct t' as [|te_r t'].
+      { exfalso. inversion_ Hperm. symmetry in H. now apply app_cons_not_nil in H. }
+      destruct z as [[l [|te_l m]] r].
+      { exists (te_r :: t'). split... eapply mint_skip... }
+      clear Ht.
+      remember (l, te_l :: m, r) as z0.
+      induction Hz'.
+      + inversion_ Heqz0.
+        (* No, this is wrong: *)
+
+        exists (te_l :: t').
+        split.
+
+      + constructor.
+
+
+  Fixpoint ilv_to_mint (t : list TE)
+           t1 t2 (Ht : Interleaving t1 t2 t) {struct Ht} :
+    MultiIlv alwaysCommRel [t1; t2] t.
+  Proof with eauto with slot.
+    destruct t1 as [|te1 t1].
+    { exists ([[]], t2, []). cbn. split.
+      - right. constructor.
+      - apply interleaving_nil in Ht. subst.
+        now constructor.
+    }
+    destruct t2 as [|te2 t2].
+    { apply interleaving_symm, interleaving_nil in Ht. subst.
+      exists ([], te1 :: t1, [[]]). split.
+      - now left.
+      - now constructor.
+    }
+    cbn. remember (te1 :: t1) as t1_. remember (te2 :: t2) as t2_.
+    destruct Ht as [te t1' t2' t Ht
+                   |te t1' t2' t Ht
+                   |]; subst; try discriminate.
+    - eapply ilv_to_mint in Ht.
+      exists ([], te :: t1', [te2 :: t2]). split...
+      destruct Ht as [z [[Hz|Hz] Ht]].
+      + subst. eapply mint_left; eauto.
+      + eapply
+      now constructor.
+    - eapply ilv_to_mint in Ht...
+      apply mint_skip with (z' := ([te1 :: t1], te :: t2', []))...
+      constructor...
+    - discriminate.
+  Qed.
+
+
+
 
 Section uniq.
   Context `{Hssp : StateSpace}.
@@ -202,8 +302,12 @@ Section uniq.
     MInt alwaysCommRel (Zip.of_list [t1; t2]) t.
   Proof with eauto with slot.
     destruct t1 as [|te1 t1].
-    { apply interleaving_nil in Ht. subst.
-      destruct t; repeat constructor.
+    { cbn.
+      apply interleaving_nil in Ht. subst.
+      destruct t; simpl.
+      - now constructor.
+      - apply mint_skip with (z' := ([[]], t :: t0, []))...
+        apply mint_nil...
     }
     destruct t2 as [|te2 t2].
     { apply interleaving_symm, interleaving_nil in Ht. subst.
@@ -218,7 +322,7 @@ Section uniq.
     - eapply ilv_to_mint in Ht.
       now constructor.
     - eapply ilv_to_mint in Ht...
-      apply mint_skip...
+      apply mint_skip with (z' := ([te1 :: t1], te :: t2', []))...
       constructor...
     - discriminate.
   Qed.
@@ -226,20 +330,33 @@ Section uniq.
   Theorem mint_sufficient_replacement tt :
     sufficient_replacement_p (MultiIlv alwaysCommRel tt) (MultiIlv nonCommRel tt).
   Proof with eauto with slot.
-    intros t Ht.
-    unfold MultiIlv in *.
-    induction Ht.
+    intros t Ht. unfold MultiIlv in *.
+    induction Ht as [l r t Hr Hl
+                    |l r te rest t Ht
+                    |z z' te t Hz' Hncomm Ht
+                    ].
     - exists t. split; constructor...
     - destruct IHHt as [t' [Ht' HPerm]].
       exists (te :: t'). split.
       + constructor...
       + apply perm_cons...
-    - subst z.
-      destruct IHHt as [t' [Ht' Hperm]].
+    - destruct IHHt as [t' [Ht' Hperm]].
       destruct t' as [|te_r t'].
-      { exfalso. inversion_ Hperm. symmetry in H0. now apply app_cons_not_nil in H0. }
-      destruct m as [|te_l m].
-      { exists (te_r :: t'). split... constructor... }
+      { exfalso. inversion_ Hperm. symmetry in H. now apply app_cons_not_nil in H. }
+      destruct z as [[l [|te_l m]] r].
+      { exists (te_r :: t'). split... eapply mint_skip... }
+      clear Ht.
+      remember (l, te_l :: m, r) as z0.
+      induction Hz'.
+      + inversion_ Heqz0.
+        (* No, this is wrong: *)
+
+        exists (te_l :: t').
+        split.
+
+      + constructor.
+
+
       clear H. simpl in Ht, Ht'.
       destruct r. (* TODO: induction *)
       + inversion_ Ht'.
@@ -248,6 +365,11 @@ Section uniq.
         * exists (te :: t'). split... constructor...
         * simpl in H. apply not_not in H.
           -- exists (te_l ::
+
+
+      induction H.
+      +
+
 
 
 
