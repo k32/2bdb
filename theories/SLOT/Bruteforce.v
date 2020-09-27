@@ -114,10 +114,10 @@ Section sanity_check.
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; b; d].
   Proof. repeat constructor. Qed.
 
-  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [a;b;c].
+  Goal MultiIlv alwaysCommRel [[a;d]; [b;e]; [c;f]] [a;b;c;d;f;e].
   Proof. repeat constructor. Qed.
 
-  Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;a;c].
+  Goal MultiIlv alwaysCommRel [[a;d]; [b]; [c]] [b;a;d;c].
   Proof. repeat constructor. Qed.
 
   Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;c;a].
@@ -128,6 +128,17 @@ Section sanity_check.
 
   Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;b;a].
   Proof. repeat constructor. Qed.
+
+  Goal forall (P : list TE -> Prop) t, MultiIlv nonCommRel [[a; b]; [c; d]] t -> P t.
+  Proof.
+    intros P t H. unfold MultiIlv in H. simpl in H.
+
+
+    repeat match goal with
+           | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
+           end; simpl; try discriminate.
+    1:{
+  Qed.
 
   Goal ~MultiIlv nonCommRel [[a]; [c]] [c; a].
   Proof. intros H. inversion_ H. Qed.
