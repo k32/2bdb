@@ -74,10 +74,10 @@ Section multi_interleaving2.
     | mint_pick : forall (l r : TT) (te : TE) (rest t : T),
         MInt (Zip.rewind (l, rest, r)) t ->
         MInt (l, te :: rest, r) (te :: t)
-    | mint_skip : forall (l r : TT) te r_hd m t,
-        let z := (l, m, r_hd :: r) in
+    | mint_skip : forall z z' te t,
+        left_of z z' ->
         can_skip_to z te ->
-        MInt (Zip.movr z) (te :: t) ->
+        MInt z' (te :: t) ->
         MInt z (te :: t).
 
     Definition MultiIlv (tt : TT) : @TraceEnsemble TE :=
@@ -96,61 +96,53 @@ Section sanity_check.
           (Hac : trace_elems_commute a c)
           (Hbd : trace_elems_commute b d).
 
+  Ltac mint3 :=
+    unfold MultiIlv;
+    cbn;
+    lazymatch goal with
+    | [ |- MInt _ (?l, ?m, (?te :: ?r) :: ?r_tl) (?te :: ?t)] =>
+      apply mint_skip with (z' := (m :: l, te :: r, r_tl)); [constructor|easy|idtac]
+    | [ |- MInt _ (?l, ?m, [?r_hd; (?te :: ?r)]) (?te :: ?t)] =>
+      apply mint_skip with (z' := (r_hd :: m :: l, te :: r, [])); [repeat constructor|easy|idtac]
+    | _ =>
+      constructor
+    end.
+
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; b; c; d].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; c; b; d].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [a; c; d; b].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; d; a; b].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; d; b].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;b]; [c;d]] [c; a; b; d].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a;d]; [b;e]; [c;f]] [a;b;c;d;f;e].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3.  Qed.
 
   Goal MultiIlv alwaysCommRel [[a;d]; [b]; [c]] [b;a;d;c].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [b;c;a].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;a;b].
-  Proof. repeat constructor. Qed.
+  Proof. repeat mint3. Qed.
 
   Goal MultiIlv alwaysCommRel [[a]; [b]; [c]] [c;b;a].
-  Proof. repeat constructor. Qed.
-
-  Goal forall (P : list TE -> Prop) t, MultiIlv nonCommRel [[a; b]; [c; d]] t -> P t.
-  Proof.
-    intros P t H. unfold MultiIlv in H. simpl in H.
-
-
-    repeat match goal with
-           | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
-           end; simpl; try discriminate.
-    1:{
-  Qed.
+  Proof. repeat mint3. Qed.
 
   Goal ~MultiIlv nonCommRel [[a]; [c]] [c; a].
   Proof. intros H. inversion_ H. Qed.
-
-  Goal ~MultiIlv nonCommRel [[a; b]; [c; d]] [a; c; d; b].
-  Proof.
-    intros H. unfold MultiIlv in H.
-    repeat
-      (match goal with
-       | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
-       end; simpl); firstorder.
-  Qed.
 
   Goal Permutation trace_elems_commute [a; c; b; d] [a; c; d; b].
   Proof.
@@ -159,6 +151,39 @@ Section sanity_check.
     apply perm_shuf.
     - apply perm_orig.
     - assumption.
+  Qed.
+
+  Goal forall (P : list TE -> Prop) t, MultiIlv nonCommRel [[a; b]; [c; d]] t -> P t.
+  Proof.
+    intros P t H. unfold MultiIlv in H. cbn in *.
+    match goal with
+    | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
+    end; cbn in *; try discriminate.
+    2:{ match goal with
+        | [H: left_of ?z ?z' |- _] =>
+          inversion H; subst; clear H
+        end.
+        1:{ inversion_ H2.
+        2:{
+          inversion H. subst. clear H.
+
+
+
+    inversion_ H; clear H; try discriminate.
+
+    2:{
+
+    repeat
+    1:{
+  Qed.
+
+  Goal ~MultiIlv nonCommRel [[a; b]; [c; d]] [a; c; d; b].
+  Proof.
+    intros H. unfold MultiIlv in H.
+    repeat
+      (match goal with
+       | [H : MInt _ _ _ |- _ ] => inversion H; subst; clear H
+       end; simpl); firstorder.
   Qed.
 End sanity_check.
 

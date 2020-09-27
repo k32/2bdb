@@ -38,6 +38,29 @@ Section defn.
       left_of z (l, v', (v :: r)) ->
       left_of z ((v' :: l), v, r).
 
+  Section tests.
+    Goal forall l1 l2 m r, let z := ([l1; l2], m, r) in left_of (movl z) z.
+    Proof. intros. simpl. repeat constructor. Qed.
+
+    Goal forall l1 l2 m r, let z := ([l1; l2], m, r) in left_of (movl (movl z)) z.
+    Proof. intros. simpl. repeat constructor. Qed.
+
+    Goal forall l1 m r, let z := ([l1], m, r) in ~left_of z z.
+    Proof.
+      intros. intros H. subst z. inversion H. subst. inversion H2.
+    Qed.
+  End tests.
+
+  Lemma left_of_length z z' :
+    left_of z z' ->
+    length (get_l z) < length (get_l z').
+  Proof.
+    intros H.
+    induction H; simpl.
+    - constructor.
+    - eapply PeanoNat.Nat.lt_trans; eauto.
+  Qed.
+
   Definition right_of (z1 z2 : t) : Prop :=
     left_of z2 z1.
 
