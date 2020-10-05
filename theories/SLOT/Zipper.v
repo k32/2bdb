@@ -31,6 +31,11 @@ Section defn.
     | (l, _, _) => l
     end.
 
+  Definition get_r (z : t) : list V :=
+    match z with
+    | (_, _, r) => r
+    end.
+
   Inductive left_of : t -> t -> Prop :=
   | left_of0 : forall v v' l r,
       left_of (l, v', (v :: r)) ((v' :: l), v, r)
@@ -104,6 +109,17 @@ Section defn.
     match z with
     | (l, e, r) => rev l ++ (e :: r)
     end.
+
+  Lemma left_of_to_list z1 z2 :
+    left_of z1 z2 ->
+    to_list z1 = to_list z2.
+  Proof with auto.
+    intros H.
+    induction H.
+    - cbn. induction (rev l)...
+      cbn in *. rewrite IHl0...
+    - rewrite IHleft_of. cbn. rewrite <-app_assoc...
+  Qed.
 
   Definition of_list (l : list V) (default : V) : t :=
     match l with
