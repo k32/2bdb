@@ -85,7 +85,7 @@ Section multi_interleaving2.
 
     Inductive MultiIlv (tt : TT) : @TraceEnsemble TE :=
     | muilv_nil :
-        tt = [] ->
+        filter Zip.nonempty tt = [] ->
         MultiIlv tt []
     | muilv : forall l te mid r t,
         let z := (l, te :: mid, r) in
@@ -247,10 +247,18 @@ Section uniq.
   Admitted.
   Hint Resolve Forall_filter_empty : slot.
 
-  Lemma filter_empty {A} P (l : list A) :
+  Lemma filter_nonempty_to_list (l r : list (list TE)) :
+    filter Zip.nonempty r = [] ->
+    filter Zip.nonempty l = [] ->
+    filter Zip.nonempty (to_list (l, [], r)) = [].
+  Admitted.
+  Hint Resolve filter_nonempty_to_list : slot.
+
+  Lemma filter_empty_rev {A} P (l : list A) :
     filter P l = [] ->
     filter P (rev l) = [].
   Admitted.
+  Hint Resolve filter_empty_rev : slot.
 
   Fixpoint mint_sufficient_replacement1 l0 mid r0 t t' te
            (Ht' : MultiIlv nonCommRel (l0 ++ mid :: r0) t')
@@ -259,84 +267,48 @@ Section uniq.
       MultiIlv nonCommRel (l0 ++ (te :: mid) :: r0) t' /\ Permutation trace_elems_commute (te :: t) t'.
   Admitted.
 
-  Fixpoint mint_sufficient_replacement0 l0 te0 mid r0 t
-      (H : MInt alwaysCommRel (l0, te0 :: mid, r0) t) {struct H} :
-    exists t' : list TE, MultiIlv nonCommRel (rev l0 ++ (te0 :: mid) :: r0) t' /\ Permutation trace_elems_commute t t'.
+  Fixpoint mint_sufficient_replacement0 z t
+           (H : MInt alwaysCommRel z t) {struct H} :
+    exists t' : list TE, MultiIlv nonCommRel (to_list z) t' /\ Permutation trace_elems_commute t t'.
   Proof with eauto with slot.
-    remember (l0, te0 :: mid, r0) as z0.
     destruct H as [l r t Hr Hl
                   |te_l te_r rest l r z' t Hcomm Hz' H'
                   |te rest l r t H'
                   |te l r rest z' t Hz' H'
                   ].
-    { inversion_ Heqz0. exists (te0 :: mid). split.
-      - eapply muilv with (l := l0) (r := r0) (te := te0) (mid0 := mid)...
-        constructor...
-      - constructor.
+    { destruct t as [|te t].
+      - exists []. split; constructor...
+      - exists (te :: t). split.
+        + eapply muilv with (l0 := l) (r0 := r) (te0 := te) (mid := t)...
+          constructor...
+        + constructor.
     }
-    { clear Hcomm. inversion_ Heqz0. clear Heqz0.
-      apply left_of_to_list in Hz'. unfold to_list in Hz'.
-      destruct z' as [[l' mid'] r'].
+    { destruct z' as [[l' mid'] r']. apply left_of_to_list in Hz'.
       apply mint_head in H' as H''. destruct H'' as [mid'' Hmid']. rewrite Hmid' in *. clear Hmid'. clear mid'.
-      (* Induction: *)
       apply mint_sufficient_replacement0 in H'. rewrite <-Hz' in H'. clear Hz'.
       destruct H' as [t' [Ht' Hperm]].
       eapply mint_sufficient_replacement1...
     }
-    { inversion_ Heqz0. clear Heqz0.
-      destruct mid as [|te_r mid].
-      { inversion_ H'.
-        exists [te0]. split.
-        + apply muilv with (l := l0) (r := r0) (mid := []) (te := te0)...
-          constructor...
-        + constructor.
-      }
-      apply mint_sufficient_replacement0 in H'. destruct H' as [t' [Ht' Hperm']].
+    { apply mint_sufficient_replacement0 in H'.
+      destruct H' as [t' [Ht' Hperm]].
       eapply mint_sufficient_replacement1...
     }
-    { inversion_ Heqz0. clear Heqz0.
-      destruct z' as [[l' mid'] r'].
-      apply left_of_to_list in Hz'. unfold to_list in Hz'.
-      admit.
+    { destruct z' as [[l' mid'] r']. apply left_of_to_list in Hz'.
+      apply mint_sufficient_replacement0 in H'.
+      destruct H' as [t' [Ht' Hperm]]. rewrite Hz' in Ht'.
+      eapply mint_sufficient_replacement1...
     }
-  Admitted.
+  Qed.
 
   Theorem mint_sufficient_replacement tt :
     sufficient_replacement_p (MultiIlv alwaysCommRel tt) (MultiIlv nonCommRel tt).
   Proof with eauto with slot.
     intros t_ Ht_.
     inversion Ht_ as [|l0 te0 mid r0 t z Htt Hlr Ht].
-    { subst. exists []. split; constructor. reflexivity. }
-    rewrite <-Htt.
+    { subst. exists []. split; constructor. assumption. }
+    rewrite <-Htt, <-H in *.
     eapply mint_sufficient_replacement0...
   Qed.
-
-  Theorem mint_sufficient_replacement z :
-    sufficient_replacement_p (MInt alwaysCommRel z) (MInt nonCommRel z).
-  Proof with eauto with slot.
-    intros t Ht.
-    induction Ht as [l r t Hl Hr
-                    |te_l te_r rest l r z' t Hcomm Hz' Ht
-                    |te rest l r t Ht
-                    |te l r rest z' t Hz' Ht
-                    ].
-    - exists t. split.
-      + constructor...
-      + constructor...
-    - destruct IHHt as [t' [Ht' Hperm']].
-      cbv in Hcomm. clear Hcomm.
-      destruct z' as [[l' mid'] r'].
-      eapply mint_head_eq in Ht' as Ht''; eauto. destruct Ht'' as [t'' Ht'']. subst t'. clear Ht.
-      apply mint_head in Ht' as Ht''. destruct Ht'' as [m' Hm']. subst mid'.
-      destruct (@comm_rel_dec _ nonCommRel te_l te_r).
-      + exists (te_l :: te_r :: t''). split.
-        * apply mint_right with (z' := (l', te_r :: m', r'))...
-        * apply perm_cons...
-      + cbn in H. apply not_not in H. 2:{ apply classic. }
-        destruct m'.
-        * exists (te_r :: te_l :: t''). split.
-          --
-
 
   Fixpoint ilv_to_mint (t : list TE)
            t1 t2 (Ht : Interleaving t1 t2 t) {struct Ht} :
