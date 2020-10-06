@@ -59,6 +59,17 @@ Section defn.
       orthogonal l1 l2 ->
       Permutation (l1 ++ l2) (l2 ++ l1).
   Abort.
+
+  Lemma permut_trans l1 l2 l3 :
+    Permutation l1 l2 ->
+    Permutation l2 l3 ->
+    Permutation l1 l3.
+  Proof.
+    intros H12 H23.
+    induction H23.
+    - assumption.
+    - constructor; assumption.
+  Qed.
 End defn.
 
 Section tests.
