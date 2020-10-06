@@ -270,6 +270,7 @@ Section uniq.
         + apply app_eq_nil in H. destruct H. discriminate.
     }
     subst z'.
+
   Admitted.
 
   Fixpoint mint_sufficient_replacement0 z t
