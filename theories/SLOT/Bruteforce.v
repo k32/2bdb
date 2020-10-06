@@ -275,20 +275,15 @@ Section uniq.
       - constructor.
     }
     { apply mint_sufficient_replacement0 in H'. destruct H' as [t' [z' [Hz' [Ht' Hperm]]]].
-      unfold same_payload in *. apply left_of_to_list in Hz. rewrite <-Hz in Hz'.
-      eapply mint_add with (t := t') (z := z') (te := te_l) in Ht'...
-      destruct Ht' as [t'' [z'' [Hz'' [Ht'' Hperm'']]]].
+      unfold same_payload in *. apply left_of_to_list in Hz. rewrite <-Hz in Hz'. symmetry in Hz'.
+      specialize (mint_add l rest r _ te_l t' Ht' Hz') as H.
+      destruct H as [t'' [z'' [Hz'' [Ht'' Hperm'']]]].
       exists t''. exists z''. split; [..|split]...
-      - apply perm_shuf
-      destruct z' as [[l' mid'] r']. apply left_of_to_list in Hz'.
-      apply mint_head in H' as H''. destruct H'' as [mid'' Hmid']. rewrite Hmid' in *. clear Hmid'. clear mid'.
-      apply mint_sufficient_replacement0 in H'. rewrite <-Hz' in H'. clear Hz'.
-      destruct H' as [t' [Ht' Hperm]].
-      eapply mint_sufficient_replacement1...
+      apply perm_cons with (a := te_l) in Hperm.
+      eapply permut_trans...
     }
-    { apply mint_sufficient_replacement0 in H'.
-      destruct H' as [t' [Ht' Hperm]].
-      eapply mint_sufficient_replacement1...
+    { apply mint_sufficient_replacement0 in H'. destruct H' as [t' [z' [Hz' [Ht' Hperm]]]].
+
     }
     { destruct z' as [[l' mid'] r']. apply left_of_to_list in Hz'.
       apply mint_sufficient_replacement0 in H'.
