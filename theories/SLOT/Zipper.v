@@ -1,6 +1,8 @@
 From Coq Require Import
      List
-     Program.
+     Program
+     Decidable
+     Classical_Prop.
 
 Import ListNotations.
 
@@ -73,6 +75,11 @@ Section defn.
     induction H; simpl.
     - constructor.
     - eapply PeanoNat.Nat.lt_trans; eauto.
+  Qed.
+
+  Lemma left_of_dec z1 z2 : decidable (left_of z1 z2).
+  Proof.
+    apply classic. (* TODO: find a nicer way? *)
   Qed.
 
   Definition right_of (z1 z2 : t) : Prop :=

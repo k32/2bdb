@@ -246,11 +246,76 @@ Section uniq.
   Admitted.
   Hint Resolve filter_nonempty_to_list : slot.
 
+  Let same_payload (z1 z2 : @Traces TE) := to_list z1 = to_list z2.
+
   Lemma filter_empty_rev {A} P (l : list A) :
     filter P l = [] ->
     filter P (rev l) = [].
   Admitted.
   Hint Resolve filter_empty_rev : slot.
+
+  Fixpoint mint_add l mid r z te t (H : MInt nonCommRel z t) {struct H} :
+    same_payload z (l, mid, r) ->
+    exists t' z', same_payload (l, te :: mid, r) z' /\
+             MInt nonCommRel z' t' /\
+             Permutation trace_elems_commute (te :: t) t'.
+  Admitted.
+
+  Fixpoint mint_sufficient_replacement0 z t (H : MInt alwaysCommRel z t) {struct H} :
+    exists t' z', same_payload z z' /\ MInt nonCommRel z' t' /\ Permutation trace_elems_commute t t'.
+  Proof with eauto with slot.
+    destruct H as [l r t Hr Hl
+                  |te_l te_r rest l r z t Hcomm Hz H'
+                  |te rest l r t H'
+                  |te l r rest z' t Hz' H'
+                  ].
+    { exists t. exists (l, t, r). split; [..|split].
+      - reflexivity.
+      - constructor; assumption.
+      - constructor.
+    }
+    { apply mint_sufficient_replacement0 in H'. destruct H' as [t' [z' [Hz' [Ht' Hperm]]]].
+      unfold same_payload in *. apply left_of_to_list in Hz. rewrite <-Hz in Hz'.
+      eapply mint_add with (t := t') (z := z') (te := te_l) in Ht'...
+      destruct Ht' as [t'' [z'' [Hz'' [Ht'' Hperm'']]]].
+      exists t''. exists z''. split; [..|split]...
+      - apply perm_shuf
+      destruct z' as [[l' mid'] r']. apply left_of_to_list in Hz'.
+      apply mint_head in H' as H''. destruct H'' as [mid'' Hmid']. rewrite Hmid' in *. clear Hmid'. clear mid'.
+      apply mint_sufficient_replacement0 in H'. rewrite <-Hz' in H'. clear Hz'.
+      destruct H' as [t' [Ht' Hperm]].
+      eapply mint_sufficient_replacement1...
+    }
+    { apply mint_sufficient_replacement0 in H'.
+      destruct H' as [t' [Ht' Hperm]].
+      eapply mint_sufficient_replacement1...
+    }
+    { destruct z' as [[l' mid'] r']. apply left_of_to_list in Hz'.
+      apply mint_sufficient_replacement0 in H'.
+      destruct H' as [t' [Ht' Hperm]]. rewrite Hz' in Ht'.
+      eapply mint_sufficient_replacement1...
+    }
+  Qed.
+
+
+  Lemma mint_to_muilv z t :
+    MInt nonCommRel z t ->
+    exists t', MultiIlv nonCommRel (to_list z) t' /\ Permutation trace_elems_commute t t'.
+  Admitted.
+
+  Theorem mint_sufficient_replacement tt :
+    sufficient_replacement_p (MultiIlv alwaysCommRel tt) (MultiIlv nonCommRel tt).
+  Proof with eauto with slot.
+    intros t_ Ht_.
+    inversion Ht_ as [|l0 te0 mid r0 t z Htt Hlr Ht].
+    - subst. exists []. split; constructor. assumption.
+    - subst tt. subst t_.
+      eapply mint_sufficient_replacement0 in Ht. destruct Ht as [t' [z' [Hzz' [Ht' Hperm]]]].
+      unfold same_payload in Hzz'. rewrite Hzz'.
+      apply mint_to_muilv in Ht'. destruct Ht' as [t'' [Ht'' Hperm'']].
+      exists t''. split...
+      eapply permut_trans...
+  Qed.
 
   Lemma mint_sufficient_replacement1 l0 mid r0 t t' te
            (Ht' : MultiIlv nonCommRel (l0 ++ mid :: r0) t')
@@ -270,7 +335,6 @@ Section uniq.
         + apply app_eq_nil in H. destruct H. discriminate.
     }
     subst z'.
-
   Admitted.
 
   Fixpoint mint_sufficient_replacement0 z t
