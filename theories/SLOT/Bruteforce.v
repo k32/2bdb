@@ -69,7 +69,7 @@ Section multi_interleaving2.
     | mint_nil : forall l r t,
         filter Zip.nonempty r = [] ->
         filter Zip.nonempty l = [] ->
-        MInt (l, t, r) t
+        MInt (l, [t], r) [t]
     | mint_right : forall te_l te_r rest l r z' t,
         comm_rel te_l te_r ->
         (l, rest, r) <- z' ->
@@ -227,7 +227,7 @@ Section uniq.
   Proof with reflexivity.
     intros H.
     inversion_ H.
-    - exists t...
+    - exists []...
     - exists rest...
     - exists rest...
     - exists rest...
@@ -275,13 +275,23 @@ Section uniq.
       - constructor.
     }
     { destruct t as [|te_l t].
-      { inversion_ H. exists [te]. exists (l, te :: mid, r).
-        split3; [reflexivity|..|now constructor].
-        give_up.
+      { inversion_ H. }
+      destruct (@comm_rel_dec _ nonCommRel te te_l) as [Hte_te_l|Hte_te_l].
+      { exists (te :: te_l :: t). exists (l, te :: mid, r). split3.
+        - reflexivity.
+        - now apply mint_right with (z' := z).
+        - constructor.
       }
-
-
-
+      (* Welcome to the hell proof: *)
+      cbn in Hte_te_l. apply not_not in Hte_te_l; [..|apply classic].
+      destruct z as [[l' mid'] r'].
+      apply mint_head in H as Hmid'. destruct Hmid' as [mid'' Hmid']. subst mid'.
+      inversion H as [l_ r_ t' Hr Hl
+                     |te_l_ te_r_ rest l_ r_ z' t' Hcomm Hz' H'
+                     |te_ rest l_ r_ t' H'
+                     |te_ l_ r_ rest z' t' Hz' H'
+                     ]; clear H; subst.
+  Admitted.
 
   Fixpoint mint_sufficient_replacement0 z t (H : MInt alwaysCommRel z t) {struct H} :
     exists t' z', same_payload z z' /\ MInt nonCommRel z' t' /\ Permutation trace_elems_commute t t'.
@@ -291,7 +301,7 @@ Section uniq.
                   |te rest l r t H'
                   |te l r rest z t Hz H'
                   ].
-    { exists t. exists (l, t, r). split; [..|split].
+    { exists [t]. exists (l, [t], r). split; [..|split].
       - reflexivity.
       - constructor; assumption.
       - constructor.
