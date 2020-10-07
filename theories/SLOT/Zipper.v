@@ -77,11 +77,6 @@ Section defn.
     - eapply PeanoNat.Nat.lt_trans; eauto.
   Qed.
 
-  Lemma left_of_dec z1 z2 : decidable (left_of z1 z2).
-  Proof.
-    apply classic. (* TODO: find a nicer way? *)
-  Qed.
-
   Definition right_of (z1 z2 : t) : Prop :=
     left_of z2 z1.
 
@@ -133,6 +128,15 @@ Section defn.
     | [] => ([], default, [])
     | e :: rest => ([], e, rest)
     end.
+
+
+  Lemma left_of_dec z1 z2 :
+    to_list z1 = to_list z2 ->
+     z1 = z2 \/ left_of z1 z2 \/ left_of z2 z1.
+  Proof.
+    intros H. unfold to_list in H.
+    destruct z1 as [[l1 m1] r1]. destruct z2 as [[l2 m2] r2].
+  Admitted.
 End defn.
 
 Delimit Scope zipper_scope with zipper.

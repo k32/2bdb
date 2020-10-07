@@ -254,12 +254,34 @@ Section uniq.
   Admitted.
   Hint Resolve filter_empty_rev : slot.
 
+  Ltac split3 := split; [..|split].
+
   Fixpoint mint_add l mid r z te t (H : MInt nonCommRel z t) {struct H} :
     same_payload z (l, mid, r) ->
     exists t' z', same_payload (l, te :: mid, r) z' /\
              MInt nonCommRel z' t' /\
              Permutation trace_elems_commute (te :: t) t'.
-  Admitted.
+  Proof with eauto with slot.
+    intros Hz. apply left_of_dec in Hz.
+    destruct Hz as [Hz|[Hz|Hz]].
+    { exists (te :: t). exists (l, te :: mid, r). split3.
+      - reflexivity.
+      - subst z. now constructor.
+      - constructor.
+    }
+    { exists (te :: t). exists (l, te :: mid, r). split3.
+      - reflexivity.
+      - now apply mint_left with (z' := z).
+      - constructor.
+    }
+    { destruct t as [|te_l t].
+      { inversion_ H. exists [te]. exists (l, te :: mid, r).
+        split3; [reflexivity|..|now constructor].
+        give_up.
+      }
+
+
+
 
   Fixpoint mint_sufficient_replacement0 z t (H : MInt alwaysCommRel z t) {struct H} :
     exists t' z', same_payload z z' /\ MInt nonCommRel z' t' /\ Permutation trace_elems_commute t t'.
