@@ -6,16 +6,10 @@ common list processing functions that provide this hypothesis *)
 From Coq Require
      Omega
      Vector
-     List.
+     List
+     Program.
 
-(* From Containers Require Import *)
-(*      OrderedType *)
-(*      OrderedTypeEx *)
-(*      MapInterface *)
-(*      MapFacts *)
-(*      MapAVLInstance. *)
-
-Import List ListNotations Omega.
+Import List ListNotations Omega Program.
 Module Vec := Vector.
 Module Fin := Fin.
 
@@ -89,6 +83,12 @@ Definition seq_vec : forall (N : nat), Vec.t (Fin.t N) N.
   - assert (aid : N < S N) by omega.
     apply Fin.of_nat_lt in aid.
     apply (Vec.cons _ aid N (Vec.map Fin.FS IHN)).
+Defined.
+
+Definition vec_same {A} (N : nat) (a : A) : Vec.t A N.
+  induction N; constructor.
+  - exact a.
+  - assumption.
 Defined.
 
 (* Definition find' {K V} `{OrderedType K} (k : K) (m : Map[K,V]) (HIn : MapInterface.In k m) : V. *)

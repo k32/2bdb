@@ -1,7 +1,8 @@
 From Coq Require Import
      List
      Tactics
-     Arith.Even.
+     Arith.Even
+     Relations.
 
 Import ListNotations.
 
@@ -21,7 +22,7 @@ Section defn.
 
   Hint Constructors Permutation : permutation.
 
-  Lemma perm_cons a l1 l2 :
+  Lemma permut_cons a l1 l2 :
     Permutation l1 l2 ->
     Permutation (a :: l1) (a :: l2).
   Proof.
@@ -59,7 +60,18 @@ Section defn.
       orthogonal l1 l2 ->
       Permutation (l1 ++ l2) (l2 ++ l1).
   Abort.
+
+  Lemma permut_trans : transitive L Permutation.
+  Proof.
+    intros l1 l2 l3 H12 H23.
+    induction H23.
+    - assumption.
+    - constructor; assumption.
+  Qed.
 End defn.
+
+Hint Constructors Permutation : permutation.
+Hint Resolve permut_trans : permutation.
 
 Section tests.
   Let comm a b := odd a /\ even b.

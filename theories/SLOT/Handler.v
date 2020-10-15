@@ -154,7 +154,7 @@ Section ComposeHandlers.
   Qed.
 
   Lemma local_l_chain_rule : @ChainRuleLocality _ _ handlerStateSpace te_subset_l.
-  Proof with firstorder.
+  Proof with auto with slot; firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
     destruct te1 as [pid1 req1 ret1];
@@ -174,7 +174,7 @@ Section ComposeHandlers.
   Qed.
 
   Lemma local_r_chain_rule : @ChainRuleLocality _ _ handlerStateSpace te_subset_r.
-  Proof with firstorder.
+  Proof with auto with slot; firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
     destruct te1 as [pid1 req1 ret1];

@@ -5,13 +5,15 @@
     traces that it can produce.
 
  *)
-From Coq Require Import
+From Coq Require
      Program.Basics
-     List.
+     List
+     Relations.
 
-Import ListNotations.
+Import List ListNotations Basics Relations.
 
 From LibTx Require Import
+     FoldIn
      Misc
      EventTrace
      Permutation
@@ -19,14 +21,13 @@ From LibTx Require Import
 
 Open Scope hoare_scope.
 
+Global Arguments Vec.nil {_}.
+Global Arguments Vec.cons {_}.
+
 Section defn.
   Context {S TE} `{StateSpace S TE}.
 
   Definition TraceEnsemble := list TE -> Prop.
-
-  Class Generator (A : Type) :=
-    { unfolds_to : A -> TraceEnsemble;
-    }.
 
   (** Hoare logic of trace ensembles consists of a single rule: *)
   Definition EHoareTriple (pre : S -> Prop) (g : TraceEnsemble) (post : S -> Prop) :=
@@ -54,7 +55,6 @@ Section defn.
     (** Let's briefly check that our definition of [Interleaving] has
     desired properties: *)
     Variables (a b c d : TE).
-
     Goal Interleaving [a;b] [c;d] [a;b;c;d].
     Proof. repeat constructor. Qed.
 
@@ -62,6 +62,9 @@ Section defn.
     Proof. repeat constructor. Qed.
 
     Goal Interleaving [a;b] [c;d] [a;c;d;b].
+    Proof. repeat constructor. Qed.
+
+    Goal Interleaving [a;b] [c;d] [c;a;b;d].
     Proof. repeat constructor. Qed.
 
     Goal Interleaving [a;b] [c;d] [c;a;d;b].
@@ -76,6 +79,9 @@ Section defn.
       inversion_ Hint.
     Qed.
   End tests.
+
+  Definition vec_modify {N} {A} (v : Vec.t A N) i (f : A -> A) :=
+    Vec.replace v i (f (Vec.nth v i)).
 
   (* Left-biased version of [Interleaving] that doesn't make
   distinction between schedulings of commuting elements: *)
@@ -102,10 +108,12 @@ Section defn.
 
   Definition EnsembleInvariant (prop : S -> Prop) (E : TraceEnsemble) : Prop :=
     forall (t : list TE), E t -> TraceInvariant prop t.
+
 End defn.
 
-Hint Constructors Interleaving Parallel TraceEnsembleConcat : hoare.
+Hint Constructors Interleaving Parallel TraceEnsembleConcat : slot.
 
+Delimit Scope hoare_scope with hoare.
 Notation "'-{{' a '}}' e '{{' b '}}'" := (EHoareTriple a e b)(at level 40) : hoare_scope.
 Notation "'-{{}}' e '{{' b '}}'" := (EHoareTriple (const True) e b)(at level 40) : hoare_scope.
 Notation "'-{{}}' e '{{}}'" := (forall t, e t -> exists s s', LongStep s t s')(at level 38) : hoare_scope.
@@ -155,7 +163,7 @@ Section props.
         Interleaving t1 t2 t ->
         exists t' t1_hd t1_tl,
           t = t1_hd ++ t' /\ t1 = t1_hd ++ t1_tl /\ Interleaving t1_tl t2 t'.
-    Proof with firstorder.
+    Proof with auto with slot; firstorder.
       intros *. intros Hint.
       induction Hint.
       - destruct IHHint as [t' [t1_hd [t1_tl IH]]].
@@ -170,11 +178,11 @@ Section props.
       -{{P}} e1 ->> e2 {{Q}}.
     Proof.
       intros. intros t Hseq.
-      specialize (H t). apply H. clear H.
+      eapply H. clear H.
       destruct Hseq as [t1 t2].
-      apply ilv_par with (t3 := t1) (t4 := t2); auto with hoare.
+      eapply ilv_par; eauto with slot.
       clear H H0.
-      induction t1; induction t2; simpl; auto with hoare.
+      induction t1; induction t2; simpl; auto with slot.
     Qed.
 
     Lemma e_hoare_par_symm : forall e1 e2 P Q,
@@ -182,10 +190,10 @@ Section props.
         -{{P}} e2 -|| e1 {{Q}}.
     Proof.
       intros. intros t Hpar.
-      specialize (H t). apply H. clear H.
+      eapply H. clear H.
       destruct Hpar as [t1 t2 t H1 H2 Hint].
       apply interleaving_symm in Hint.
-      apply ilv_par with (t3 := t2) (t4 := t1); easy.
+      eapply ilv_par; eauto.
     Qed.
 
     Lemma interl_app_tl : forall (b c__hd c__tl t : list TE),
@@ -193,16 +201,29 @@ Section props.
         Interleaving b (c__hd ++ c__tl) (c__hd ++ t).
     Proof.
       intros.
-      induction c__hd; simpl; auto with hoare.
+      induction c__hd; simpl; auto with slot.
     Qed.
 
     Lemma interl_app_hd : forall (a c__hd c__tl t : list TE),
         Interleaving a c__hd t ->
         Interleaving a (c__hd ++ c__tl) (t ++ c__tl).
-    Proof with simpl; auto with hoare.
+    Proof with simpl; auto with slot.
       intros.
       induction H...
       induction c__tl...
+    Qed.
+
+    Example no_swapping_heads_is_not_always_impossible : forall (a b c : TE),
+        a <> b -> b <> c -> a <> c ->
+        exists t,
+          Interleaving [a; b] [c] t ->
+          ~Interleaving [b] [a; c] t.
+    Proof.
+      intros a b c Hab Hbc Hac.
+      exists [c; a; b]. intros H H'.
+      repeat match goal with
+             | [H : Interleaving _ _ _ |- _] => inversion H; clear H
+             end; subst; contradiction.
     Qed.
 
     Lemma interleaving_nil_r : forall (a b : list TE),
@@ -248,7 +269,7 @@ Section props.
         exists c1 c2 t1 t2,
           t1 ++ t2 = t /\ c1 ++ c2 = c /\
           Interleaving a c1 t1 /\ Interleaving b c2 t2.
-    Proof with firstorder.
+    Proof with auto with slot; firstorder.
       intros.
       remember (a ++ b) as ab.
       generalize dependent b.
@@ -296,6 +317,48 @@ Section props.
     Abort. (* This is wrong? *)
   End perm_props.
 
+  Section ensemble_equiv.
+    Context (e1 e2 : @TraceEnsemble TE).
+
+    Definition sufficient_replacement :=
+      forall t s s', e1 t ->
+                LongStep s t s' ->
+                exists t', e2 t' /\ LongStep s t' s'.
+
+    Definition sufficient_replacement_p :=
+      forall t, e1 t ->
+           exists t', e2 t' /\ Permutation trace_elems_commute t t'.
+
+    Theorem ht_sufficient_replacement P Q :
+      sufficient_replacement ->
+      -{{P}} e2 {{Q}} -> -{{P}} e1 {{Q}}.
+    Proof.
+      intros He2 H t Ht s s' Hls Hpre.
+      destruct (He2 t s s' Ht Hls) as [t' [Ht' Hls']].
+      eapply H; eauto.
+    Qed.
+
+    Lemma comm_perm_sufficient_replacement :
+      sufficient_replacement_p ->
+      sufficient_replacement.
+    Proof.
+      intros H t s s' Ht Hls.
+      destruct (H t Ht) as [t' [Ht' Hperm]].
+      eapply ht_comm_perm in Hperm; eauto.
+    Qed.
+  End ensemble_equiv.
+
+  Lemma sufficient_replacement_p_trans :
+    transitive (@TraceEnsemble TE) sufficient_replacement_p.
+  Proof.
+    intros e1 e2 e3 H12 H23. intros t Ht.
+    apply H12 in Ht. destruct Ht as [t' [Ht' Hperm']].
+    apply H23 in Ht'. destruct Ht' as [t'' [Ht'' Hperm'']].
+    exists t''. split.
+    - assumption.
+    - eapply permut_trans; eauto.
+  Qed.
+
   Section uniq_correct.
     Context (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).
 
@@ -328,10 +391,10 @@ Section props.
           { forward s'...
             forward s0...
           }
-          specialize (Hcomm s s0). apply Hcomm in Hx. clear Hcomm.
+          eapply Hcomm in Hx.
           repeat long_step Hx. subst.
-          specialize (uilv_append_r te t1 t2 t Ht s1 s0 s'' Hls Hcr1).
-          destruct uilv_append_r as [t' [Ht' Hls']].
+          eapply uilv_append_r in Hcr1; eauto.
+          destruct Hcr1 as [t' [Ht' Hls']].
           exists (l :: t').
           split...
           forward s1...
@@ -411,7 +474,7 @@ Ltac interleaving_nil :=
          | [H: Interleaving ?t1 [] ?t |- _] => apply interleaving_symm, interleaving_nil in H; try subst t
          end.
 
-Hint Extern 4 => interleaving_nil : hoare.
+Hint Extern 4 => interleaving_nil : slot.
 
 Ltac unfold_interleaving H tac :=
   simpl in H;
@@ -489,19 +552,19 @@ Section permutation.
     induction H.
     3:{ simpl. constructor. }
     { apply Forall_inv_tail in Hdisjoint.
-      now apply perm_cons, IHInterleaving.
+      now apply permut_cons, IHInterleaving.
     }
     { specialize (DoubleForall_drop can_swap te t2 t1 Hdisjoint) as Htail.
       specialize (IHInterleaving Htail). clear Htail. clear H.
       apply DoubleForall_symm, Forall_inv in Hdisjoint.
-      apply perm_cons with (a := te) in IHInterleaving.
+      apply permut_cons with (a := te) in IHInterleaving.
       induction IHInterleaving; try now constructor.
       induction t1.
       - constructor.
       - specialize (perm_shuf can_swap ((a :: t1) ++ te :: t2) [] (t1 ++ t2) a te) as Hs.
         simpl in *.
         apply Hs.
-        + apply perm_cons, IHt1.
+        + apply permut_cons, IHt1.
           now apply Forall_inv_tail in Hdisjoint.
         + apply Forall_inv in Hdisjoint.
           symm_not. apply Hdisjoint.
@@ -517,8 +580,8 @@ Ltac resolve_forall :=
     apply Forall_inv in H; assumption
   end.
 
-Hint Extern 1 (Forall (trace_elems_commute _) _) => resolve_forall : hoare.
-Hint Extern 3 (trace_elems_commute _ _) => resolve_forall : hoare.
+Hint Extern 1 (Forall (trace_elems_commute _) _) => resolve_forall : slot.
+Hint Extern 3 (trace_elems_commute _ _) => resolve_forall : slot.
 
 Section properties.
   Context `{HSSp : StateSpace}.
@@ -534,17 +597,20 @@ Section properties.
       trace_elems_commute a d ->
       trace_elems_commute a c ->
       LongStep s t s' ->
-      UniqueInterleaving [a; b; e; f; g] [c; d; i] t ->
+      Interleaving [a; b; e; f; g] [c; d; i] t ->
       False.
   Proof.
     intros.
     Compute num_interleavings 5 3. (* 56 *)
     repeat (match goal with
-            | [H : UniqueInterleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
+            | [H : Interleaving (?a :: ?t1) ?t2 ?t |- _ ] =>
               destruct_interleaving H
-            | [H : UniqueInterleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
+            | [H : Interleaving ?t2 (?a :: ?t1) ?t |- _ ] =>
               inversion_ H; clear H
-            end; try contradiction).
+            | [H : Interleaving [] [] ?t |- _ ] =>
+              inversion H; clear H
+            end; try contradiction);
+    let n := numgoals in guard n = 56.
   Abort.
 
   Let comm_diff a b := num_interleavings a b - (num_interleavings (a - 1) (b - 1)).
@@ -554,16 +620,15 @@ Section properties.
     Interleaving [a] t t' ->
     LongStep s t' s' ->
     LongStep s (a :: t) s'.
-  Proof with auto with hoare.
+  Proof with auto with slot.
     intros Hcomm Ht Ht'.
     generalize dependent s'.
     generalize dependent s.
     remember [a] as t1.
-    induction Ht; intros; inversion_ Heqt1.
-    - now interleaving_nil.
-    - apply trace_elems_commute_head...
-      inversion_ Ht'.
-      forward s'0...
+    induction Ht; intros; inversion_ Heqt1...
+    apply trace_elems_commute_head...
+    inversion_ Ht'.
+    forward s'0...
   Qed.
 
   Lemma ilv_singleton_comm_all a t2 P Q :
@@ -571,7 +636,7 @@ Section properties.
     {{P}} [a] {{P}} ->
     {{P}} t2 {{Q}} ->
     -{{P}} Interleaving [a] t2 {{Q}}.
-  Proof with auto with hoare.
+  Proof with auto with slot.
     intros Hcomm Ha Ht2 t Ht.
     remember [a] as t1.
     destruct Ht; inversion_ Heqt1.
@@ -591,7 +656,7 @@ Section properties.
     -{{P}} Interleaving a [x] ->> eq b {{Q}} ->
     -{{P}} eq a ->> Interleaving b [x] {{Q}} ->
     -{{P}} Interleaving (a ++ b) [x] {{Q}}.
-  Proof with auto with hoare.
+  Proof with auto with slot.
     intros H1 H2 t Ht.
     remember [x] as t1.
     apply interleaving_par_seq in Ht.
@@ -599,30 +664,8 @@ Section properties.
     subst.
     destruct c1; destruct c2; try discriminate;
       autorewrite with list in *; simpl in *;
-      inversion_ Hc;
-      interleaving_nil; unfold_ht;
-      apply ls_split in Hls;
-      destruct Hls as [s' [Hls1 Hls2]].
-    - refine (H2 (a ++ t3) _ s_begin s_end _ _)...
-    - refine (H1 (t2 ++ b) _ s_begin s_end _ _)...
-    - exfalso.
-      destruct c1; inversion Hc.
+      inversion_ Hc.
+    exfalso.
+    destruct c1; inversion H3.
   Qed.
 End properties.
-
-Section tests.
-  Context {S TE} `{StateSpace S TE}.
-
-  Goal forall (a b c d : TE) Q,
-      trace_elems_commute a b ->
-      trace_elems_commute c b ->
-      trace_elems_commute a d ->
-      trace_elems_commute c d ->
-      -{{const True}} UniqueInterleaving [a; c] [b; d] {{Q}}.
-    intros. intros t Ht. unfold_ht.
-    match goal with
-    | [H : UniqueInterleaving ?a ?b ?c |- _] =>
-      inversion_ H; try contradiction
-    end.
-  Abort.
-End tests.

@@ -163,10 +163,8 @@ Section props.
   Qed.
 End props.
 
-
 Section WriteLog.
   Context {K V : Type} `{HKeq_dec : EqDec K} {T} `{HT_Storage : @Storage K V T}.
-
 
   Inductive Wlog_elem :=
   | wl_write : K -> V -> Wlog_elem
@@ -247,7 +245,7 @@ Section WriteLog.
   Tactic Notation "wlog_app_simpl" :=
     wlog_app_simpl_ fail.
 
-  Hint Constructors s_eq.
+  Hint Constructors s_eq : storage.
 
   Ltac unfold_s_eq k :=
     constructor;
@@ -278,15 +276,15 @@ Section WriteLog.
 
   Tactic Notation "has_key_rev_simpl" "in" hyp(H) := has_key_rev_simpl H.
 
-  Hint Unfold Wlog_apply.
-  Hint Unfold Wlog_has_key.
+  Hint Unfold Wlog_apply : storage.
+  Hint Unfold Wlog_has_key : storage.
 
-  Hint Extern 3 => symm_not.
-  Hint Extern 4 => rewrite <-Wlog_has_key_rev.
-  Hint Extern 4 => rewrite keep.
-  Hint Extern 4 => rewrite delete_keep.
-  Hint Extern 4 => destruct (eq_dec _ _ _).
-  Hint Resolve s_eq_self.
+  Hint Extern 3 => symm_not : storage.
+  Hint Extern 4 => rewrite <-Wlog_has_key_rev : storage.
+  Hint Extern 4 => rewrite keep : storage.
+  Hint Extern 4 => rewrite delete_keep : storage.
+  Hint Extern 4 => destruct (eq_dec _ _ _) : storage.
+  Hint Resolve s_eq_self : storage.
 
   Lemma Wlog_apply_same : forall (l : Wlog) (s1 s2 : T),
       s1 =s= s2 ->
@@ -313,13 +311,13 @@ Section WriteLog.
       [rewrite <-distinct by auto | rewrite <-delete_distinct by auto];
       firstorder;
       rewrite <-IH;
-      auto.
+      auto with storage.
   Qed.
 
   Lemma Wlog_ignore_cons : forall (l : Wlog) s k1 k2 v,
       k1 <> k2 ->
       get k1 (Wlog_apply l (put k2 v s)) = get k1 (Wlog_apply l s).
-  Proof.
+  Proof with auto with storage.
     intros l s k1 k2 v H.
     rev_wlog_induction l as ak av t IH.
     - simpl. rewrite <-distinct.
@@ -327,20 +325,18 @@ Section WriteLog.
       assumption.
     - wlog_app_simpl.
       destruct (eq_dec ak k1) as [Hak|Hak].
-      + subst. auto.
-      + repeat rewrite <-distinct in * by auto.
-        auto.
+      + subst...
+      + repeat rewrite <-distinct in * by auto...
     - wlog_app_simpl.
       destruct (eq_dec ak k1) as [Hak|Hak].
-      + subst. auto.
-      + repeat rewrite <-delete_distinct by auto.
-        auto.
+      + subst...
+      + repeat rewrite <-delete_distinct by auto...
   Qed.
 
   Lemma Wlog_ignore_cons_del : forall (l : Wlog) s k1 k2,
       k1 <> k2 ->
       get k1 (Wlog_apply l (delete k2 s)) = get k1 (Wlog_apply l s).
-  Proof.
+  Proof with auto with storage.
     intros l s k1 k2 H.
     rev_wlog_induction l as ak av t IH.
     - simpl. rewrite <-delete_distinct.
@@ -348,14 +344,12 @@ Section WriteLog.
       assumption.
     - wlog_app_simpl.
       destruct (eq_dec ak k1) as [Hak|Hak].
-      + subst. auto.
-      + repeat rewrite <-distinct in * by auto.
-        auto.
+      + subst...
+      + repeat rewrite <-distinct in * by auto...
     - wlog_app_simpl.
       destruct (eq_dec ak k1) as [Hak|Hak].
-     + subst. auto.
-      + repeat rewrite <-delete_distinct by auto.
-        auto.
+      + subst...
+      + repeat rewrite <-delete_distinct by auto...
   Qed.
 
   Lemma Wlog_nodup_has_key : forall k (l1 l2 : Wlog),
@@ -379,7 +373,7 @@ Section WriteLog.
       Wlog_apply l s =s= Wlog_apply l' s.
   Proof.
     intros l l' s H.
-    induction H; subst; auto;
+    induction H; subst; auto with storage;
       unfold_s_eq as k';
       unfold_s_eq in IHWlog_nodup;
       apply (Wlog_nodup_has_key k') in H1;
@@ -460,11 +454,11 @@ Module ListStorage.
       intros.
       induction s...
       destruct a as [k v].
-      destruct (eq_dec k k1); subst.
-      - simpl...
-        destruct (eq_dec k1 k1); destruct (eq_dec k2 k1); unfold not; firstorder.
-        + symmetry in e0. firstorder.
-        + simpl. destruct (eq_dec k1 k1); firstorder.
+      destruct (eq_dec k k1) as [|Hneq_k_k1]; subst.
+      - simpl in *...
+        destruct (eq_dec k2 k1) as [Heq12|Hneq12].
+        + subst. now contradiction H.
+        + simpl...
       - simpl...
         destruct (eq_dec k k1); destruct (eq_dec k2 k); firstorder.
         simpl.
@@ -491,8 +485,9 @@ Module ListStorage.
         destruct (eq_dec k k'); subst.
         - exists v. simpl...
         - destruct IHs.
-          + simpl in H. destruct H as [H|H]; firstorder.
-            symmetry in H. firstorder.
+          + simpl in H. destruct H as [H|H]...
+            symmetry in H.
+            now contradiction n.
           + exists x.
             simpl.
             destruct (eq_dec k' k)...
