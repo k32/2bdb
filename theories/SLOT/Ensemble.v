@@ -7,9 +7,10 @@
  *)
 From Coq Require
      Program.Basics
-     List.
+     List
+     Relations.
 
-Import List ListNotations Basics.
+Import List ListNotations Basics Relations.
 
 From LibTx Require Import
      FoldIn
@@ -347,6 +348,17 @@ Section props.
     Qed.
   End ensemble_equiv.
 
+  Lemma sufficient_replacement_p_trans :
+    transitive (@TraceEnsemble TE) sufficient_replacement_p.
+  Proof.
+    intros e1 e2 e3 H12 H23. intros t Ht.
+    apply H12 in Ht. destruct Ht as [t' [Ht' Hperm']].
+    apply H23 in Ht'. destruct Ht' as [t'' [Ht'' Hperm'']].
+    exists t''. split.
+    - assumption.
+    - eapply permut_trans; eauto.
+  Qed.
+
   Section uniq_correct.
     Context (Hcomm_dec : forall a b, trace_elems_commute a b \/ not (trace_elems_commute a b)).
 
@@ -540,19 +552,19 @@ Section permutation.
     induction H.
     3:{ simpl. constructor. }
     { apply Forall_inv_tail in Hdisjoint.
-      now apply perm_cons, IHInterleaving.
+      now apply permut_cons, IHInterleaving.
     }
     { specialize (DoubleForall_drop can_swap te t2 t1 Hdisjoint) as Htail.
       specialize (IHInterleaving Htail). clear Htail. clear H.
       apply DoubleForall_symm, Forall_inv in Hdisjoint.
-      apply perm_cons with (a := te) in IHInterleaving.
+      apply permut_cons with (a := te) in IHInterleaving.
       induction IHInterleaving; try now constructor.
       induction t1.
       - constructor.
       - specialize (perm_shuf can_swap ((a :: t1) ++ te :: t2) [] (t1 ++ t2) a te) as Hs.
         simpl in *.
         apply Hs.
-        + apply perm_cons, IHt1.
+        + apply permut_cons, IHt1.
           now apply Forall_inv_tail in Hdisjoint.
         + apply Forall_inv in Hdisjoint.
           symm_not. apply Hdisjoint.
