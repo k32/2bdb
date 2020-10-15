@@ -59,11 +59,9 @@ Proof.
   induction l.
   - easy.
   - unfold forallb'. simpl.
-    rewrite IHl.
-    rewrite Bool.andb_true_r.
-    rewrite Bool.andb_comm.
+    rewrite IHl, Bool.andb_true_r, Bool.andb_comm.
     destruct (p a).
-    + rewrite Bool.andb_true_r. reflexivity.
+    + now rewrite Bool.andb_true_r.
     + rewrite Bool.andb_false_r.
       { clear IHl.
         induction l.
@@ -71,8 +69,7 @@ Proof.
         - intros.
           simpl.
           rewrite Bool.andb_false_r.
-          rewrite <-IHl.
-          reflexivity.
+          now rewrite <-IHl.
       }
 Qed.
 

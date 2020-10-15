@@ -25,34 +25,167 @@ From Coq Require Import
 
 Import ListNotations.
 
+From Coq Require
+     Vector
+     Fin.
+
+Module Vec := Vector.
+
 Open Scope list_scope.
 Open Scope hoare_scope.
 Open Scope zipper_scope.
 
-Class te_commut_rel {A} :=
-  { comm_rel : relation A;
-    comm_rel_symm : symmetric _ comm_rel;
-    comm_rel_dec : forall a b, decidable (comm_rel a b);
-  }.
+Section comm_rel.
+  Class te_commut_rel {A} :=
+    { comm_rel : relation A;
+      comm_rel_symm : symmetric _ comm_rel;
+      comm_rel_dec : forall a b, decidable (comm_rel a b);
+    }.
 
-Definition always_can_switch {A} (_ _ : A) : Prop := True.
+  Definition always_can_switch {A} (_ _ : A) : Prop := True.
 
-Program Instance nonCommRel `{StateSpace} : @te_commut_rel TE :=
-  { comm_rel a b := not (trace_elems_commute a b)
-  }.
-Next Obligation.
-unfold symmetric. intros x y Hcomm.
-firstorder. Qed.
-Next Obligation.
-unfold decidable. apply classic. Qed.
+  Program Instance nonCommRel `{StateSpace} : @te_commut_rel TE :=
+    { comm_rel a b := not (trace_elems_commute a b)
+    }.
+  Next Obligation.
+  unfold symmetric. intros x y Hcomm.
+  firstorder. Qed.
+  Next Obligation.
+  unfold decidable. apply classic. Qed.
 
-Program Instance alwaysCommRel {TE} : @te_commut_rel TE :=
-  { comm_rel := always_can_switch;
-  }.
-Next Obligation.
-easy. Qed.
-Next Obligation.
-cbv. left. easy. Qed.
+  Program Instance alwaysCommRel {TE} : @te_commut_rel TE :=
+    { comm_rel := always_can_switch;
+    }.
+  Next Obligation.
+  easy. Qed.
+  Next Obligation.
+  cbv. left. easy. Qed.
+End comm_rel.
+
+Check Fin.of_nat_lt.
+
+Coercion Fin.of_nat_lt : lt >-> Fin.t.
+
+Module PermIlv.
+  (** * Interleaving of threads as permutation of trace elements
+
+      This definition of interleaving is fairly impractical, because
+      it requires unfolding all threads before interleavings can be
+      calculated, and we prefer to do it lazily, but it's useful for
+      internal proofs *)
+
+  Section defn.
+    Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
+
+    Definition tag_traces {A} (tt : list (list A)) : list (list (nat * A)) :=
+      let f acc l := match acc with
+                     | (i, acc) =>
+                       let l' := map (fun j => (i, j)) l in
+                       (S i, l'  :: acc)
+                     end in
+      snd (fold_left f tt (0, [])).
+
+    Definition can_swap (a b : nat * TE) : Prop :=
+      match a, b with
+      | (pid1, te1), (pid2, te2) => pid1 <> pid2 /\ comm_rel te1 te2
+      end.
+
+    Definition TaggedPermutation (tt : list (list TE)) (t : list (nat * TE)) : Prop :=
+      Permutation can_swap (concat (tag_traces tt)) t.
+
+    Inductive PermEnsemble (tt : list (list TE)) : @TraceEnsemble TE :=
+    | perm_ensemble : forall t,
+        TaggedPermutation tt t ->
+        PermEnsemble tt (snd (split t)).
+  End defn.
+
+  Definition PermIlvAll {TE} := @PermEnsemble TE alwaysCommRel.
+
+  Definition PermIlvNonComm `{StateSpace} := @PermEnsemble TE nonCommRel.
+
+  Section transform_ensemble.
+    Context `{Hssp : StateSpace} (Ens : @te_commut_rel TE -> list (list TE) -> @TraceEnsemble TE).
+
+    Let te_s (l : list (nat * TE)) := snd (split l).
+
+    Lemma perm_non_comm tt :
+      sufficient_replacement_p (PermIlvAll tt) (@PermIlvNonComm _ _ Hssp tt).
+    Proof.
+      intros t Ht. unfold PermIlvAll in Ht. inversion Ht as [t_tagged Ht']. subst. clear Ht.
+      assert (H : exists t', TaggedPermutation nonCommRel tt t' /\
+                        Permutation trace_elems_commute (te_s t_tagged) (te_s t')).
+      2:{ destruct H as [t'' [Ht'' Hperm'']].
+          exists (snd (split t'')). split.
+          - now constructor.
+          - assumption.
+      }
+      induction Ht'.
+      - exists (concat (tag_traces tt)). split; constructor.
+      - destruct a as [a_idx a_te]. destruct b as [b_idx b_te].
+        destruct IHHt' as [t'' [Ht'' Hperm'']].
+        simpl in H. destruct H as [Hidx Hgarbage]. clear Hgarbage.
+        destruct (@comm_rel_dec _ nonCommRel a_te b_te) as [Hcomm|Hcomm].
+        + exists (l' ++ (b_idx, b_te) :: (a_idx, a_te) :: r'). split.
+          * constructor.
+            --
+          * apply perm_orig.
+        + unfold comm_rel, nonCommRel in Hcomm. apply not_not in Hcomm; [..|apply classic].
+          exists (l' ++ (a_idx, a_te) :: (b_idx, b_te) :: r'). split.
+          * apply Ht''.
+
+      induction Ht'.
+      - exists (snd (split (concat (tag_traces tt)))). split; repeat constructor.
+      -
+        destruct a as [a_idx a_te]. destruct b as [b_idx b_te].
+        destruct (@comm_rel_dec _ nonCommRel a_te b_te) as [Hcomm|Hcomm].
+        + exists (snd (split (l' ++ (b_idx, b_te) :: (a_idx, a_te) :: r'))). split.
+          * constructor. constructor.
+            -- simpl.
+
+
+
+    Lemma muilv_sufficient_replacement tt :
+      (forall REL, sufficient_replacement_p (Ens REL tt) (PermEnsemble REL tt)) ->
+      (forall REL, sufficient_replacement_p (PermEnsemble REL tt) (Ens REL tt)) ->
+      sufficient_replacement_p (Ens alwaysCommRel tt) (Ens nonCommRel tt).
+    Proof.
+      intros Hforth Hback.
+      specialize (Hforth alwaysCommRel). specialize (Hback nonCommRel).
+      eapply sufficient_replacement_p_trans; eauto.
+      eapply sufficient_replacement_p_trans; eauto.
+      apply perm_non_comm.
+    Qed.
+  End transform_ensemble.
+End PermIlv.
+
+  Lemma perm_to_muilv REL tt :
+    sufficient_replacement_p (PermEnsemble REL tt) (MultiIlv REL tt).
+  Admitted.
+
+End mint_to_permutation.
+
+
+Module VecIlv.
+  Open Scope vector_scope.
+  Section defn.
+    Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
+
+    Let T := list TE.
+    Let TT := list T.
+
+    Definition Traces := Vec.t T.
+
+    Inductive MInt : forall (Nelems start : nat), Traces Nelems -> @TraceEnsemble TE :=
+    | mint_nil :
+        MInt 0 0 (Vec.nil T) []
+    | mint_same : forall N i rest vec te t (Hi : i < N),
+        Vec.nth vec Hi = rest ->
+        MInt N i vec t ->
+        MInt N i (Vec.replace vec Hi (te :: rest)) (te :: t).
+    | mint_left : forall N i
+  End defn.
+
+End VecIlv.
 
 Section multi_interleaving2.
   Section defn.
@@ -209,81 +342,6 @@ Section sanity_check.
 
 End sanity_check.
 
-Section mint_to_permutation.
-  Context `{Hssp : StateSpace}.
-
-  Definition tag_traces {A} (tt : list (list A)) : list (list (nat * A)) :=
-    let f acc l := match acc with
-                   | (i, acc) =>
-                     let l' := map (fun j => (i, j)) l in
-                     (S i, l'  :: acc)
-                   end in
-    snd (fold_left f tt (0, [])).
-
-  Definition can_swap (REL : @te_commut_rel TE) (a b : nat * TE) : Prop :=
-    match a, b with
-    | (pid1, te1), (pid2, te2) => pid1 <> pid2 /\ @comm_rel _ REL te1 te2
-    end.
-
-  Definition can_swap_all := can_swap alwaysCommRel.
-
-  Definition can_swap_noncomm := can_swap nonCommRel.
-
-  Definition TaggedPermutation (REL : @te_commut_rel TE) (tt : list (list TE)) (t : list (nat * TE)) : Prop :=
-    Permutation (can_swap REL) (concat (tag_traces tt)) t.
-
-  Hint Transparent TaggedPermutation : slot.
-
-  Inductive PermEnsemble (REL : @te_commut_rel TE) (tt : list (list TE)) : @TraceEnsemble TE :=
-  | perm_ensemble : forall t,
-      TaggedPermutation REL tt t ->
-      PermEnsemble REL tt (snd (split t)).
-
-  Lemma filter_empty (tt : list (list TE)) :
-    filter Zip.nonempty tt = [] ->
-    (concat (tag_traces tt)) = [].
-  Admitted.
-
-  Lemma muilv_to_perm REL tt :
-    sufficient_replacement_p (MultiIlv REL tt) (PermEnsemble REL tt).
-  Proof with eauto with slot permutation.
-    intros t Ht.
-    destruct Ht as [|t Ht].
-    { exists []. split...
-      apply (perm_ensemble REL tt []).
-      unfold TaggedPermutation.
-      apply filter_empty in H. rewrite H...
-    }
-    { subst z.
-
-  Admitted.
-
-
-  Lemma perm_to_muilv REL tt :
-    sufficient_replacement_p (PermEnsemble REL tt) (MultiIlv REL tt).
-  Admitted.
-
-  Lemma perm_non_comm tt :
-    sufficient_replacement_p (PermEnsemble alwaysCommRel tt) (PermEnsemble nonCommRel tt).
-  Admitted.
-
-  Lemma muilv_sufficient_replacement tt :
-    sufficient_replacement_p (MultiIlv alwaysCommRel tt) (MultiIlv nonCommRel tt).
-  Proof.
-    intros t Ht.
-    apply muilv_to_perm in Ht. destruct Ht as [t' [Ht Hperm']].
-    apply perm_non_comm in Ht. destruct Ht as [t'' [Ht Hperm'']].
-    apply perm_to_muilv in Ht. destruct Ht as [t''' [Ht Hperm''']].
-    exists t'''. split; eauto with permutation.
-  Qed.
-
-  Theorem muilv_to_muilv_uniq tt Q P :
-    -{{P}} MultiIlv nonCommRel tt {{Q}} ->
-    -{{P}} MultiIlv alwaysCommRel tt {{Q}}.
-  Proof.
-    apply ht_sufficient_replacement, comm_perm_sufficient_replacement, muilv_sufficient_replacement.
-  Qed.
-End mint_to_permutation.
 
 Section uniq.
   Context `{Hssp : StateSpace}.
