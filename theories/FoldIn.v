@@ -4,12 +4,12 @@ sort of [In k (keys s)] hypothesis. This module defines versions of
 common list processing functions that provide this hypothesis *)
 
 From Coq Require
-     Omega
      Vector
      List
+     micromega.Lia
      Program.
 
-Import List ListNotations Omega Program.
+Import List ListNotations Lia Program.
 Module Vec := Vector.
 Module Fin := Fin.
 
@@ -77,7 +77,7 @@ Definition seq_vec : forall (N : nat), Vec.t (Fin.t N) N.
   intros N.
   induction N.
   - apply Vec.nil.
-  - assert (aid : N < S N) by omega.
+  - assert (aid : N < S N) by constructor.
     apply Fin.of_nat_lt in aid.
     apply (Vec.cons _ aid N (Vec.map Fin.FS IHN)).
 Defined.

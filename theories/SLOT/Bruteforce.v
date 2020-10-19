@@ -62,20 +62,19 @@ Section comm_rel.
   cbv. left. easy. Qed.
 End comm_rel.
 
-Check Fin.of_nat_lt.
-
-Coercion Fin.of_nat_lt : lt >-> Fin.t.
-
 Module PermIlv.
   (** * Interleaving of threads as permutation of trace elements
 
       This definition of interleaving is fairly impractical, because
       it requires unfolding all threads before interleavings can be
-      calculated, and we prefer to do it lazily, but it's useful for
-      internal proofs *)
+      calculated, and we prefer to evaluate code lazily, but it's
+      useful for internal proofs *)
 
   Section defn.
     Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
+
+    Definition tag_traces {A} (l : list A) : Vec.t (Fin.t (length l) * A) (length l).
+    Abort.
 
     Definition tag_traces {A} (tt : list (list A)) : list (list (nat * A)) :=
       let f acc l := match acc with
@@ -104,7 +103,7 @@ Module PermIlv.
   Definition PermIlvNonComm `{StateSpace} := @PermEnsemble TE nonCommRel.
 
   Section transform_ensemble.
-    Context `{Hssp : StateSpace} (Ens : @te_commut_rel TE -> list (list TE) -> @TraceEnsemble TE).
+    Context `{Hssp : StateSpace} (e1 e2 : list (list TE) -> @TraceEnsemble TE).
 
     Let te_s (l : list (nat * TE)) := snd (split l).
 
@@ -124,6 +123,13 @@ Module PermIlv.
       - destruct a as [a_idx a_te]. destruct b as [b_idx b_te].
         destruct IHHt' as [t'' [Ht'' Hperm'']].
         simpl in H. destruct H as [Hidx Hgarbage]. clear Hgarbage.
+    Admitted.
+(*
+
+        inversion Ht''; subst.
+
+
+
         destruct (@comm_rel_dec _ nonCommRel a_te b_te) as [Hcomm|Hcomm].
         + exists (l' ++ (b_idx, b_te) :: (a_idx, a_te) :: r'). split.
           * constructor.
@@ -140,17 +146,16 @@ Module PermIlv.
         destruct (@comm_rel_dec _ nonCommRel a_te b_te) as [Hcomm|Hcomm].
         + exists (snd (split (l' ++ (b_idx, b_te) :: (a_idx, a_te) :: r'))). split.
           * constructor. constructor.
-            -- simpl.
+            -- simpl. *)
 
 
 
-    Lemma muilv_sufficient_replacement tt :
-      (forall REL, sufficient_replacement_p (Ens REL tt) (PermEnsemble REL tt)) ->
-      (forall REL, sufficient_replacement_p (PermEnsemble REL tt) (Ens REL tt)) ->
-      sufficient_replacement_p (Ens alwaysCommRel tt) (Ens nonCommRel tt).
+    Lemma sufficient_replacement_with_comm_reduction tt :
+      sufficient_replacement_p (e1 tt) (PermEnsemble alwaysCommRel tt) ->
+      sufficient_replacement_p (PermEnsemble nonCommRel tt) (e2 tt) ->
+      sufficient_replacement_p (e1 tt) (e2 tt).
     Proof.
       intros Hforth Hback.
-      specialize (Hforth alwaysCommRel). specialize (Hback nonCommRel).
       eapply sufficient_replacement_p_trans; eauto.
       eapply sufficient_replacement_p_trans; eauto.
       apply perm_non_comm.
@@ -158,15 +163,18 @@ Module PermIlv.
   End transform_ensemble.
 End PermIlv.
 
-  Lemma perm_to_muilv REL tt :
-    sufficient_replacement_p (PermEnsemble REL tt) (MultiIlv REL tt).
-  Admitted.
+Coercion Fin.of_nat_lt : lt >-> Fin.t.
 
-End mint_to_permutation.
+Definition fin_to_nat {N} (n : Fin.t N) : nat :=
+  match Fin.to_nat n with
+    exist _ a C => a
+  end.
 
+Coercion fin_to_nat : Fin.t >-> nat.
 
 Module VecIlv.
   Open Scope vector_scope.
+
   Section defn.
     Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
 
@@ -175,17 +183,25 @@ Module VecIlv.
 
     Definition Traces := Vec.t T.
 
-    Inductive MInt : forall (Nelems start : nat), Traces Nelems -> @TraceEnsemble TE :=
-    | mint_nil :
-        MInt 0 0 (Vec.nil T) []
-    | mint_same : forall N i rest vec te t (Hi : i < N),
-        Vec.nth vec Hi = rest ->
-        MInt N i vec t ->
-        MInt N i (Vec.replace vec Hi (te :: rest)) (te :: t).
-    | mint_left : forall N i
+    Inductive MInt Nelems : forall (start : Fin.t Nelems), Traces Nelems -> @TraceEnsemble TE :=
+    | mint_nil : forall i,
+        MInt Nelems i (vec_same Nelems []) []
+    | mint_cons1 : forall (i j : Fin.t Nelems) rest vec te t,
+        i <= j ->
+        Vec.nth vec i = rest ->
+        MInt Nelems j vec t ->
+        MInt Nelems i (Vec.replace vec i (te :: rest)) (te :: t)
+    | mint_cons2 : forall (i j : Fin.t Nelems) rest vec te_i te_j t,
+        j < i ->
+        Vec.nth vec i = rest ->
+        comm_rel te_i te_j ->
+        MInt Nelems j vec (te_j :: t) ->
+        MInt Nelems i (Vec.replace vec i (te_i :: rest)) (te_i :: te_j :: t).
   End defn.
-
 End VecIlv.
+
+
+
 
 Section multi_interleaving2.
   Section defn.
