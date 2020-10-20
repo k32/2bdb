@@ -73,9 +73,6 @@ Module PermIlv.
   Section defn.
     Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
 
-    Definition tag_traces {A} (l : list A) : Vec.t (Fin.t (length l) * A) (length l).
-    Abort.
-
     Definition tag_traces {A} (tt : list (list A)) : list (list (nat * A)) :=
       let f acc l := match acc with
                      | (i, acc) =>
@@ -148,8 +145,6 @@ Module PermIlv.
           * constructor. constructor.
             -- simpl. *)
 
-
-
     Lemma sufficient_replacement_with_comm_reduction tt :
       sufficient_replacement_p (e1 tt) (PermEnsemble alwaysCommRel tt) ->
       sufficient_replacement_p (PermEnsemble nonCommRel tt) (e2 tt) ->
@@ -197,11 +192,56 @@ Module VecIlv.
         comm_rel te_i te_j ->
         MInt Nelems j vec (te_j :: t) ->
         MInt Nelems i (Vec.replace vec i (te_i :: rest)) (te_i :: te_j :: t).
+
+    Definition MInt_ (tt : TT) : @TraceEnsemble TE :=
+      fun t => exists i, MInt (length tt) i (Vec.of_list tt) t.
   End defn.
+
+  Module try_using_perm.
+    Import PermIlv.
+
+    Section sisyphus.
+      Context `{Hssp : StateSpace}.
+
+      Lemma pipe_dream tt : sufficient_replacement_p (PermEnsemble nonCommRel tt) (MInt_ nonCommRel tt).
+      Proof.
+        intros t Ht.
+        inversion Ht as [tt_tagged Ht' Htt_tagged]. subst. clear Ht.
+        induction Ht'.
+        2:{ destruct IHHt' as [t'' [Ht'' Hperm'']].
+            destruct a as [idx1 te1]. destruct b as [idx2 te2].
+            simpl in H.
+      Abort.
+    End sisyphus.
+  End try_using_perm.
+
+  Section sisyphus.
+    Context `{Hssp : StateSpace}.
+
+    Fixpoint pipe_dream0 N i0 tt_vec t
+      (Ht : MInt alwaysCommRel N i0 tt_vec t) {struct Ht} :
+      exists t' : list TE,
+        (exists i : Fin.t N, MInt nonCommRel N i tt_vec t') /\ Permutation trace_elems_commute t t'.
+    Proof.
+      destruct Ht as [i
+                     |i j rest vec te t Hij Hi Ht
+                     |i j rest vec te_i te_j t Hij Hi Hcomm Ht
+                     ].
+      { exists []. split; [..|now constructor].
+        exists i. constructor.
+      }
+      { apply pipe_dream0 in Ht. destruct Ht as [t' [[k Ht'] Hperm]].
+    Admitted.
+
+    Theorem pipe_dream tt : sufficient_replacement_p (MInt_ alwaysCommRel tt) (MInt_ nonCommRel tt).
+    Proof.
+      intros t Ht.
+      destruct Ht as [i0 Ht]. unfold MInt_.
+      remember (Vec.of_list tt) as tt_vec.
+      now apply pipe_dream0 in Ht.
+    Qed.
+  End sisyphus.
 End VecIlv.
-
-
-
 
 Section multi_interleaving2.
   Section defn.
