@@ -218,6 +218,14 @@ Module VecIlv.
   Section sisyphus.
     Context `{Hssp : StateSpace}.
 
+    Fixpoint pipe_dream1 N (i k : Fin.t N) t te vec
+             (Ht' : MInt nonCommRel N k vec t)
+             (H : k < i) {struct Ht'} :
+    exists t' : list TE,
+      MInt nonCommRel N k (Vec.replace vec i (te :: Vec.nth vec i)) t' /\
+      Permutation trace_elems_commute (te :: t) t'.
+    Admitted.
+
     Fixpoint pipe_dream0 N i0 tt_vec t
       (Ht : MInt alwaysCommRel N i0 tt_vec t) {struct Ht} :
       exists t' : list TE,
@@ -230,8 +238,33 @@ Module VecIlv.
       { exists []. split; [..|now constructor].
         exists i. constructor.
       }
-      { apply pipe_dream0 in Ht. destruct Ht as [t' [[k Ht'] Hperm]].
-    Admitted.
+      { subst. apply pipe_dream0 in Ht. destruct Ht as [t' [[k Ht'] Hperm]].
+        clear Hij. clear j.
+        destruct (PeanoNat.Nat.le_gt_cases i k).
+        - exists (te :: t'). split.
+          + exists i. eapply mint_cons1; eauto.
+          + now apply permut_cons.
+        - apply pipe_dream1 with (i := i) (te := te) in Ht'; [|easy].
+          destruct Ht' as [t'' [Ht'' Hprem'']].
+          exists t''. split.
+          + exists k. exact Ht''.
+          + apply permut_cons with (a := te) in Hperm.
+            eapply permut_trans; eauto.
+      }
+      { subst. apply pipe_dream0 in Ht. destruct Ht as [t' [[k Ht'] Hperm]].
+        clear Hij. clear j.
+        destruct (PeanoNat.Nat.le_gt_cases i k).
+        - exists (te_i :: t'). split.
+          + exists i. eapply mint_cons1; eauto.
+          + now apply permut_cons.
+        - apply pipe_dream1 with (i := i) (te := te_i) in Ht'; [|easy].
+          destruct Ht' as [t'' [Ht'' Hprem'']].
+          exists t''. split.
+          + exists k. exact Ht''.
+          + apply permut_cons with (a := te_i) in Hperm.
+            eapply permut_trans; eauto.
+      }
+    Qed.
 
     Theorem pipe_dream tt : sufficient_replacement_p (MInt_ alwaysCommRel tt) (MInt_ nonCommRel tt).
     Proof.
