@@ -68,6 +68,14 @@ Section defn.
     - assumption.
     - constructor; assumption.
   Qed.
+
+  Lemma permut_nil a : Permutation a [] -> a = [].
+  Proof.
+    intros H.
+    inversion H.
+    - reflexivity.
+    - destruct l'; autorewrite with list; discriminate.
+  Qed.
 End defn.
 
 Hint Constructors Permutation : permutation.

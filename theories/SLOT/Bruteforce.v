@@ -21,7 +21,8 @@ From Coq Require Import
      Program
      Logic.Classical_Prop
      Logic.Decidable
-     Relations.
+     Relations
+     Lia.
 
 Import ListNotations.
 
@@ -34,6 +35,11 @@ Module Vec := Vector.
 Open Scope list_scope.
 Open Scope hoare_scope.
 Open Scope zipper_scope.
+
+Lemma trace_elems_commute_dec `{StateSpace} a b : decidable (trace_elems_commute a b).
+Proof.
+  apply classic.
+Qed.
 
 Section comm_rel.
   Class te_commut_rel {A} :=
@@ -106,44 +112,7 @@ Module PermIlv.
 
     Lemma perm_non_comm tt :
       sufficient_replacement_p (PermIlvAll tt) (@PermIlvNonComm _ _ Hssp tt).
-    Proof.
-      intros t Ht. unfold PermIlvAll in Ht. inversion Ht as [t_tagged Ht']. subst. clear Ht.
-      assert (H : exists t', TaggedPermutation nonCommRel tt t' /\
-                        Permutation trace_elems_commute (te_s t_tagged) (te_s t')).
-      2:{ destruct H as [t'' [Ht'' Hperm'']].
-          exists (snd (split t'')). split.
-          - now constructor.
-          - assumption.
-      }
-      induction Ht'.
-      - exists (concat (tag_traces tt)). split; constructor.
-      - destruct a as [a_idx a_te]. destruct b as [b_idx b_te].
-        destruct IHHt' as [t'' [Ht'' Hperm'']].
-        simpl in H. destruct H as [Hidx Hgarbage]. clear Hgarbage.
-    Admitted.
-(*
-
-        inversion Ht''; subst.
-
-
-
-        destruct (@comm_rel_dec _ nonCommRel a_te b_te) as [Hcomm|Hcomm].
-        + exists (l' ++ (b_idx, b_te) :: (a_idx, a_te) :: r'). split.
-          * constructor.
-            --
-          * apply perm_orig.
-        + unfold comm_rel, nonCommRel in Hcomm. apply not_not in Hcomm; [..|apply classic].
-          exists (l' ++ (a_idx, a_te) :: (b_idx, b_te) :: r'). split.
-          * apply Ht''.
-
-      induction Ht'.
-      - exists (snd (split (concat (tag_traces tt)))). split; repeat constructor.
-      -
-        destruct a as [a_idx a_te]. destruct b as [b_idx b_te].
-        destruct (@comm_rel_dec _ nonCommRel a_te b_te) as [Hcomm|Hcomm].
-        + exists (snd (split (l' ++ (b_idx, b_te) :: (a_idx, a_te) :: r'))). split.
-          * constructor. constructor.
-            -- simpl. *)
+    Abort.
 
     Lemma sufficient_replacement_with_comm_reduction tt :
       sufficient_replacement_p (e1 tt) (PermEnsemble alwaysCommRel tt) ->
@@ -153,8 +122,8 @@ Module PermIlv.
       intros Hforth Hback.
       eapply sufficient_replacement_p_trans; eauto.
       eapply sufficient_replacement_p_trans; eauto.
-      apply perm_non_comm.
-    Qed.
+      Fail apply perm_non_comm.
+    Abort.
   End transform_ensemble.
 End PermIlv.
 
@@ -177,6 +146,10 @@ Module VecIlv.
     Let TT := list T.
 
     Definition Traces := Vec.t T.
+
+    Definition vec_append {N} (vec : Vec.t (list TE) N) i te :=
+      let rest := Vec.nth vec i in
+      Vec.replace vec i (te :: rest).
 
     Inductive MInt Nelems : forall (start : Fin.t Nelems), Traces Nelems -> @TraceEnsemble TE :=
     | mint_nil : forall i,
@@ -218,52 +191,102 @@ Module VecIlv.
   Section sisyphus.
     Context `{Hssp : StateSpace}.
 
-    Fixpoint pipe_dream1 N (i k : Fin.t N) t te vec
-             (Ht' : MInt nonCommRel N k vec t)
-             (H : k < i) {struct Ht'} :
-    exists t' : list TE,
-      MInt nonCommRel N k (Vec.replace vec i (te :: Vec.nth vec i)) t' /\
-      Permutation trace_elems_commute (te :: t) t'.
+    Lemma pipe_dream1 N (i k : Fin.t N) t te vec
+          (Ht : MInt nonCommRel N k vec t)
+          (H : k < i) :
+      exists t' : list TE, exists (j : Fin.t N),
+          MInt nonCommRel N j (Vec.replace vec i (te :: Vec.nth vec i)) t' /\
+          Permutation trace_elems_commute (te :: t) t'.
+    Proof.
+      destruct Ht as [k
+                     |k j rest vec te' t Hij Hi Ht
+                     |k j rest vec te_i te_j t Hij Hi Hcomm Ht
+                     ].
+      -
+    Abort.
+
+    Inductive trivial_add {N} (te : TE) (i k : Fin.t N) : list TE -> Prop :=
+    | triv_add_ik : forall t, trivial_add te i k t
+    | triv_add_nil : trivial_add te i k []
+    | triv_add_ncomm : forall te' rest,
+        ~trace_elems_commute te te' ->
+        trivial_add te i k (te' :: rest).
+
+    Lemma vec_same_nth N k (l : list TE) : Vec.nth (vec_same N l) k = l.
     Admitted.
+
+    Hint Rewrite vec_same_nth : vector.
+
+    Fixpoint mint_add0 {N} (i k : Fin.t N) te te' t0 vec
+             (Ht : MInt nonCommRel N k vec (te' :: t0))
+             (Hik : k < i)
+             (Hcomm0 : trace_elems_commute te te')
+             {struct Ht} :
+      exists t' : list TE,
+          MInt nonCommRel N k (Vec.replace vec i (te :: Vec.nth vec i)) (te' :: t') /\
+          Permutation trace_elems_commute (te :: te' :: t0) t'.
+    Proof.
+      remember (te' :: t0) as t_.
+      destruct Ht as [k
+                     |k j rest vec te'' t Hij Hi Ht
+                     |k j rest vec te_i te_j t Hij Hi Hcomm Ht
+                     ]; subst.
+      { discriminate. }
+      2:{ cbn in Hcomm.
+          destruct (trace_elems_commute_dec te te_j).
+          - apply mint_add0 with (te := te) (i := i) in Ht; [|lia|assumption].
+            destruct Ht as [t' [Ht' Hperm']].
+            exists (te_i :: te_j :: t').
+            set (vec' := (Vec.replace vec k (te_i :: Vec.nth vec k))).
+            split.
+            +
+
+
+
+      - inversion_ Heqt_. clear Heqt_.
+        destruct Ht as [k'
+                       |k' j' rest' vec' te''' t' Hij' Hi' Ht'
+                       |k' j' rest' vec' te_i' te_j' t' Hij' Hi' Hcomm' Ht'
+                       ]; subst.
+        + exists [te'; te]. split.
+          * autorewrite with vector.
+
+
+
+    Admitted.
+
+    Lemma mint_add {N} (i k : Fin.t N) t te vec
+          (Ht : MInt nonCommRel N k vec t) :
+      exists t' : list TE, exists (j : Fin.t N),
+          MInt nonCommRel N j (Vec.replace vec i (te :: Vec.nth vec i)) t' /\
+          Permutation trace_elems_commute (te :: t) t'.
+    Proof.
+
 
     Fixpoint pipe_dream0 N i0 tt_vec t
       (Ht : MInt alwaysCommRel N i0 tt_vec t) {struct Ht} :
-      exists t' : list TE,
-        (exists i : Fin.t N, MInt nonCommRel N i tt_vec t') /\ Permutation trace_elems_commute t t'.
+      exists t' : list TE, exists i : Fin.t N,
+          MInt nonCommRel N i tt_vec t' /\ Permutation trace_elems_commute t t'.
     Proof.
       destruct Ht as [i
                      |i j rest vec te t Hij Hi Ht
                      |i j rest vec te_i te_j t Hij Hi Hcomm Ht
                      ].
-      { exists []. split; [..|now constructor].
-        exists i. constructor.
-      }
-      { subst. apply pipe_dream0 in Ht. destruct Ht as [t' [[k Ht'] Hperm]].
-        clear Hij. clear j.
-        destruct (PeanoNat.Nat.le_gt_cases i k).
-        - exists (te :: t'). split.
-          + exists i. eapply mint_cons1; eauto.
-          + now apply permut_cons.
-        - apply pipe_dream1 with (i := i) (te := te) in Ht'; [|easy].
-          destruct Ht' as [t'' [Ht'' Hprem'']].
-          exists t''. split.
-          + exists k. exact Ht''.
-          + apply permut_cons with (a := te) in Hperm.
+      - exists []. exists i. split; constructor.
+      - subst. apply pipe_dream0 in Ht. destruct Ht as [t' [k [Ht' Hperm]]].
+        specialize (mint_add i k t' te vec Ht') as H.
+        destruct H as [t'' [i' [Ht'' Hperm'']]].
+        exists t''. exists i'. split.
+        + assumption.
+        + eapply permut_cons in Hperm;
             eapply permut_trans; eauto.
-      }
-      { subst. apply pipe_dream0 in Ht. destruct Ht as [t' [[k Ht'] Hperm]].
-        clear Hij. clear j.
-        destruct (PeanoNat.Nat.le_gt_cases i k).
-        - exists (te_i :: t'). split.
-          + exists i. eapply mint_cons1; eauto.
-          + now apply permut_cons.
-        - apply pipe_dream1 with (i := i) (te := te_i) in Ht'; [|easy].
-          destruct Ht' as [t'' [Ht'' Hprem'']].
-          exists t''. split.
-          + exists k. exact Ht''.
-          + apply permut_cons with (a := te_i) in Hperm.
+      - subst. apply pipe_dream0 in Ht. destruct Ht as [t' [k [Ht' Hperm]]].
+        specialize (mint_add i k t' te_i vec Ht') as H.
+        destruct H as [t'' [i' [Ht'' Hperm'']]].
+        exists t''. exists i'. split.
+        + assumption.
+        + eapply permut_cons in Hperm;
             eapply permut_trans; eauto.
-      }
     Qed.
 
     Theorem pipe_dream tt : sufficient_replacement_p (MInt_ alwaysCommRel tt) (MInt_ nonCommRel tt).
@@ -271,7 +294,10 @@ Module VecIlv.
       intros t Ht.
       destruct Ht as [i0 Ht]. unfold MInt_.
       remember (Vec.of_list tt) as tt_vec.
-      now apply pipe_dream0 in Ht.
+      eapply pipe_dream0 in Ht. destruct Ht as [t' [i [Ht Hperm]]].
+      exists t'. split.
+      - now exists i.
+      - assumption.
     Qed.
   End sisyphus.
 End VecIlv.
