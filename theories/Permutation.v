@@ -76,6 +76,29 @@ Section defn.
     - reflexivity.
     - destruct l'; autorewrite with list; discriminate.
   Qed.
+
+  Lemma permut_head' a b t :
+    can_swap a b ->
+    Permutation (a :: b :: t) (b :: a :: t).
+  Proof.
+    intros H.
+    replace (a :: b :: t) with ([] ++ a :: b :: t) by reflexivity.
+    replace (b :: a :: t) with ([] ++ b :: a :: t) by reflexivity.
+    apply perm_shuf.
+    - constructor.
+    - assumption.
+  Qed.
+
+  Lemma permut_head a b t1 t2 :
+    can_swap a b ->
+    Permutation (b :: a :: t1) t2 ->
+    Permutation (a :: b :: t1) t2.
+  Proof.
+    intros Hab H.
+    induction H.
+    - now apply permut_head'.
+    - now apply perm_shuf.
+  Qed.
 End defn.
 
 Hint Constructors Permutation : permutation.
