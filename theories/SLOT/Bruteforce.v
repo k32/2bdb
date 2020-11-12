@@ -272,4 +272,16 @@ Module VecIlv.
       - assumption.
     Qed.
   End prune_interleavings.
+
+  Section pack_interleaving.
+    Context `{Hssp : StateSpace}.
+
+    Theorem pack_interleaving N i (vec : Vec.t (list TE) N) t1 t2 t :
+      MInt alwaysCommRel N i vec t1 ->
+      Interleaving t1 t2 t ->
+      exists j, MInt alwaysCommRel (S N) j (Vec.shiftin t2 vec) t.
+    Proof.
+      intros H Hilv.
+    Abort.
+  End pack_interleaving.
 End VecIlv.
