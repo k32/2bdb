@@ -88,6 +88,51 @@ Definition vec_same {A} (N : nat) (a : A) : Vec.t A N.
   - assumption.
 Defined.
 
+Lemma shiftin_same {A} N (l : A) :
+  (Vec.shiftin l (vec_same N l)) = vec_same (S N) l.
+Proof.
+  induction N.
+  - reflexivity.
+  - simpl. now rewrite IHN.
+Qed.
+
+Definition fin_to_nat {N} (n : Fin.t N) : nat :=
+  match Fin.to_nat n with
+    exist _ a C => a
+  end.
+
+Fixpoint last_fin (N : nat) : Fin.t (S N) :=
+  match N with
+  | 0 => Fin.F1
+  | S n => Fin.FS (last_fin n)
+  end.
+
+Goal fin_to_nat (last_fin 0) = 0.
+  reflexivity.
+Qed.
+
+Goal fin_to_nat (last_fin 3) = 3.
+  reflexivity.
+Qed.
+
+Lemma last_fin_to_nat N :
+  fin_to_nat (last_fin N) = N.
+Abort. (* TODO *)
+
+Lemma shiftin_nth_last {A} N (vec : Vec.t A N) (a : A) :
+  Vec.nth (Vec.shiftin a vec) (last_fin N) = a.
+Proof.
+  now induction vec.
+Qed.
+
+Lemma shiftin_replace_last {A} N (vec : Vec.t A N) (a b : A) :
+  Vec.replace (Vec.shiftin a vec) (last_fin N) b = Vec.shiftin b vec.
+Proof.
+  induction vec.
+  - reflexivity.
+  - simpl. now rewrite IHvec.
+Qed.
+
 (* Definition find' {K V} `{OrderedType K} (k : K) (m : Map[K,V]) (HIn : MapInterface.In k m) : V. *)
 (*   refine ( *)
 (*       let v := MapInterface.find k m in *)

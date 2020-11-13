@@ -68,11 +68,6 @@ Section comm_rel.
   cbv. left. easy. Qed.
 End comm_rel.
 
-Definition fin_to_nat {N} (n : Fin.t N) : nat :=
-  match Fin.to_nat n with
-    exist _ a C => a
-  end.
-
 Coercion fin_to_nat : Fin.t >-> nat.
 Coercion Fin.of_nat_lt : lt >-> Fin.t.
 
@@ -282,6 +277,16 @@ Module VecIlv.
       exists j, MInt alwaysCommRel (S N) j (Vec.shiftin t2 vec) t.
     Proof.
       intros H Hilv.
+      set (last := last_fin N).
+      induction H.
+      - apply interleaving_nil in Hilv. subst.
+        exists last. induction t.
+        + rewrite shiftin_same. constructor.
+        + replace (Vec.shiftin (a :: t) (vec_same N [])) with
+              (vec_append last a (Vec.shiftin t (vec_same N []))).
+          * apply mint_cons1 with (j := last); auto.
+          * unfold vec_append. now rewrite shiftin_nth_last, shiftin_replace_last.
+      -
     Abort.
   End pack_interleaving.
 End VecIlv.
