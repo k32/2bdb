@@ -1,56 +1,92 @@
-(** * Separation Logic of Traces *)
-(** This module defines the model of distributed system used in the
-rest of the project. Whether you trust the LibTx depends on whether
-you trust the below definitions.
+(** * SLOT: a formally verified model checker *)
+
+(** SLOT is a collection of definitions and tactics for verification
+of safety properties of concurrent and distributed functional programs
+doing I/O, based on Hoare logic. SLOT models have the following
+properties:
+
+- Verified systems are written in a shallow-embedded DSL, and take
+  advantage of most Gallina features. They can be extracted to CPS
+  programs in Ocaml or Haskell via Coq's extraction feature
+
+- Users can define their own I/O operations (called syscalls from now
+  on)
+
+- Syscall definitions can be composed together, and all theorems about
+  the individual syscall types hold for the combined system
+
+- Syscalls can be nondeterminisic
+
+Some notes on the naming: originally SLOT stood for Separation Logic
+Of Traces, but the current implementation has nothing to do with
+separation logic. However this name was catchy, so it stuck.
 
 * Motivation
 
 Before diving into lengthy description of the model, let me first
-motivate a sceptical reader:
+motivate a skeptical reader:
 
 ** Q: Why not TLA+?
 
-A: ToySep allows to describe nondeterministic parts of the model in a
-way very similar to TLA+. But its deterministic part enjoys from using
-a full-fledged functional language
+A: In SLOT the verified system is clearly separated from the I/O
+model, and therefore its definition looks much like conventional
+functional program. It makes extraction of the verified code easier
+(at least in theory). Model of the non-deterministic I/O is
+separated. This leads to much more structured definitions and proofs.
 
-- I want to write inductive proofs
+Another obvious difference is that SLOT is entirely based on Coq and
+makes heavy use of inductive datatypes and symbolic evaluation under
+the hood. This has both advantages and disadvantages:
 
-- I want to use a more or less traditional functional language
+- SLOT is much less automated, but it can work with inductive
+  definitions and anything that can be expressed in Coq
 
-- I want to extract verified programs
+- SLOT model checker outputs Coq proofs, ultimately it means that it
+  needs to store all execution histories. Given that the number of
+  histories grows exponentially, solving large proofs by pure
+  bruteforce is impossible. Although this disadvantage is partially
+  mitigated by several formally-verified branch-pruning algorithms, it
+  means proofs about large systems should be split to lemmas
 
-- While TLA+ model checker is top notch, its proof checker isn't
+- Verified program can be extracted
 
-** Q: Why not %model checker%?
+- While TLA+ model checker is top notch, its proof language is not
 
-A: Model checkers show why the code _fails_, which is good for
-verifying algorithms, but formal proofs show why the code _works_ (via
-tree of assumptions), which is good for reasoning about algorithms
-and, in particular, predicting the outcome of optimisations. Also
-model checkers can't explore the entire state space of a typical
-real-life system with unbounded number of actors.
+** Q: Why not (insert model checker name)?
+
+A: Model checkers show why the code _fails_, which is suitable for
+verifying algorithms, but structured formal proofs show why the code
+_works_ (via tree of assumptions). It allows to reason about
+algorithms and, in particular, to predict the outcome of
+optimizations. Also model checkers typically can't work with infinite
+state space, while SLOT can do it to some extend via magic of Coq.
 
 ** Q: Why not Verdi?
 
-- Verdi models are low level: think UDP packets and disk IO. ToySep is
-  meant to model systems on a much higher level: think Kafka client
-  API.
+https://github.com/uwplse/verdi
 
-- Nondeterminisic part of Verdi is hardcoded, while ToySep allows user
-  to define custom nondeterministic IO handlers.
+- Nondeterminisic part of Verdi is hardcoded, while SLOT allows user
+  to define custom IO handlers
+
+- Verdi models are low level: think UDP packets and disk iops. SLOT
+  can work with higher-level I/O handlers: think databases and pubsub
+  services.
 
 ** Q: Why not disel?
 
+https://github.com/DistributedComponents/disel
+
 A: disel models are closer to what I need, but implementation itself
-is an incomprehensible, undocumetned burp of ssreflect. Proofs are as
-useful as their premises: "garbage in - garbage out". Good model
-should be well documented and well understood.
+is an incomprehensible, impenetrable wall of ssreflect. Proofs are
+only as useful as their premises: "garbage in - garbage out". Good
+model should be well documented and well understood.
 
 ** Q: Why not iris/aneris?
 
+https://gitlab.mpi-sws.org/iris/iris
+
 A: iris allows user to define semantics of their very own programming
-language. ToySep is focused on proving properties of _regular pure
+language. SLOT is focused on proving properties of _regular pure
 functinal programs_ that do IO from time to time. Hence it defines
 actors in regular Gallina language, rather than some DSL, and frees
 the user from reinventing basic control flow constructions.
@@ -152,10 +188,10 @@ Module ExampleModelDefn.
       infinite_loop self.
 
     (* Data race example: *)
-    Definition inc (n : nat) cont : Thread :=
+    Definition inc (n : nat) ret : Thread :=
       do v <- get;
       do _ <- put (v + n);
-      cont (v + n).
+      ret (v + n).
 
     (* Fixed example: *)
     Definition counter_correct (self : PID) :=
