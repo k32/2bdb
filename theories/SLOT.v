@@ -17,6 +17,9 @@ properties:
 
 - Syscalls can be nondeterminisic
 
+- Current version of SLOT doesn't support verification of liveness
+  properties
+
 Some notes on the naming: originally SLOT stood for Separation Logic
 Of Traces, but the current implementation has nothing to do with
 separation logic. However this name was catchy, so it stuck.
