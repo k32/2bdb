@@ -1,3 +1,14 @@
+(** * Definitions for reasoning about a single execution history
+
+This module defines an abstraction called trace, that can be used to
+represent history of all syscalls executed by the running system. In
+this module we don't introduce any notion or semantics of syscall yet,
+to keep our definitions and theorems more generic. A more neutral term
+"trace element" is used here instead, but for simplicity one can think
+that trace element is roughly equivalent to a syscall.
+
+*)
+
 From Coq Require Import
      List
      String
@@ -20,6 +31,21 @@ Global Arguments Disjoint {_}.
 
 Ltac inversion_ a := inversion a; subst; auto with slot.
 
+(** ** State space
+
+[StateSpace] class is an abstraction used to describe side effects of
+syscalls.
+
+*** Parameters:
+
+ - <<S>> — set of points of the state space
+
+ - <<TE>> — set of trace elements
+
+*** Methods:
+
+[chain_rule s s' te] is a type of statements that read as "trace
+element [te] can transition system from state [s] to state [s']" *)
 Class StateSpace (S TE : Type) :=
   { chain_rule : S -> S -> TE -> Prop;
   }.
@@ -28,6 +54,51 @@ Notation "a '~[' b ']~>' c" := (chain_rule a c b)(at level 40) : hoare_scope.
 Infix "/\'" := (fun a b x => a x /\ b x)(at level 80) : hoare_scope.
 
 Open Scope hoare_scope.
+
+(** For example suppose <<S>> is [nat] and <<TE>> is [Inductive TE := increment.]
+
+Then the chain rule for the side effects of <<TE>> can be defined like this:
+
+[[
+chain_rule s s' te =
+  match te with
+  | increment => s' = s + 1
+  end.
+]]
+
+Note that side effects can be nondeterminisic. Let's extend our definition
+of TE with "Russian roulette" operation that either leaves the state unchanged
+or sets it to zero:
+
+[[
+Inductive TE := increment
+              | rr.
+]]
+
+Chain rule for this operation will look like this:
+
+[[
+chain_rule s s' te =
+  match te with
+  | increment => s' = s + 1
+  | rr        => s' = s \/ s' = 0
+  end.
+]]
+
+*)
+
+(** ** Paths through the state space
+
+[LongStep] is a datatype describing paths through the state space. Its
+first constructor [ls_nil] states the fact that the empty trace
+doesn't change the state of the system. In other words, state of the
+system doesn't drift by itself.
+
+The second constructor [ls_cons] declares that performing a syscall
+[te] transitioning the system from [s] to [s'] followed by execution
+of all syscalls in [trace], transitioning the system from [s'] to
+[s''], is equivalent to executing a path [te :: trace] from [s] to
+[s''] *)
 
 Section defn.
   Context {S : Type} {TE : Type} `{HSSp : StateSpace S TE}.
@@ -44,19 +115,9 @@ Section defn.
 
   Hint Constructors LongStep : slot.
 
-  Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
-    forall s s',
-      LongStep s trace s' ->
-      pre s -> post s'.
-
-  Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b).
-
-  Lemma hoare_nil : forall p, {{p}} [] {{p}}.
-  Proof.
-    intros p s s' Hs.
-    inversion_clear Hs. auto.
-  Qed.
-
+  (** [ls_split] is an important observation that there is a point in
+  the state space for each intermediate step of the trace
+  execution: *)
   Lemma ls_split : forall s s'' t1 t2,
       LongStep s (t1 ++ t2) s'' ->
       exists s', LongStep s t1 s' /\ LongStep s' t2 s''.
@@ -75,6 +136,7 @@ Section defn.
       + firstorder.
   Qed.
 
+  (** [ls_concat] lemma demonstrates that traces can be composed: *)
   Lemma ls_concat : forall s s' s'' t1 t2,
       LongStep s t1 s' ->
       LongStep s' t2 s'' ->
@@ -88,10 +150,32 @@ Section defn.
       apply ls_cons with (s' := s'0); auto.
   Qed.
 
+  (** ** Hoare logic of traces
+
+      [HoareTriple] is a type of judgments about trace execution,
+      stating that if precondition [pre] holds for the initial state
+      [s], and there is path [trace] through the state space leading
+      to a point [s'], then postcondition [post] must hold for
+      [s']. *)
+  Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
+    forall s s',
+      LongStep s trace s' ->
+      pre s -> post s'.
+
+  Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b).
+
+  (** Executing an empty trace doesn't change any properties: *)
+  Lemma hoare_nil : forall p, {{p}} [] {{p}}.
+  Proof.
+    intros p s s' Hs.
+    inversion_clear Hs. auto.
+  Qed.
+
+  (** Hoare triples of traces can be composed: *)
   Theorem hoare_concat : forall pre mid post t1 t2,
-      HoareTriple pre t1 mid ->
-      HoareTriple mid t2 post ->
-      HoareTriple pre (t1 ++ t2) post.
+      {{pre}} t1 {{mid}} ->
+      {{mid}} t2 {{post}} ->
+      {{pre}} (t1 ++ t2) {{post}}.
   Proof.
     intros.
     intros s s' Hs Hpre.
@@ -115,6 +199,14 @@ Section defn.
       {{ fun s => A s /\ C s }} t {{ fun s => B s /\ D s }}.
   Proof. firstorder. Qed.
 
+  (** ** Invariants
+
+   [TraceInvariant] is a type of judgments stating that if execution
+   of a trace starts in a state where property [prop] holds, then the
+   same property will hold for each intermediate state during
+   execution of the trace. In other words: [prop] is a subset of the
+   state space, and if the system starts off in this subset, it always
+   stays in it. *)
   Inductive TraceInvariant (prop : S -> Prop) : T -> Prop :=
   | inv_nil : TraceInvariant prop []
   | inv_cons : forall te t,
@@ -123,10 +215,6 @@ Section defn.
       TraceInvariant prop (te :: t).
 
   Hint Constructors TraceInvariant : slot.
-
-  Definition SystemInvariant (prop : S -> Prop) (E0 : Ensemble S) : Prop :=
-    forall t,
-      {{ E0 }} t {{ prop }}.
 
   Lemma trace_inv_split : forall prop t1 t2,
       TraceInvariant prop (t1 ++ t2) ->
@@ -148,6 +236,8 @@ Section defn.
     inversion_ H.
   Qed.
 
+  (** ** Commutativity of trace elements
+   *)
   Definition trace_elems_commute (te1 te2 : TE) :=
     forall s s',
       LongStep s [te1; te2] s' <-> LongStep s [te2; te1] s'.
@@ -234,6 +324,8 @@ Section defn.
       eapply ls_concat...
   Qed.
 
+  (** ** Trace extensions
+   *)
   Section ExpandTrace.
     Variable te_subset : Ensemble TE.
 
