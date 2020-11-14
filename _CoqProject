@@ -11,6 +11,7 @@ theories/SLOT/Ensemble.v
 theories/SLOT/Bruteforce.v
 theories/SLOT/Handler.v
 theories/SLOT/Process.v
+theories/SLOT/Generator.v
 theories/SLOT.v
 theories/Handlers/Deterministic.v
 theories/Handlers/Mutex.v

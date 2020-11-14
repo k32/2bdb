@@ -6,15 +6,11 @@ From LibTx Require Import
      Permutation
      SLOT.Hoare
      SLOT.Ensemble
-     SLOT.Generator
-     SLOT.Zipper.
+     SLOT.Generator.
 
 From Hammer Require Import
      Hammer
      Tactics.
-
-Module Zip := SLOT.Zipper.OfLists.
-Module Zip0 := SLOT.Zipper.
 
 From Coq Require Import
      List
@@ -34,7 +30,6 @@ Module Vec := Vector.
 
 Open Scope list_scope.
 Open Scope hoare_scope.
-Open Scope zipper_scope.
 
 Lemma trace_elems_commute_dec `{StateSpace} a b : decidable (trace_elems_commute a b).
 Proof.
