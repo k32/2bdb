@@ -269,7 +269,11 @@ Module VecIlv.
 
     Lemma shiftin_cons_append {N} (vec : Vec.t (list TE) N) te t :
       Vec.shiftin (te :: t) vec = vec_append (last_fin N) te (Vec.shiftin t vec).
-    Admitted.
+    Proof.
+      induction vec.
+      - reflexivity.
+      - simpl. rewrite IHvec. reflexivity.
+    Qed.
 
     Fixpoint shiftin_interleaving N i (vec : Vec.t (list TE) N) t1 t2 t
       (HMint : MInt alwaysCommRel N i vec t1)
