@@ -68,9 +68,6 @@ Section comm_rel.
   cbv. left. easy. Qed.
 End comm_rel.
 
-Coercion fin_to_nat : Fin.t >-> nat.
-Coercion Fin.of_nat_lt : lt >-> Fin.t.
-
 Module VecIlv.
   Open Scope vector_scope.
 
@@ -271,22 +268,64 @@ Module VecIlv.
   Section pack_interleaving.
     Context `{Hssp : StateSpace}.
 
-    Theorem pack_interleaving N i (vec : Vec.t (list TE) N) t1 t2 t :
-      MInt alwaysCommRel N i vec t1 ->
-      Interleaving t1 t2 t ->
+    Lemma shiftin_append_swap {N} t (i : Fin.t N) (te : TE) vec :
+      (Vec.shiftin t (vec_append i te vec)) = vec_append (Fin.L_R 1 i) te (Vec.shiftin t vec).
+    Admitted.
+
+    Lemma shiftin_cons_append {N} (vec : Vec.t (list TE) N) te t :
+      Vec.shiftin (te :: t) vec = vec_append (last_fin N) te (Vec.shiftin t vec).
+    Admitted.
+
+    Fixpoint shiftin_interleaving N i (vec : Vec.t (list TE) N) t1 t2 t
+      (HMint : MInt alwaysCommRel N i vec t1)
+      (HIlv : Interleaving t1 t2 t) {struct HIlv} :
       exists j, MInt alwaysCommRel (S N) j (Vec.shiftin t2 vec) t.
     Proof.
-      intros H Hilv.
-      set (last := last_fin N).
-      induction H.
-      - apply interleaving_nil in Hilv. subst.
-        exists last. induction t.
-        + rewrite shiftin_same. constructor.
-        + replace (Vec.shiftin (a :: t) (vec_same N [])) with
-              (vec_append last a (Vec.shiftin t (vec_same N []))).
-          * apply mint_cons1 with (j := last); auto.
-          * unfold vec_append. now rewrite shiftin_nth_last, shiftin_replace_last.
-      -
-    Abort.
+      destruct HIlv as [te t1' t2' t' HIlv
+                       |te t1' t2' t' HIlv
+                       |].
+      (* Solve easy cases first: *)
+      3:{ (* Null: *)
+        inversion_ HMint.
+        exists (last_fin N). rewrite shiftin_same. constructor.
+      }
+      2:{ (* t2: *)
+        apply shiftin_interleaving with (t2 := t2') (t := t') in HMint; auto.
+        rewrite shiftin_cons_append.
+        set (k := last_fin N).
+        exists k.
+        destruct HMint as [j Ht'].
+        destruct (last_fin_is_last j).
+        - subst.
+          apply mint_cons1 with (j := k); auto.
+        - destruct t' as [|te' t'].
+          + inversion_ Ht'.
+            apply mint_cons1 with (j0 := last_fin N); constructor.
+          + apply mint_cons2 with (j0 := j); auto.
+            constructor.
+      }
+      set (i' := Fin.L_R 1 i). exists i'.
+      inversion_ HMint.
+      - eapply shiftin_interleaving in H4; eauto. clear HMint.
+        destruct H4 as [k Ht'].
+        rewrite shiftin_append_swap.
+        destruct (PeanoNat.Nat.lt_ge_cases k i').
+        2:{ now apply mint_cons1 with (j0 := k). }
+        { destruct t' as [|te' t'].
+          - inversion_ Ht'.
+            apply mint_cons1 with (j0 := i'); constructor.
+          - apply mint_cons2 with (j0 := k); auto; constructor.
+        }
+      - eapply shiftin_interleaving in H5; eauto. clear HMint.
+        destruct H5 as [k Ht'].
+        rewrite shiftin_append_swap.
+        destruct (PeanoNat.Nat.lt_ge_cases k i').
+        2:{ now apply mint_cons1 with (j0 := k). }
+        { destruct t' as [|te' t'].
+          - inversion_ Ht'.
+            apply mint_cons1 with (j0 := i'); constructor.
+          - apply mint_cons2 with (j0 := k); auto; constructor.
+        }
+    Qed.
   End pack_interleaving.
 End VecIlv.

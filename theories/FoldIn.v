@@ -133,6 +133,13 @@ Proof.
   - simpl. now rewrite IHvec.
 Qed.
 
+Coercion fin_to_nat : Fin.t >-> nat.
+Coercion Fin.of_nat_lt : lt >-> Fin.t.
+
+Lemma last_fin_is_last {N} (a : Fin.t (S N)) :
+  {a = last_fin N} + {a < last_fin N}.
+Admitted.
+
 (* Definition find' {K V} `{OrderedType K} (k : K) (m : Map[K,V]) (HIn : MapInterface.In k m) : V. *)
 (*   refine ( *)
 (*       let v := MapInterface.find k m in *)
