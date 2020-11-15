@@ -94,6 +94,13 @@ functinal programs_ that do IO from time to time. Hence it defines
 actors in regular Gallina language, rather than some DSL, and frees
 the user from reinventing basic control flow constructions.
 
+* Navigating the code
+
+** Core definitions
+
+ - [LibTx.SLOT.Hoare] module contains definitions used to describe a
+   single execution history
+
 *)
 
 From LibTx Require Export
