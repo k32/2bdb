@@ -328,3 +328,38 @@ Module VecIlv.
     Qed.
   End pack_interleaving.
 End VecIlv.
+
+(* Deeply magical function from here:
+http://jamesrwilcox.com/more-cardinality.html. Reproduced with
+permission from the author *)
+Definition fin_case n x :
+  forall (P : Fin.t (S n) -> Type),
+    P Fin.F1 ->
+    (forall y, P (Fin.FS y)) ->
+    P x :=
+  match x as x0 in Fin.t n0
+     return
+       forall P,
+         match n0 as n0' return (Fin.t n0' -> (Fin.t n0' -> Type) -> Type) with
+           | 0 => fun _ _ => False
+           | S m => fun x P => P Fin.F1 -> (forall x0, P (Fin.FS x0)) -> P x
+         end x0 P
+  with
+  | Fin.F1 => fun _ H1 _ => H1
+  | Fin.FS _ => fun _ _ HS => HS _
+  end.
+
+Ltac fin_dep_destruct v :=
+  pattern v; apply fin_case; clear v; [|intros v].
+
+Ltac fin_all_cases v :=
+  repeat fin_dep_destruct v.
+
+Section tests.
+  Goal forall (n : Fin.t 3), const True n.
+  Proof.
+    intros.
+    fin_all_cases n.
+    all: constructor.
+  Qed.
+End tests.
