@@ -350,16 +350,28 @@ Definition fin_case n x :
   end.
 
 Ltac fin_dep_destruct v :=
-  pattern v; apply fin_case; clear v; [|intros v].
+  let v' := fresh v in
+  rename v into v';
+  generalize dependent v'; intros v'; pattern v';
+  apply fin_case; try clear v'; [|intros v].
 
 Ltac fin_all_cases v :=
-  repeat fin_dep_destruct v.
+  repeat fin_dep_destruct v ; [..|exfalso; inversion v].
 
 Section tests.
   Goal forall (n : Fin.t 3), const True n.
   Proof.
     intros.
     fin_all_cases n.
-    all: constructor.
+    - constructor.
+    - constructor.
+    - constructor.
   Qed.
+
+  Goal forall (n m : Fin.t 3), n < m -> const False n.
+  Proof.
+    intros.
+    fin_all_cases n; fin_all_cases m; intros Hnm; try (lia || now inversion Hnm); cbv.
+    3:{
+  Abort.
 End tests.
