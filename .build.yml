@@ -1,0 +1,13 @@
+image: ubuntu/lts
+packages:
+  - opam
+sources:
+  - https://git.sr.ht/~k32/libtx
+tasks:
+  - setup: |
+      opam init -y
+      opam repo add coq-released https://coq.inria.fr/opam/released
+      opam update
+  - make: |
+      cd libtx
+      opam install -y .

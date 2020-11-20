@@ -1,4 +1,3 @@
--R coq-record-update/src RecordUpdate
 -R theories LibTx
 theories/Misc.v
 theories/EqDec.v
