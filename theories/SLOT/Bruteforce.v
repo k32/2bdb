@@ -8,10 +8,6 @@ From LibTx Require Import
      SLOT.Ensemble
      SLOT.Generator.
 
-From Hammer Require Import
-     Hammer
-     Tactics.
-
 From Coq Require Import
      List
      Program
