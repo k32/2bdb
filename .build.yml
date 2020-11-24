@@ -5,9 +5,11 @@ sources:
   - https://git.sr.ht/~k32/libtx
 tasks:
   - setup: |
-      opam init -y
-      opam repo add coq-released https://coq.inria.fr/opam/released
-      opam update
+      # Download
+      # TODO: find a way to refresh cache automatically:
+      wget https://patchouli.sr.ht/builds.sr.ht/artifacts/~k32/351164/0a78ce7be5aaff70/opam.tar.gz
+      tar xf opam.tar.gz
   - make: |
+      eval $(opam env)
       cd libtx
       opam install -y .
