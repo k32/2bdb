@@ -50,6 +50,8 @@ Below you can find the full list of core assumptions made by `SLOT`:
      }.
    ```
 
+   ![](https://git.sr.ht/~k32/libtx/blob/master/doc/state_space.png)
+
 2) [LongStep](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Hoare.v)
     inductive datatype defines side effects of multiple I/O operations executed
     sequentially:
@@ -64,6 +66,8 @@ Below you can find the full list of core assumptions made by `SLOT`:
        LongStep s (te :: trace) s''.
    ```
 
+   ![](https://git.sr.ht/~k32/libtx/blob/master/doc/long_step.png)
+
 3) [HoareTriple](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Hoare.v)
     is a type that introduces Hoare logic of I/O operations:
 
@@ -73,6 +77,8 @@ Below you can find the full list of core assumptions made by `SLOT`:
        LongStep s trace s' ->
        pre s -> post s'.
     ```
+
+   ![](https://git.sr.ht/~k32/libtx/blob/master/doc/hoare.png)
 
 4) [TraceInvariant](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Hoare.v)
     is an inductive datatype that is used to describe invariants of the system:
