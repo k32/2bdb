@@ -23,11 +23,15 @@ in -- garbage out), a lot of effort went into keeping the number of
 assumptions to the minimum. Generally speaking, there are two levels
 of assumptions in SLOT:
 
- - core definitions that describe the behavior of a concurrent
-   distributed system doing I/O in general
+ - Core definitions that describe side effects of I/O operations in
+   general. These are considered fundamental to SLOT
+
+ - Definitions describing behavior of concurrent and distributed
+   systems
 
  - I/O handler models that describe behavior of specific 3rd party
-   services, such as network, message queues, disk, etc.
+   services, such as network, message queues, disk, etc. These
+   definitions are domain-specific
 
 ### Core definitions
 
@@ -82,7 +86,9 @@ Below you can find the full list of core assumptions made by `SLOT`:
         TraceInvariant prop (te :: t).
     ```
 
-5) [Interleaving](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Ensemble.v)
+### Definitions describing concurrent systems
+
+1) [Interleaving](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Ensemble.v)
    is an inductive datatype that describes all possible ways to execute a concurrent
    system of two processes
 
@@ -96,6 +102,8 @@ Below you can find the full list of core assumptions made by `SLOT`:
         Interleaving t1 (te :: t2) (te :: t)
     | ilv_nil : Interleaving [] [] [].
     ```
+
+    (It allows nesting, so it can be used to define a system with however many processes)
 
 ### I/O handler models
 
