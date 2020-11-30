@@ -19,8 +19,8 @@ Coq proofs, that are mostly free of axioms (we only rely on the
 excluded triple in some places).
 
 Since formal proofs are only as useful as their assumptions (garbage
-in -- garbage out), a lot of effort went into keeping the number of
-assumptions to the minimum. Generally speaking, there are two levels
+in — garbage out), a lot of effort went into keeping the number of
+assumptions to the minimum. Generally speaking, there are three levels
 of assumptions in SLOT:
 
  - Core definitions that describe side effects of I/O operations in
@@ -90,7 +90,7 @@ Below you can find the full list of core assumptions made by `SLOT`:
 
 1) [Interleaving](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Ensemble.v)
    is an inductive datatype that describes all possible ways to execute a concurrent
-   system of two processes
+   system of two processes (without sudden deaths):
 
     ```coq
     Inductive Interleaving : list TE -> list TE -> TraceEnsemble :=
