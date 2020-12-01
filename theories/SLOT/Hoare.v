@@ -89,12 +89,12 @@ state_transition s s' te =
 
 (** ** Paths through the state space
 
-[LongStep] is a datatype describing paths through the state space. Its
-first constructor [ls_nil] states the fact that the empty trace
+[ReachableByTrace] is a datatype describing paths through the state space. Its
+first constructor [rbt_nil] states the fact that the empty trace
 doesn't change the state of the system. In other words, state of the
 system doesn't drift by itself.
 
-The second constructor [ls_cons] declares that performing a syscall
+The second constructor [rbt_cons] declares that performing a syscall
 [te] transitioning the system from [s] to [s'] followed by execution
 of all syscalls in [trace], transitioning the system from [s'] to
 [s''], is equivalent to executing a path [te :: trace] from [s] to
@@ -105,22 +105,22 @@ Section defn.
 
   Let T := list TE.
 
-  Inductive LongStep : S -> T -> S -> Prop :=
-  | ls_nil : forall s,
-      LongStep s [] s
-  | ls_cons : forall s s' s'' te trace,
+  Inductive ReachableByTrace : S -> T -> S -> Prop :=
+  | rbt_nil : forall s,
+      ReachableByTrace s [] s
+  | rbt_cons : forall s s' s'' te trace,
       state_transition s s' te ->
-      LongStep s' trace  s'' ->
-      LongStep s (te :: trace) s''.
+      ReachableByTrace s' trace  s'' ->
+      ReachableByTrace s (te :: trace) s''.
 
-  Hint Constructors LongStep : slot.
+  Hint Constructors ReachableByTrace : slot.
 
   (** [ls_split] is an important observation that there is a point in
   the state space for each intermediate step of the trace
   execution: *)
   Lemma ls_split : forall s s'' t1 t2,
-      LongStep s (t1 ++ t2) s'' ->
-      exists s', LongStep s t1 s' /\ LongStep s' t2 s''.
+      ReachableByTrace s (t1 ++ t2) s'' ->
+      exists s', ReachableByTrace s t1 s' /\ ReachableByTrace s' t2 s''.
   Proof.
     intros.
     generalize dependent s.
@@ -132,22 +132,22 @@ Section defn.
       destruct IHt1.
       exists x.
       split.
-      + apply ls_cons with (s' := s'); firstorder.
+      + apply rbt_cons with (s' := s'); firstorder.
       + firstorder.
   Qed.
 
   (** [ls_concat] lemma demonstrates that traces can be composed: *)
   Lemma ls_concat : forall s s' s'' t1 t2,
-      LongStep s t1 s' ->
-      LongStep s' t2 s'' ->
-      LongStep s (t1 ++ t2) s''.
+      ReachableByTrace s t1 s' ->
+      ReachableByTrace s' t2 s'' ->
+      ReachableByTrace s (t1 ++ t2) s''.
   Proof.
     intros.
     generalize dependent s.
     induction t1; intros; simpl; auto.
     - inversion_ H.
     - inversion_ H.
-      apply ls_cons with (s' := s'0); auto.
+      apply rbt_cons with (s' := s'0); auto.
   Qed.
 
   (** ** Hoare logic of traces
@@ -159,7 +159,7 @@ Section defn.
       [s']. *)
   Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
     forall s s',
-      LongStep s trace s' ->
+      ReachableByTrace s trace s' ->
       pre s -> post s'.
 
   Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b).
@@ -240,7 +240,7 @@ Section defn.
    *)
   Definition trace_elems_commute (te1 te2 : TE) :=
     forall s s',
-      LongStep s [te1; te2] s' <-> LongStep s [te2; te1] s'.
+      ReachableByTrace s [te1; te2] s' <-> ReachableByTrace s [te2; te1] s'.
 
   Lemma trace_elems_commute_ht : forall pre post te1 te2,
       trace_elems_commute te1 te2 ->
@@ -265,8 +265,8 @@ Section defn.
 
   Lemma trace_elems_commute_head : forall s s'' b a trace,
       trace_elems_commute a b ->
-      LongStep s (b :: a :: trace) s'' ->
-      LongStep s (a :: b :: trace) s''.
+      ReachableByTrace s (b :: a :: trace) s'' ->
+      ReachableByTrace s (a :: b :: trace) s''.
   Proof with auto with slot.
     intros.
     inversion_ H0.
@@ -275,8 +275,8 @@ Section defn.
     replace (a :: b :: trace) with ([a; b] ++ trace) by auto.
     apply ls_concat with (s' := s'0)...
     apply H.
-    apply ls_cons with (s' := s')...
-    apply ls_cons with (s' := s'0)...
+    apply rbt_cons with (s' := s')...
+    apply rbt_cons with (s' := s'0)...
   Qed.
 
   Lemma trace_elems_commute_head_ht : forall P Q b a trace,
@@ -297,9 +297,9 @@ Section defn.
     exists s'_, s ~[te2]~> s'_ /\ s'_ ~[te1]~> s''.
   Proof with auto.
     intros H1 H2 H.
-    assert (Hls : LongStep s [te1; te2] s'').
-    { apply ls_cons with (s' := s')...
-      apply ls_cons with (s' := s'')...
+    assert (Hls : ReachableByTrace s [te1; te2] s'').
+    { apply rbt_cons with (s' := s')...
+      apply rbt_cons with (s' := s'')...
       constructor.
     }
     apply H in Hls.
@@ -311,9 +311,9 @@ Section defn.
   Qed.
 
   Lemma ht_comm_perm s s' t t' :
-    LongStep s t s' ->
+    ReachableByTrace s t s' ->
     Permutation trace_elems_commute t t' ->
-    LongStep s t' s'.
+    ReachableByTrace s t' s'.
   Proof with eauto with slot.
     intros Hls Hperm.
     induction Hperm.
@@ -380,7 +380,7 @@ Section defn.
           destruct Hss'' as [s' [Hss' Hss'']].
           specialize (IHHexp s s'').
           specialize (Hcr a b).
-          assert (Hls : LongStep s (l' ++ a :: b :: r') s'').
+          assert (Hls : ReachableByTrace s (l' ++ a :: b :: r') s'').
           { apply ls_concat with (s' := s')...
             apply trace_elems_commute_head...
             destruct H.
@@ -419,36 +419,36 @@ Section defn.
   Qed.
 
   Definition PossibleTrace t :=
-    exists s s', LongStep s t s'.
+    exists s s', ReachableByTrace s t s'.
 End defn.
 
 Notation "'{{' a '}}' t '{{' b '}}'" := (HoareTriple a t b) : hoare_scope.
 Notation "'{{}}' t '{{' b '}}'" := (HoareTriple (const True) t b) : hoare_scope.
 
-Check ls_cons.
+Check rbt_cons.
 
 Ltac forward s' :=
-  apply (ls_cons _ s' _ _ _).
+  apply (rbt_cons _ s' _ _ _).
 
 Ltac resolve_concat :=
   match goal with
-    [ H1 : LongStep ?s1 ?t1 ?s2, H2 : LongStep ?s2 ?t2 ?s3 |- LongStep ?s1 (?t1 ++ ?t2) ?s3] =>
+    [ H1 : ReachableByTrace ?s1 ?t1 ?s2, H2 : ReachableByTrace ?s2 ?t2 ?s3 |- ReachableByTrace ?s1 (?t1 ++ ?t2) ?s3] =>
     apply (ls_concat s1 s2 s3 t1 t2); assumption
   end.
 
-Hint Extern 3 (LongStep _ (_ ++ _) _) => resolve_concat : slot.
+Hint Extern 3 (ReachableByTrace _ (_ ++ _) _) => resolve_concat : slot.
 
 Ltac long_step f tac :=
   cbn in f;
   lazymatch type of f with
-  | LongStep _ [] _ =>
+  | ReachableByTrace _ [] _ =>
     let s := fresh "s" in
     let Hx := fresh "Hx" in
     let Hy := fresh "Hy" in
     let Hz := fresh "Hz" in
     inversion f as [s Hx Hy Hz|];
     subst s; clear f; clear Hy
-  | LongStep _ (_ :: _) _ =>
+  | ReachableByTrace _ (_ :: _) _ =>
     let s' := fresh "s" in
     let te := fresh "te" in
     let tail := fresh "tail" in
@@ -471,7 +471,7 @@ Tactic Notation "unfold_trace" ident(f) := unfold_trace f (fun _ => idtac).
 
 Ltac ls_advance tac :=
   match goal with
-  | [H : LongStep ?s ?t ?s' |- ?Q ?s'] =>
+  | [H : ReachableByTrace ?s ?t ?s' |- ?Q ?s'] =>
     long_step H tac
   end.
 
@@ -479,7 +479,7 @@ Tactic Notation "ls_advance" tactic3(tac) := ls_advance tac.
 Tactic Notation "ls_advance" := ls_advance (fun _ => idtac).
 
 Hint Transparent Ensembles.In Ensembles.Complement : slot.
-Hint Constructors LongStep : slot.
+Hint Constructors ReachableByTrace : slot.
 Hint Resolve trace_elems_commute_symm : slot.
 
 Ltac unfold_ht :=
@@ -501,17 +501,17 @@ Ltac unfold_ht :=
 Section tests.
   Generalizable Variables ST TE.
 
-  Goal forall `{StateSpace ST TE} s s' (te : TE), LongStep s [te; te; te] s' -> True.
+  Goal forall `{StateSpace ST TE} s s' (te : TE), ReachableByTrace s [te; te; te] s' -> True.
     intros.
     unfold_trace H0.
   Abort.
 
-  Goal forall `{StateSpace ST TE} s s' (te : TE), LongStep s [te] s' -> True.
+  Goal forall `{StateSpace ST TE} s s' (te : TE), ReachableByTrace s [te] s' -> True.
     intros.
     unfold_trace H0 (fun x => try inversion x).
   Abort.
 
-  Goal forall `{StateSpace ST TE} s s' (te : TE), LongStep s [] s' -> True.
+  Goal forall `{StateSpace ST TE} s s' (te : TE), ReachableByTrace s [] s' -> True.
     intros.
     unfold_trace H0.
   Abort.

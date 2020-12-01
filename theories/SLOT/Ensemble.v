@@ -116,7 +116,7 @@ Hint Constructors Interleaving Parallel TraceEnsembleConcat : slot.
 Delimit Scope hoare_scope with hoare.
 Notation "'-{{' a '}}' e '{{' b '}}'" := (EHoareTriple a e b)(at level 40) : hoare_scope.
 Notation "'-{{}}' e '{{' b '}}'" := (EHoareTriple (const True) e b)(at level 40) : hoare_scope.
-Notation "'-{{}}' e '{{}}'" := (forall t, e t -> exists s s', LongStep s t s')(at level 38) : hoare_scope.
+Notation "'-{{}}' e '{{}}'" := (forall t, e t -> exists s s', ReachableByTrace s t s')(at level 38) : hoare_scope.
 Infix "->>" := (TraceEnsembleConcat) (at level 100) : hoare_scope.
 Infix "-||" := (Parallel) (at level 101) : hoare_scope.
 
@@ -322,8 +322,8 @@ Section props.
 
     Definition sufficient_replacement :=
       forall t s s', e1 t ->
-                LongStep s t s' ->
-                exists t', e2 t' /\ LongStep s t' s'.
+                ReachableByTrace s t s' ->
+                exists t', e2 t' /\ ReachableByTrace s t' s'.
 
     Definition sufficient_replacement_p :=
       forall t, e1 t ->
@@ -379,15 +379,15 @@ Section props.
 
     Fixpoint uilv_append_r te (t1 t2 t : list TE)
              (Ht : UniqueInterleaving t1 t2 t)
-             (s s' s'' : S) (Hls : LongStep s' t s'')
+             (s s' s'' : S) (Hls : ReachableByTrace s' t s'')
              (Hte : s ~[te]~> s')
              {struct Ht} :
-      exists t', UniqueInterleaving t1 (te :: t2) t' /\ LongStep s t' s''.
+      exists t', UniqueInterleaving t1 (te :: t2) t' /\ ReachableByTrace s t' s''.
     Proof with repeat (try assumption ; constructor); auto.
       destruct Ht.
       - long_step Hls.
         destruct (Hcomm_dec l te) as [Hcomm|Hcomm].
-        + assert (Hx : LongStep s [te; l] s0).
+        + assert (Hx : ReachableByTrace s [te; l] s0).
           { forward s'...
             forward s0...
           }
@@ -414,9 +414,9 @@ Section props.
     Qed.
 
     Fixpoint canonicalize_ilv (t1 t2 t : list TE) (Ht : Interleaving t1 t2 t)
-                              (s s' : S) (Hls : LongStep s t s')
+                              (s s' : S) (Hls : ReachableByTrace s t s')
                               {struct Ht} :
-      exists t', UniqueInterleaving t1 t2 t' /\ LongStep s t' s'.
+      exists t', UniqueInterleaving t1 t2 t' /\ ReachableByTrace s t' s'.
     Proof with repeat constructor; auto.
       destruct Ht; try long_step Hls.
       - destruct (canonicalize_ilv t1 t2 t Ht s0 s' Hls) as [t' [Ht' Hls']].
@@ -596,7 +596,7 @@ Section properties.
   Goal forall (a b c d e f g h i j k : TE) s s' t,
       trace_elems_commute a d ->
       trace_elems_commute a c ->
-      LongStep s t s' ->
+      ReachableByTrace s t s' ->
       Interleaving [a; b; e; f; g] [c; d; i] t ->
       False.
   Proof.
@@ -618,8 +618,8 @@ Section properties.
   Lemma comm_ilv_ls s s' a t t' :
     Forall (trace_elems_commute a) t ->
     Interleaving [a] t t' ->
-    LongStep s t' s' ->
-    LongStep s (a :: t) s'.
+    ReachableByTrace s t' s' ->
+    ReachableByTrace s (a :: t) s'.
   Proof with auto with slot.
     intros Hcomm Ht Ht'.
     generalize dependent s'.

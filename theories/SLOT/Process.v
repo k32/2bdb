@@ -58,7 +58,7 @@ Section defn.
     {| state_transition := runnable_step |}.
 
   (* Global Instance runnableGenerator {A} `{Runnable A} : Generator A := *)
-  (*   {| unfolds_to g t := exists g', LongStep g t g' |}. *)
+  (*   {| unfolds_to g t := exists g', ReachableByTrace g t g' |}. *)
 
   Definition finale {T : Type} (_ : T) := t_dead.
 

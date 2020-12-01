@@ -52,18 +52,18 @@ Below you can find the full list of core assumptions made by `SLOT`:
 
    ![](https://git.sr.ht/~k32/libtx/blob/master/doc/state_space.png)
 
-2) [LongStep](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Hoare.v)
+2) [ReachableByTrace](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Hoare.v)
     inductive datatype defines side effects of multiple I/O operations executed
     sequentially:
 
    ```coq
-   Inductive LongStep : S -> T -> S -> Prop :=
-   | ls_nil : forall s,
-       LongStep s [] s
-   | ls_cons : forall s s' s'' te trace,
+   Inductive ReachableByTrace : S -> T -> S -> Prop :=
+   | rbt_nil : forall s,
+       ReachableByTrace s [] s
+   | rbt_cons : forall s s' s'' te trace,
        state_transition s s' te ->
-       LongStep s' trace  s'' ->
-       LongStep s (te :: trace) s''.
+       ReachableByTrace s' trace  s'' ->
+       ReachableByTrace s (te :: trace) s''.
    ```
 
    ![](https://git.sr.ht/~k32/libtx/blob/master/doc/long_step.png)
@@ -74,7 +74,7 @@ Below you can find the full list of core assumptions made by `SLOT`:
    ```coq
    Definition HoareTriple (pre : S -> Prop) (trace : T) (post : S -> Prop) :=
      forall s s',
-       LongStep s trace s' ->
+       ReachableByTrace s trace s' ->
        pre s -> post s'.
     ```
 
