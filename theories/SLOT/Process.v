@@ -55,7 +55,7 @@ Section defn.
     {| runnable_step := threadStep |}.
 
   Global Instance runnableHoare {A} `{Runnable A} : StateSpace A TE :=
-    {| chain_rule := runnable_step |}.
+    {| state_transition := runnable_step |}.
 
   (* Global Instance runnableGenerator {A} `{Runnable A} : Generator A := *)
   (*   {| unfolds_to g t := exists g', LongStep g t g' |}. *)

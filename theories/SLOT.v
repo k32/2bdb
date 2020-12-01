@@ -126,14 +126,14 @@ From Coq Require Import
 
    Context `{Runnable  SUT}.
 
-    Definition model_chain_rule m m' te : Prop :=
+    Definition model_state_transition m m' te : Prop :=
       match m, m' with
-      | mkModel s h, mkModel s' h' => (h_chain_rule Handler) h h' te /\
+      | mkModel s h, mkModel s' h' => (h_state_transition Handler) h h' te /\
                                      runnable_step s s' te
       end.
 
     Global Instance modelStateSpace : StateSpace t (@TraceElem ctx) :=
-      {| chain_rule := model_chain_rule; |}.
+      {| state_transition := model_state_transition; |}.
   End defn.
 
   (* Helper function for infering type of model: *)

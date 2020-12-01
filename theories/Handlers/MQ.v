@@ -51,24 +51,24 @@ Section defs.
   Let S := list T.
 
   (** ** Possible state space transitions: *)
-  Inductive mq_chain_rule : S -> S -> TE -> Prop :=
+  Inductive mq_state_transition : S -> S -> TE -> Prop :=
   | mq_poll : forall s pid offset,
-      mq_chain_rule s s (pid @ nth_error s offset <~ poll offset)
+      mq_state_transition s s (pid @ nth_error s offset <~ poll offset)
   | mq_fetch : forall s pid offset val,
       nth_error s offset = Some val ->
-      mq_chain_rule s s (pid @ val <~ fetch offset)
+      mq_state_transition s s (pid @ val <~ fetch offset)
   (** Message is successfully produced: *)
   | mq_produce : forall s pid val,
-      mq_chain_rule s (val :: s) (pid @ Some (length s) <~ produce val)
+      mq_state_transition s (val :: s) (pid @ Some (length s) <~ produce val)
   (** Response is lost: *)
   | mq_produce_lost_resp : forall s pid val,
-      mq_chain_rule s (val :: s) (pid @ None <~ produce val)
+      mq_state_transition s (val :: s) (pid @ None <~ produce val)
   (** Message is lost: *)
   | mq_produce_lost_msg : forall s pid val,
-      mq_chain_rule s s (pid @ None <~ produce val).
+      mq_state_transition s s (pid @ None <~ produce val).
 
   Global Instance t : @Handler PID req_t ret_t :=
     { h_state := S;
-      h_chain_rule := mq_chain_rule;
+      h_state_transition := mq_state_transition;
     }.
 End defs.

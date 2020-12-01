@@ -13,13 +13,13 @@ Import ListNotations.
 
 Class DeterministicHandler {PID : Type} (Req : Type) (Ret : Req -> Type) :=
   { det_h_state : Type;
-    det_h_chain_rule :  forall (pid : PID) (s : det_h_state) (req : Req), det_h_state * Ret req;
+    det_h_state_transition :  forall (pid : PID) (s : det_h_state) (req : Req), det_h_state * Ret req;
   }.
 
 Global Instance deterministicHandler `{d : DeterministicHandler} : @Handler PID Req Ret :=
-  { h_chain_rule s s' te :=
+  { h_state_transition s s' te :=
       let (pid, req, ret) := te in
-      let (s'_, ret_) := det_h_chain_rule pid s req in
+      let (s'_, ret_) := det_h_state_transition pid s req in
       s' = s'_ /\ ret = ret_;
   }.
 
@@ -61,7 +61,7 @@ Module Var.
 
     Global Instance varDetHandler : DeterministicHandler var_req_t var_ret_t :=
       { det_h_state := T;
-        det_h_chain_rule := var_step;
+        det_h_state_transition := var_step;
       }.
   End defs.
 
@@ -99,7 +99,7 @@ Module AtomicVar.
 
     Global Instance atomVarDetHandler : DeterministicHandler avar_req_t avar_ret_t :=
       { det_h_state := T;
-        det_h_chain_rule := step;
+        det_h_state_transition := step;
       }.
   End defs.
 
@@ -163,7 +163,7 @@ Module KV.
 
     Global Instance kvDetHandler : DeterministicHandler kv_req_t kv_ret_t :=
       { det_h_state := S;
-        det_h_chain_rule := step;
+        det_h_state_transition := step;
       }.
   End defn.
 
@@ -255,7 +255,7 @@ Module History.
 
     Global Instance historyDetHandler : DeterministicHandler hist_req_t (fun _ => True) :=
       { det_h_state := list Event;
-        det_h_chain_rule := step;
+        det_h_state_transition := step;
       }.
   End defs.
 
@@ -289,7 +289,7 @@ Module ProcessDictionary.
 
     Global Instance processDictDetHandler : DeterministicHandler req_t ret_t :=
       { det_h_state := State;
-        det_h_chain_rule := step;
+        det_h_state_transition := step;
       }.
 
     Definition t := deterministicHandler processDictDetHandler.
@@ -306,7 +306,7 @@ Module Self.
 
     Global Instance selfDetHandler : DeterministicHandler req_t (fun _ => PID) :=
       { det_h_state := True;
-        det_h_chain_rule pid _ _ := (I, pid)
+        det_h_state_transition pid _ _ := (I, pid)
       }.
 
     Definition t := deterministicHandler selfDetHandler.

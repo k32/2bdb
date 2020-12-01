@@ -44,23 +44,23 @@ syscalls.
 
 *** Methods:
 
-[chain_rule s s' te] is a type of statements that read as "trace
+[state_transition s s' te] is a type of statements that read as "trace
 element [te] can transition system from state [s] to state [s']" *)
 Class StateSpace (S TE : Type) :=
-  { chain_rule : S -> S -> TE -> Prop;
+  { state_transition : S -> S -> TE -> Prop;
   }.
 
-Notation "a '~[' b ']~>' c" := (chain_rule a c b)(at level 40) : hoare_scope.
+Notation "a '~[' b ']~>' c" := (state_transition a c b)(at level 40) : hoare_scope.
 Infix "/\'" := (fun a b x => a x /\ b x)(at level 80) : hoare_scope.
 
 Open Scope hoare_scope.
 
 (** For example suppose <<S>> is [nat] and <<TE>> is [Inductive TE := increment.]
 
-Then the chain rule for the side effects of <<TE>> can be defined like this:
+Then the state transition method for the side effects of <<TE>> can be defined like this:
 
 [[
-chain_rule s s' te =
+state_transition s s' te =
   match te with
   | increment => s' = s + 1
   end.
@@ -78,7 +78,7 @@ Inductive TE := increment
 Chain rule for this operation will look like this:
 
 [[
-chain_rule s s' te =
+state_transition s s' te =
   match te with
   | increment => s' = s + 1
   | rr        => s' = s \/ s' = 0
@@ -109,7 +109,7 @@ Section defn.
   | ls_nil : forall s,
       LongStep s [] s
   | ls_cons : forall s s' s'' te trace,
-      chain_rule s s' te ->
+      state_transition s s' te ->
       LongStep s' trace  s'' ->
       LongStep s (te :: trace) s''.
 

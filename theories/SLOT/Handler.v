@@ -8,7 +8,7 @@ From LibTx Require Export
 Class Handler {PID Req Ret} : Type :=
   mkHandler
     { h_state : Type;
-      h_chain_rule : h_state -> h_state -> @TraceElem PID Req Ret -> Prop;
+      h_state_transition : h_state -> h_state -> @TraceElem PID Req Ret -> Prop;
     }.
 
 (** * Helper functions for getting request and result types of the handler
@@ -20,7 +20,7 @@ Definition get_handler_req_pid {PID Req Ret} `(_ : @Handler PID Req Ret) := Req.
 Definition get_handler_ret_pid {PID Req Ret} `(_ : @Handler PID Req Ret) := Ret.
 
 Global Instance handlerStateSpace `{Handler} : StateSpace h_state TraceElem :=
-  {| chain_rule := h_chain_rule |}.
+  {| state_transition := h_state_transition |}.
 
 Section ComposeHandlers.
   Context {PID Q_l Q_r R_l R_r}
@@ -45,24 +45,24 @@ Section ComposeHandlers.
   Definition ComposeTE := @TraceElem PID Q compose_ret.
   Let TE := ComposeTE.
 
-  Inductive compose_chain_rule_i : S -> S -> TE -> Prop :=
+  Inductive compose_state_transition_i : S -> S -> TE -> Prop :=
   | cmpe_left :
       forall (l l' : S_l) (r : S_r) pid req ret,
-        h_chain_rule l l' (trace_elem pid req ret) ->
-        compose_chain_rule_i (l, r) (l', r) (trace_elem pid (inl req) ret)
+        h_state_transition l l' (trace_elem pid req ret) ->
+        compose_state_transition_i (l, r) (l', r) (trace_elem pid (inl req) ret)
   | cmpe_right :
       forall (r r' : S_r) (l : S_l) pid req ret,
-        h_chain_rule r r' (trace_elem pid req ret) ->
-        compose_chain_rule_i (l, r) (l, r') (trace_elem pid (inr req) ret).
+        h_state_transition r r' (trace_elem pid req ret) ->
+        compose_state_transition_i (l, r) (l, r') (trace_elem pid (inr req) ret).
 
-  Definition compose_chain_rule (s s' : S) (te : TE) : Prop.
+  Definition compose_state_transition (s s' : S) (te : TE) : Prop.
     destruct te as [pid req ret].
     destruct s as [l r].
     destruct s' as [l' r'].
     remember req as req0.
     destruct req;
-      [ refine (r = r' /\ h_chain_rule l l' _)
-      | refine (l = l' /\ h_chain_rule r r' _)
+      [ refine (r = r' /\ h_state_transition l l' _)
+      | refine (l = l' /\ h_state_transition r r' _)
       ];
       apply trace_elem with (te_req := q);
       try apply pid;
@@ -71,12 +71,12 @@ Section ComposeHandlers.
   Defined.
 
   Inductive ComposeChainRule s s' te :=
-  | h_cr_par : compose_chain_rule s s' te ->
+  | h_cr_par : compose_state_transition s s' te ->
                ComposeChainRule s s' te.
 
   Global Instance compose : @Handler PID Q compose_ret :=
     {| h_state         := compose_state;
-       h_chain_rule    := ComposeChainRule;
+       h_state_transition    := ComposeChainRule;
     |}.
 
   Definition te_subset_l (te : TE) :=
@@ -126,7 +126,7 @@ Section ComposeHandlers.
     destruct req as [req|req]; simpl in *.
     - easy.
     - inversion_ Hte.
-      unfold compose_chain_rule in H2.
+      unfold compose_state_transition in H2.
       destruct s, s', s'0.
       firstorder.
       unfold eq_rec_r in *. simpl in *.
@@ -144,7 +144,7 @@ Section ComposeHandlers.
     unfold In in *.
     destruct req as [req|req]; simpl in *.
     - inversion_ Hte.
-      unfold compose_chain_rule in H2.
+      unfold compose_state_transition in H2.
       destruct s, s', s'0.
       firstorder.
       unfold eq_rec_r in *. simpl in *.
@@ -153,7 +153,7 @@ Section ComposeHandlers.
     - easy.
   Qed.
 
-  Lemma local_l_chain_rule : @ChainRuleLocality _ _ handlerStateSpace te_subset_l.
+  Lemma local_l_state_transition : @ChainRuleLocality _ _ handlerStateSpace te_subset_l.
   Proof with auto with slot; firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
@@ -164,7 +164,7 @@ Section ComposeHandlers.
       inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
       inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
       inversion H2; subst; clear H2;
-      unfold compose_chain_rule in *;
+      unfold compose_state_transition in *;
       firstorder; subst;
       unfold eq_rec_r in *; simpl in *.
     - forward (l, r')...
@@ -173,7 +173,7 @@ Section ComposeHandlers.
       forward (l', r')...
   Qed.
 
-  Lemma local_r_chain_rule : @ChainRuleLocality _ _ handlerStateSpace te_subset_r.
+  Lemma local_r_state_transition : @ChainRuleLocality _ _ handlerStateSpace te_subset_r.
   Proof with auto with slot; firstorder.
     intros te1 te2 Hte1 Hte2 [l r] [l' r'].
     split; intros Hs';
@@ -184,7 +184,7 @@ Section ComposeHandlers.
       inversion Hs' as [|[l1 r1] [l2 r2]]; subst; clear Hs';
       inversion H0 as [|[l3 r3] [l4 r4]]; subst; clear H0;
       inversion H2; subst; clear H2;
-      unfold compose_chain_rule in *;
+      unfold compose_state_transition in *;
       firstorder; subst;
       unfold eq_rec_r in *; simpl in *.
     - forward (l', r)...
@@ -269,7 +269,7 @@ Ltac decompose_state :=
 Hint Transparent compose_state.
 
 Global Arguments h_state {_} {_} {_}.
-Global Arguments h_chain_rule {_} {_} {_}.
+Global Arguments h_state_transition {_} {_} {_}.
 
 (** Warning: [lift] tactic will emit arbitrary crap when there are
 multiple handlers of the same type combined, so avoid using it this

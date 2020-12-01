@@ -46,7 +46,7 @@ Below you can find the full list of core assumptions made by `SLOT`:
 
    ```coq
    Class StateSpace (S TE : Type) :=
-     { chain_rule : S -> S -> TE -> Prop;
+     { state_transition : S -> S -> TE -> Prop;
      }.
    ```
 
@@ -61,7 +61,7 @@ Below you can find the full list of core assumptions made by `SLOT`:
    | ls_nil : forall s,
        LongStep s [] s
    | ls_cons : forall s s' s'' te trace,
-       chain_rule s s' te ->
+       state_transition s s' te ->
        LongStep s' trace  s'' ->
        LongStep s (te :: trace) s''.
    ```
