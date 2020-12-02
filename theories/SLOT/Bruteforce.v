@@ -379,6 +379,9 @@ Ltac destruct_mint H :=
   let H__type := type of H in
   lazymatch H__type with
   | VecIlv.MInt _ ?Nelems ?i0 ?vec ?t =>
+    let Hvec := fresh "Hvec" in
+    let vec0 := fresh "vec" in
+    let vec' := fresh "vec" in
     let i0' := fresh "pos_" in
     let Hi0' := fresh "Hpos_" in
     let i1 := fresh "pos" in
@@ -388,27 +391,45 @@ Ltac destruct_mint H :=
     let te2 := fresh "te" in
     let Hcomm := fresh "Hcomm" in
     let t := fresh "t" in
+    remember vec as vec0 eqn:Hvec;
     remember i0 as i0' eqn:Hi0';
     destruct H as [i1
-                  |i1 i2 vec te t Hij H
-                  |i1 i2 vec te te2 t Hij Hcomm H
+                  |i1 i2 vec' te t Hij H
+                  |i1 i2 vec' te te2 t Hij Hcomm H
                   ];
-      [inversion_clear Hi0'
-      |fin_all_cases i1;
-       fin_all_cases i2;
-       intros H Hi0' Hij;
-       ((now inversion Hij) || clear Hij);
-       inversion_clear Hi0'
-       ..
-      ]
+    [inversion_clear Hi0';
+     inversion Hvec
+    |fin_all_cases i1;
+     fin_all_cases i2;
+     intros H Hvec Hi0' Hij;
+     ((now inversion Hij) || clear Hij);
+     inversion_clear Hi0'
+     ..
+    ]
   | _ =>
     fail 100 "The argument doesn't look like MInt"
   end.
 
-Goal forall `{Hssp : StateSpace} i0 vec t, VecIlv.MInt nonCommRel 2 i0 vec t -> const True t -> False.
-Proof.
-  intros *. intros H Ht.
-  destruct_mint H.
-  5:{ destruct_mint H.
-      3:{
-Abort.
+Section tests.
+  Goal forall `{Hssp : StateSpace} i0 vec t, VecIlv.MInt nonCommRel 2 i0 vec t -> const True t -> False.
+  Proof.
+    intros *. intros H Ht.
+    destruct_mint H.
+    5:{ destruct_mint H.
+        3:{
+  Abort.
+
+  Import Vector.VectorNotations.
+
+  Context `{Hssp : StateSpace nat nat}.
+
+  Let vec := [[1; 2]%list; [3; 4]%list]%vector.
+
+  Goal forall i t, VecIlv.MInt nonCommRel 2 i vec t -> const True t -> False.
+  Proof.
+    subst vec.
+    intros *. intros H Ht.
+    destruct_mint H.
+    - (* Hvec : VecIlv.vec_append Fin.F1 te vec0 = [[1; 2]%list; [3; 4]%list] *)
+  Abort.
+End tests.
