@@ -96,7 +96,7 @@ Below you can find the full list of core assumptions made by `SLOT`:
 
 1) [Interleaving](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Ensemble.v)
    is an inductive datatype that describes all possible ways to execute a concurrent
-   system of two processes (without sudden deaths):
+   system with two processes (without sudden deaths):
 
     ```coq
     Inductive Interleaving : list TE -> list TE -> TraceEnsemble :=
@@ -110,6 +110,23 @@ Below you can find the full list of core assumptions made by `SLOT`:
     ```
 
     (It allows nesting, so it can be used to define a system with however many processes)
+
+2) [EHoareTriple](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Ensemble.v)
+    is a type that introduces Hoare logic for concurrent systems:
+
+    ```coq
+    Definition EHoareTriple (pre : S -> Prop) (g : TraceEnsemble) (post : S -> Prop) :=
+      forall t, g t ->
+         HoareTriple pre t post.
+    ```
+
+3) [EnsembleInvariant](https://git.sr.ht/~k32/libtx/tree/master/theories/SLOT/Ensemble.v)
+    is a type that describes invariants of concurrent systems:
+
+    ```coq
+    Definition EnsembleInvariant (prop : S -> Prop) (E : TraceEnsemble) : Prop :=
+      forall (t : list TE), E t -> TraceInvariant prop t.
+    ```
 
 ### I/O handler models
 

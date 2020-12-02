@@ -371,3 +371,44 @@ Section tests.
     3:{
   Abort.
 End tests.
+
+Check VecIlv.MInt.
+
+(* I can't into Ltac, sorry *)
+Ltac destruct_mint H :=
+  let H__type := type of H in
+  lazymatch H__type with
+  | VecIlv.MInt _ ?Nelems ?i0 ?vec ?t =>
+    let i0' := fresh "pos_" in
+    let Hi0' := fresh "Hpos_" in
+    let i1 := fresh "pos" in
+    let i2 := fresh "pos" in
+    let Hij := fresh "H_" i1 "_" i2 in
+    let te := fresh "te" in
+    let te2 := fresh "te" in
+    let Hcomm := fresh "Hcomm" in
+    let t := fresh "t" in
+    remember i0 as i0' eqn:Hi0';
+    destruct H as [i1
+                  |i1 i2 vec te t Hij H
+                  |i1 i2 vec te te2 t Hij Hcomm H
+                  ];
+      [inversion_clear Hi0'
+      |fin_all_cases i1;
+       fin_all_cases i2;
+       intros H Hi0' Hij;
+       ((now inversion Hij) || clear Hij);
+       inversion_clear Hi0'
+       ..
+      ]
+  | _ =>
+    fail 100 "The argument doesn't look like MInt"
+  end.
+
+Goal forall `{Hssp : StateSpace} i0 vec t, VecIlv.MInt nonCommRel 2 i0 vec t -> const True t -> False.
+Proof.
+  intros *. intros H Ht.
+  destruct_mint H.
+  5:{ destruct_mint H.
+      3:{
+Abort.
