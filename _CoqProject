@@ -7,6 +7,7 @@ theories/Permutation.v
 theories/SLOT/EventTrace.v
 theories/SLOT/Hoare.v
 theories/SLOT/Ensemble.v
+theories/SLOT/Zipper.v
 theories/SLOT/Bruteforce.v
 theories/SLOT/Handler.v
 theories/SLOT/Process.v

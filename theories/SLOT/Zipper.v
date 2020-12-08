@@ -45,12 +45,15 @@ Section defn.
       left_of z (l, v', (v :: r)) ->
       left_of z ((v' :: l), v, r).
 
+  Definition left_eq (a b : t) : Prop :=
+    a = b \/ left_of a b.
+
   Section tests.
     Goal forall l1 l2 m r, let z := ([l1; l2], m, r) in left_of (movl z) z.
     Proof. intros. simpl. repeat constructor. Qed.
 
-    Goal forall l1 l2 m r, let z := ([l1; l2], m, r) in left_of (movl (movl z)) z.
-    Proof. intros. simpl. repeat constructor. Qed.
+    Goal forall l1 l2 m r, let z := ([l1; l2], m, r) in left_eq (movl (movl z)) z.
+    Proof. intros. right. simpl. repeat constructor. Qed.
 
     Goal forall l1 m r, let z := ([l1], m, r) in ~left_of z z.
     Proof.
@@ -79,6 +82,9 @@ Section defn.
 
   Definition right_of (z1 z2 : t) : Prop :=
     left_of z2 z1.
+
+  Definition right_eq (z1 z2 : t) : Prop :=
+    left_eq z2 z1.
 
   Definition Forall (P : V -> Prop) (z : t) : Prop :=
     match z with
@@ -129,7 +135,6 @@ Section defn.
     | e :: rest => ([], e, rest)
     end.
 
-
   Lemma left_of_dec z1 z2 :
     to_list z1 = to_list z2 ->
      z1 = z2 \/ left_of z1 z2 \/ left_of z2 z1.
@@ -139,8 +144,10 @@ Section defn.
   Admitted.
 End defn.
 
+Declare Scope zipper_scope.
 Delimit Scope zipper_scope with zipper.
-Infix "<-" := (left_of)(at level 30) : zipper_scope.
+Infix "<z" := (left_of)(at level 90) : zipper_scope.
+Infix "<=z" := (left_eq)(at level 90) : zipper_scope.
 
 Global Arguments t : clear implicits.
 Hint Constructors left_of : slot.
@@ -150,15 +157,15 @@ Section tests.
 
   Let foo := ([2; 1], 3, [4]).
 
-  Goal ([], 1, [2; 3; 4]) <- foo.
+  Goal ([], 1, [2; 3; 4]) <z foo.
     repeat constructor.
   Qed.
 
-  Goal ([1], 2, [3; 4]) <- foo.
-    repeat constructor.
+  Goal ([1], 2, [3; 4]) <=z foo.
+    right. repeat constructor.
   Qed.
 
-  Goal not(([3; 2; 1], 4, []) <- foo).
+  Goal not(([3; 2; 1], 4, []) <z foo).
     intros H. subst foo.
     inversion H; subst. inversion H2; subst. inversion H3.
   Qed.

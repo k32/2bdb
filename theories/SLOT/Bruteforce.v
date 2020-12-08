@@ -4,6 +4,7 @@ From LibTx Require Import
      Misc
      EventTrace
      Permutation
+     SLOT.Zipper
      SLOT.Hoare
      SLOT.Ensemble
      SLOT.Generator.
@@ -22,10 +23,13 @@ From Coq Require
      Vector
      Fin.
 
+Module Z := Zipper.
+
 Module Vec := Vector.
 
 Open Scope list_scope.
 Open Scope hoare_scope.
+Open Scope zipper_scope.
 
 Lemma trace_elems_commute_dec `{StateSpace} a b : decidable (trace_elems_commute a b).
 Proof.
@@ -58,6 +62,31 @@ Section comm_rel.
   Next Obligation.
   cbv. left. easy. Qed.
 End comm_rel.
+
+Module ZipIlv.
+  Section defn.
+    Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
+
+    Let T := list TE.
+    Let TT := list T.
+
+    Definition Traces := Z.t T.
+
+    Inductive MInt : Traces -> @TraceEnsemble TE :=
+    | mint_nil : forall zipper,
+        Z.Forall (eq []) zipper ->
+        MInt zipper []
+    | mint_cons1 : forall te rest l r zipper t,
+        (l, rest, r) <=z zipper ->
+        MInt zipper t ->
+        MInt (l, te :: rest, r) (te :: t)
+    | mint_cons2 : forall te te' rest l r zipper t,
+        zipper <z (l, rest, r) ->
+        comm_rel te te' ->
+        MInt zipper (te' :: t) ->
+        MInt (l, te :: rest, r) (te :: te' :: t).
+  End defn.
+End ZipIlv.
 
 Module VecIlv.
   Open Scope vector_scope.
