@@ -77,14 +77,14 @@ Module ZipIlv.
         Z.Forall (eq []) zipper ->
         MInt zipper []
     | mint_cons1 : forall te rest l r zipper t,
-        (l, rest, r) <=z zipper ->
+        (l, Some rest, r) <=z zipper ->
         MInt zipper t ->
-        MInt (l, te :: rest, r) (te :: t)
+        MInt (l, Some (te :: rest), r) (te :: t)
     | mint_cons2 : forall te te' rest l r zipper t,
-        zipper <z (l, rest, r) ->
+        (l, Some rest, r) >z zipper ->
         comm_rel te te' ->
         MInt zipper (te' :: t) ->
-        MInt (l, te :: rest, r) (te :: te' :: t).
+        MInt (l, Some (te :: rest), r) (te :: te' :: t).
   End defn.
 End ZipIlv.
 
