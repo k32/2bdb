@@ -7,7 +7,7 @@ tasks:
   - setup: |
       # Download
       # TODO: find a way to refresh cache automatically:
-      wget https://patchouli.sr.ht/builds.sr.ht/artifacts/~k32/351164/0a78ce7be5aaff70/opam.tar.gz
+      wget https://patchouli.sr.ht/builds.sr.ht/artifacts/~k32/389174/c1c2da10c325700d/opam.tar.gz
       tar xf opam.tar.gz
   - make: |
       eval $(opam env)

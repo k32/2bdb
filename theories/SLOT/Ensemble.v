@@ -12,6 +12,9 @@ From Coq Require
 
 Import List ListNotations Basics Relations.
 
+From Hammer Require Import
+     Tactics.
+
 From LibTx Require Import
      FoldIn
      Misc
@@ -528,16 +531,10 @@ Section permutation.
   Lemma DoubleForall_drop {X} f (a : X) l1 l2 :
     Forall (fun a0 : X => Forall (f a0) (a :: l1)) l2 ->
     Forall (fun a0 : X => Forall (f a0) l1) l2.
-  Admitted. (* TODO *)
-  (* assert (Htail : Forall (fun a : TE => Forall (can_swap a) t2) t1). *)
-  (* { clear IHInterleaving. clear H. *)
-  (*   induction t1. *)
-  (*   - easy. *)
-  (*   - constructor. *)
-  (*     + now apply Forall_inv,Forall_inv_tail in Hdisjoint. *)
-  (*     + apply Forall_inv_tail in Hdisjoint. *)
-  (*       now apply IHt1. *)
-  (* } *)
+  Proof.
+    intros H.
+    induction l2; sauto.
+  Qed.
 
   Lemma DoubleForall_symm {X} f (l1 l2 : list X) :
     DoubleForall f l1 l2 -> DoubleForall f l2 l1.
