@@ -6,6 +6,9 @@ From Coq Require Import
 
 Import ListNotations.
 
+From Hammer Require Import
+     Tactics.
+
 Section defn.
   Context {V : Type}.
 
@@ -110,13 +113,49 @@ Section defn.
       right_eq (l, Some m, r) (e :: l', Some m', r') ->
       right_eq (l, Some m, r) (l', Some e, m' :: r').
 
+  Lemma left_eq_mov_l e l m r l' m' r' :
+    left_eq (e :: l, Some m, r) (l', Some m', r') ->
+    left_eq (l, Some e, m :: r) (l', Some m', r').
+  Proof.
+    intros H.
+    generalize dependent l.
+    generalize dependent m.
+    generalize dependent r.
+    generalize dependent e.
+    generalize dependent m'.
+    generalize dependent r'.
+    induction l'; intros; sauto.
+  Qed.
+
+  Lemma right_eq_mov_r e l m r l' m' r' :
+    right_eq (l, Some m, e :: r) (l', Some m', r') ->
+    right_eq (m :: l, Some e, r) (l', Some m', r').
+  Proof.
+    intros H.
+    generalize dependent l.
+    generalize dependent m.
+    generalize dependent r.
+    generalize dependent e.
+    generalize dependent m'.
+    generalize dependent l'.
+    induction r'; intros; sauto.
+  Qed.
+
   Lemma right_eq_left_eq_eqiv z1 z2 :
     right_eq z1 z2 <-> left_eq z2 z1.
   Proof with subst; simpl in *.
     split; intros H.
     - induction H.
       + constructor.
-  Abort. (* TODO *)
+      + inversion IHright_eq; subst.
+        * constructor. constructor.
+        * apply left_eq_mov_l. now constructor.
+    - induction H.
+      + constructor.
+      + inversion IHleft_eq; subst.
+        * constructor. constructor.
+        * constructor. now apply right_eq_mov_r.
+  Qed.
 
   Definition right_of (z1 z2 : t) : Prop :=
     right_eq z1 (mov_r z2).
