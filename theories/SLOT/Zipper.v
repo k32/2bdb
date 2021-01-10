@@ -89,11 +89,11 @@ Section defn.
     end.
 
   Inductive left_eq : t -> t -> Prop :=
-  | left_eq0 : forall l m r,
-      left_eq (l, Some m, r) (l, Some m, r)
-  | left_eq1 : forall l m e r l' m' r',
-      left_eq (l, Some m, r) (l', Some m', e :: r') ->
-      left_eq (l, Some m, r) (m' :: l', Some e, r').
+  | left_eq0 : forall z,
+      left_eq z z
+  | left_eq1 : forall z e l' m' r',
+      left_eq z (l', Some m', e :: r') ->
+      left_eq z (m' :: l', Some e, r').
 
   Definition left_of (a b : t) : Prop :=
     left_eq a (mov_l b).
@@ -107,11 +107,11 @@ Section defn.
   End tests.
 
   Inductive right_eq : t -> t -> Prop :=
-  | right_eq0 : forall l m r,
-      right_eq (l, Some m, r) (l, Some m, r)
-  | right_eq1 : forall l m e r l' m' r',
-      right_eq (l, Some m, r) (e :: l', Some m', r') ->
-      right_eq (l, Some m, r) (l', Some e, m' :: r').
+  | right_eq0 : forall z,
+      right_eq z z
+  | right_eq1 : forall z e l' m' r',
+      right_eq z (e :: l', Some m', r') ->
+      right_eq z (l', Some e, m' :: r').
 
   Lemma left_eq_mov_l e l m r l' m' r' :
     left_eq (e :: l, Some m, r) (l', Some m', r') ->
@@ -141,7 +141,7 @@ Section defn.
     induction r'; intros; sauto.
   Qed.
 
-  Lemma right_eq_left_eq_eqiv z1 z2 :
+  Lemma right_eq_left_eq_equiv z1 z2 :
     right_eq z1 z2 <-> left_eq z2 z1.
   Proof with subst; simpl in *.
     split; intros H.
@@ -229,18 +229,21 @@ Section tests.
   Qed.
 
   Goal ([1], Some 2, [3; 4]) <=z foo.
-    right. repeat constructor.
+    repeat constructor.
   Qed.
 
-  Goal forall z, z <=z foo -> exists v, get z = Some v /\ v < 4.
+  Goal forall z, z <=z foo ->
+            get z = Some 3 \/
+            get z = Some 2 \/
+            get z = Some 1.
   Proof with subst; cbn in *.
     intros z Hz. subst foo.
     inversion Hz...
-    - exists 3. auto.
+    - auto.
     - inversion H1...
-      + exists 2. auto.
-      + inversion H0...
-        exists 1. auto.
+      + auto.
+      + inversion H2...
+        auto.
   Qed.
 
   Goal forall z, z >z foo -> get z = Some 4.
@@ -254,7 +257,7 @@ Section tests.
     intros H. subst foo.
     cbv in H.
     inversion H; subst; cbv in *.
-    inversion H1.
+    inversion H2.
   Qed.
 
   Goal zipper_of ([], Some 1, [2; 3]) [1; 2; 3].
