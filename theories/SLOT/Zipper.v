@@ -210,7 +210,7 @@ Section defn.
     end.
 
   Definition zipper_of (z : t) (l : list V) : Prop :=
-    left_eq (of_list l) z.
+    right_eq z (of_list l).
 
   Lemma left_eq_to_list z1 z2 :
     left_eq z1 z2 ->

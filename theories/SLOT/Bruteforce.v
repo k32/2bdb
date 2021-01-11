@@ -72,19 +72,76 @@ Module ZipIlv.
 
     Definition Traces := Z.t T.
 
-    Inductive MInt : Traces -> @TraceEnsemble TE :=
-    | mint_nil : forall zipper,
-        Z.Forall (eq []) zipper ->
-        MInt zipper []
-    | mint_cons1 : forall te rest l r zipper t,
-        (l, Some rest, r) <=z zipper ->
-        MInt zipper t ->
-        MInt (l, Some (te :: rest), r) (te :: t)
-    | mint_cons2 : forall te te' rest l r zipper t,
-        (l, Some rest, r) >z zipper ->
+    Let clean (l : T) := match l with
+                         | [] => None
+                         | _  => Some l
+                         end.
+
+    Inductive MInt_ : Traces -> @TraceEnsemble TE :=
+    | mint_nil :
+        MInt_ ([], None, []) []
+    | mint_cons : forall te rest l r t,
+        MInt_ (l, clean rest, r) t ->
+        MInt_ (l, Some (te :: rest), r) (te :: t)
+    | mint_cons_l : forall te rest l r zipper t,
+        zipper >z (l, clean rest, r) ->
+        MInt_ zipper t ->
+        MInt_ (l, Some (te :: rest), r) (te :: t)
+    | mint_cons_r : forall te te' rest l r zipper t,
+        zipper <z (l, clean rest, r)->
         comm_rel te te' ->
-        MInt zipper (te' :: t) ->
-        MInt (l, Some (te :: rest), r) (te :: te' :: t).
+        MInt_ zipper (te' :: t) ->
+        MInt_ (l, Some (te :: rest), r) (te :: te' :: t).
+
+    Inductive MInt tt : @TraceEnsemble TE :=
+      mint : forall z t,
+        Z.zipper_of z tt ->
+        MInt_ z t ->
+        MInt tt t.
+
+    Ltac inv H := inversion_ H; clear H.
+
+    Section tests.
+      Goal forall a b,
+          MInt [[a]; [b]] [a; b] /\
+          (comm_rel a b -> MInt [[a]; [b]] [b; a]).
+      Proof.
+        split.
+        { apply mint with (z := ([], Some [a], [[b]])).
+          { constructor. }
+          apply mint_cons_l with (zipper := ([], Some [b], [])); repeat constructor.
+        }
+        { intros Hcomm.
+          apply mint with (z := ([[a]], Some [b], [])).
+          { repeat constructor. }
+          apply mint_cons_r with (zipper := ([], Some [a], [])); repeat constructor.
+          now apply comm_rel_symm.
+        }
+      Qed.
+
+      Goal forall a b t,
+          comm_rel a b ->
+          MInt [[a]; [b]] t ->
+          t = [a; b] \/ t = [b; a].
+        intros a b t Hcomm H. destruct H. cbv in H.
+        inv H.
+        - inv H0.
+          + inv H5.
+          + inv H5. inv H6.
+            * inversion H4. subst. left. reflexivity.
+            * exfalso. inv H4.
+            * exfalso. inv H4.
+          + exfalso. inv H5.
+        - inv H3.
+          inv H0.
+          + exfalso. inv H5.
+          + exfalso. inv H5.
+          + inv H5. inv H7.
+            * inversion H0. subst. right. reflexivity.
+            * exfalso. inv H1.
+            * exfalso. inv H2.
+      Qed.
+    End tests.
   End defn.
 End ZipIlv.
 
