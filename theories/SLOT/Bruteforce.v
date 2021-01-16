@@ -72,10 +72,10 @@ Module ZipIlv.
 
     Definition Traces := Z.t T.
 
-    Let clean (l : T) := match l with
-                         | [] => None
-                         | _  => Some l
-                         end.
+    Definition clean (l : T) := match l with
+                                | [] => None
+                                | _  => Some l
+                                end.
 
     Inductive MInt_ : Traces -> @TraceEnsemble TE :=
     | mint_nil :
@@ -98,51 +98,76 @@ Module ZipIlv.
         Z.zipper_of z tt ->
         MInt_ z t ->
         MInt tt t.
+  End defn.
+
+  Section tests.
+    Context `{Hssp : StateSpace} (Hcomm_rel : @te_commut_rel TE).
 
     Ltac inv H := inversion_ H; clear H.
 
-    Section tests.
-      Goal forall a b,
-          MInt [[a]; [b]] [a; b] /\
-          (comm_rel a b -> MInt [[a]; [b]] [b; a]).
-      Proof.
-        split.
-        { apply mint with (z := ([], Some [a], [[b]])).
-          { constructor. }
-          apply mint_cons_l with (zipper := ([], Some [b], [])); repeat constructor.
-        }
-        { intros Hcomm.
-          apply mint with (z := ([[a]], Some [b], [])).
-          { repeat constructor. }
-          apply mint_cons_r with (zipper := ([], Some [a], [])); repeat constructor.
-          now apply comm_rel_symm.
-        }
-      Qed.
+    Goal forall a b,
+        MInt Hcomm_rel [[a]; [b]] [a; b] /\
+        (comm_rel a b -> MInt Hcomm_rel [[a]; [b]] [b; a]).
+    Proof.
+      split.
+      { apply mint with (z := ([], Some [a], [[b]])).
+        { constructor. }
+        apply mint_cons_l with (zipper := ([], Some [b], [])); repeat constructor.
+      }
+      { intros Hcomm.
+        apply mint with (z := ([[a]], Some [b], [])).
+        { repeat constructor. }
+        apply mint_cons_r with (zipper := ([], Some [a], [])); repeat constructor.
+        now apply comm_rel_symm.
+      }
+    Qed.
 
-      Goal forall a b t,
-          comm_rel a b ->
-          MInt [[a]; [b]] t ->
-          t = [a; b] \/ t = [b; a].
-        intros a b t Hcomm H. destruct H. cbv in H.
-        inv H.
-        - inv H0.
-          + inv H5.
-          + inv H5. inv H6.
-            * inversion H4. subst. left. reflexivity.
-            * exfalso. inv H4.
-            * exfalso. inv H4.
-          + exfalso. inv H5.
-        - inv H3.
-          inv H0.
-          + exfalso. inv H5.
-          + exfalso. inv H5.
-          + inv H5. inv H7.
-            * inversion H0. subst. right. reflexivity.
-            * exfalso. inv H1.
-            * exfalso. inv H2.
-      Qed.
-    End tests.
-  End defn.
+    Goal forall a b t,
+        comm_rel a b ->
+        MInt Hcomm_rel [[a]; [b]] t ->
+        t = [a; b] \/ t = [b; a].
+      intros a b t Hcomm H. destruct H. cbv in H.
+      inv H.
+      - inv H0.
+        + inv H5.
+        + inv H5. inv H6.
+          * inversion H4. subst. left. reflexivity.
+          * exfalso. inv H4.
+          * exfalso. inv H4.
+        + exfalso. inv H5.
+      - inv H3.
+        inv H0.
+        + exfalso. inv H5.
+        + exfalso. inv H5.
+        + inv H5. inv H7.
+          * inversion H0. subst. right. reflexivity.
+          * exfalso. inv H1.
+          * exfalso. inv H2.
+    Qed.
+  End tests.
+
+  Section prune_interleavings.
+    Context `{Hssp : StateSpace}.
+
+    (* Lemma mint_add t te zipper (Ht : MInt nonCommRel zipper t) : *)
+    (*   exists t' : list TE, *)
+    (*       MInt nonCommRel (vec_append  vec) t' /\ *)
+    (*       Permutation trace_elems_commute (te :: t) t'. *)
+
+    Fixpoint mint_prune zipper t
+             (Ht : MInt_ alwaysCommRel zipper t) {struct Ht} :
+      exists t',
+        MInt_ nonCommRel zipper t' /\ Permutation trace_elems_commute t t'.
+    Proof.
+      destruct Ht as [
+                     |te ret l r t Ht
+                     |te rest l r zipper' t
+                     |te rest l r zipper' t
+                     ].
+      { exists []. split; constructor. }
+      { apply mint_prune in Ht. destruct Ht as [t' [Ht Hperm]].
+    Abort.
+  End prune_interleavings.
 End ZipIlv.
 
 Module VecIlv.
