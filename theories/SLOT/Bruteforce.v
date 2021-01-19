@@ -23,6 +23,9 @@ From Coq Require
      Vector
      Fin.
 
+From Hammer Require Import
+     Tactics.
+
 Module Z := Zipper.
 
 Module Vec := Vector.
@@ -123,6 +126,27 @@ Module ZipIlv.
     Qed.
 
     Goal forall a b t,
+        ~comm_rel a b ->
+        MInt Hcomm_rel [[a]; [b]] t ->
+        t = [a; b] \/ t = [b; a].
+      intros a b t Hcomm H. destruct H. cbv in H.
+      inv H.
+      - inv H0.
+        + inv H5.
+        + inv H5. inv H6.
+          * inversion H4. subst. left. reflexivity.
+          * exfalso. inv H4.
+          * exfalso. inv H4.
+        + exfalso. inv H5.
+      - inv H3.
+        inv H0.
+        + exfalso. inv H5.
+        + exfalso. inv H5.
+        + inv H5. inv H7;
+          apply comm_rel_symm in H6; contradiction.
+    Qed.
+
+    Goal forall a b t,
         comm_rel a b ->
         MInt Hcomm_rel [[a]; [b]] t ->
         t = [a; b] \/ t = [b; a].
@@ -149,23 +173,28 @@ Module ZipIlv.
   Section prune_interleavings.
     Context `{Hssp : StateSpace}.
 
-    (* Lemma mint_add t te zipper (Ht : MInt nonCommRel zipper t) : *)
-    (*   exists t' : list TE, *)
-    (*       MInt nonCommRel (vec_append  vec) t' /\ *)
-    (*       Permutation trace_elems_commute (te :: t) t'. *)
+    Let same_content (z1 z2 : @Traces TE) := to_list z1 = to_list z2.
+
+    Lemma mint_add l r m te t
+          (Ht : MInt_ nonCommRel (l, clean m, r) t) :
+      exists (t' : list TE) (zipper' : Traces),
+        MInt_ nonCommRel zipper' t' /\ Permutation trace_elems_commute (te :: t) t'.
+    Admitted.
 
     Fixpoint mint_prune zipper t
              (Ht : MInt_ alwaysCommRel zipper t) {struct Ht} :
-      exists t',
-        MInt_ nonCommRel zipper t' /\ Permutation trace_elems_commute t t'.
+      exists t', exists zipper',
+          same_content zipper zipper' /\
+          MInt_ nonCommRel zipper' t' /\
+          Permutation trace_elems_commute t t'.
     Proof.
       destruct Ht as [
                      |te ret l r t Ht
                      |te rest l r zipper' t
                      |te rest l r zipper' t
                      ].
-      { exists []. split; constructor. }
-      { apply mint_prune in Ht. destruct Ht as [t' [Ht Hperm]].
+      { exists []. exists ([], None, []). split; sauto. }
+      { apply mint_prune in Ht. destruct Ht as [t' [z' [Hz [Ht Hperm]]]].
     Abort.
   End prune_interleavings.
 End ZipIlv.
