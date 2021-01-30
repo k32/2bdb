@@ -128,13 +128,13 @@ Module ZipIlv.
     Goal forall a b t,
         ~comm_rel a b ->
         MInt Hcomm_rel [[a]; [b]] t ->
-        t = [a; b] \/ t = [b; a].
+        t = [a; b].
       intros a b t Hcomm H. destruct H. cbv in H.
       inv H.
       - inv H0.
         + inv H5.
         + inv H5. inv H6.
-          * inversion H4. subst. left. reflexivity.
+          * inversion H4. subst. reflexivity.
           * exfalso. inv H4.
           * exfalso. inv H4.
         + exfalso. inv H5.
@@ -175,27 +175,32 @@ Module ZipIlv.
 
     Let same_content (z1 z2 : @Traces TE) := to_list z1 = to_list z2.
 
-    Lemma mint_add l r m te t
-          (Ht : MInt_ nonCommRel (l, clean m, r) t) :
-      exists (t' : list TE) (zipper' : Traces),
-        MInt_ nonCommRel zipper' t' /\ Permutation trace_elems_commute (te :: t) t'.
-    Admitted.
-
-    Fixpoint mint_prune zipper t
-             (Ht : MInt_ alwaysCommRel zipper t) {struct Ht} :
-      exists t', exists zipper',
-          same_content zipper zipper' /\
-          MInt_ nonCommRel zipper' t' /\
-          Permutation trace_elems_commute t t'.
+    Fixpoint mint_prune traces t
+             (Ht : MInt alwaysCommRel traces t) {struct Ht} :
+      exists t',
+        MInt nonCommRel traces t' /\
+        Permutation trace_elems_commute t t'.
     Proof.
+      destruct Ht as [zipper t Hz Ht].
       destruct Ht as [
                      |te ret l r t Ht
                      |te rest l r zipper' t
                      |te rest l r zipper' t
                      ].
-      { exists []. exists ([], None, []). split; sauto. }
-      { apply mint_prune in Ht. destruct Ht as [t' [z' [Hz [Ht Hperm]]]].
-    Abort.
+      { exists []. sauto. }
+      { apply mint with (tt := Z.to_list (l, clean ret, r)) in Ht.
+        2:{ admit. }
+        apply mint_prune in Ht.
+        destruct Ht as [t' [Ht' Htt']].
+        (* destruct Ht as [t' [z' [Hz [Ht Hperm]]]]. specialize (mint_add l r ret te t') as H. *)
+    Admitted.
+
+    Theorem mint_noncomm_sufficient : forall traces,
+        sufficient_replacement_p (MInt alwaysCommRel traces) (MInt nonCommRel traces).
+    Proof.
+      intros traces t Ht.
+      now apply mint_prune in Ht.
+    Qed.
   End prune_interleavings.
 End ZipIlv.
 
