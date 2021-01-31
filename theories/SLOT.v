@@ -162,6 +162,7 @@ Require Import
         Handlers.Mutex
         Handlers.Deterministic.
 
+(*
 Module ExampleModelDefn.
   Section handler.
     Context {PID : Type}.
@@ -278,3 +279,4 @@ Module ExampleModelDefn.
       end.*)
   End simple.
 End ExampleModelDefn.
+*)

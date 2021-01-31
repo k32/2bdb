@@ -173,27 +173,95 @@ Module ZipIlv.
   Section prune_interleavings.
     Context `{Hssp : StateSpace}.
 
-    Let same_content (z1 z2 : @Traces TE) := to_list z1 = to_list z2.
+    Lemma left_of_self {A} (z1 z2 : Z.t A) :
+            z1 >z z2 ->
+            Z.zipper_of z1 (Z.to_list z2).
+    Admitted.
 
-    Fixpoint mint_prune traces t
-             (Ht : MInt alwaysCommRel traces t) {struct Ht} :
+    Lemma right_of_self {A} (z1 z2 : Z.t A) :
+            z1 <z z2 ->
+            Z.zipper_of z1 (Z.to_list z2).
+    Admitted.
+
+    Fixpoint mint_add z l m r te t
+             (Hz : Z.zipper_of z (Z.to_list (l, clean m, r)))
+             (Ht : MInt_ nonCommRel z t) {struct Ht} :
+      exists t', exists z',
+          Z.zipper_of z'(Z.to_list (l, Some (te :: m), r)) /\
+          MInt_ nonCommRel z' t' /\
+          Permutation trace_elems_commute (te :: t) t'.
+    Proof.
+      inversion_ Ht; clear Ht.
+      { exists []. exists ([], None, []). sauto. }
+      { apply mint_add with (l := l0) (m := rest) (r := r0) (te := te) in H.
+        2:{ apply Z.left_eq_self. }
+    Admitted.
+
+    Lemma zipper_of_trans {A} (l : list A) z1 z2 :
+        Z.zipper_of z1 l ->
+        Z.zipper_of z2 (Z.to_list z1) ->
+        Z.zipper_of z2 l.
+    Admitted.
+
+    Fixpoint mint_prune0 traces zipper t
+             (Hz : Z.zipper_of zipper traces)
+             (Ht : MInt_ alwaysCommRel zipper t) {struct Ht} :
+      exists t', exists zipper',
+                Z.zipper_of zipper' traces /\
+                MInt_ nonCommRel zipper' t' /\
+                Permutation trace_elems_commute t t'.
+    Proof.
+      destruct Ht as [
+                     |te rest l r t Ht
+                     |te rest l r zipper' t Hz' Ht
+                     |te te' rest l r zipper' t Hz' Hcomm Ht
+                     ].
+      { exists []. sauto. }
+      { apply mint_prune0 with (traces := Z.to_list (l, clean rest, r)) in Ht.
+        2:{ now apply Z.left_eq_self. }
+        destruct Ht as [t' [z' [Hz' [Ht' Htt']]]].
+        apply mint_add with (te := te) (t := t') in Hz'; trivial.
+        destruct Hz' as [t'' [z'' [Hz'' [Ht'' Ht't'']]]].
+        exists t''. exists z''. repeat split; auto.
+        - eapply zipper_of_trans; eauto.
+        - apply permut_cons with (a := te) in Htt'.
+          eapply permut_trans; eauto.
+      }
+      { apply mint_prune0 with (traces := Z.to_list (l, clean rest, r)) in Ht.
+        2:{ now apply left_of_self. }
+        destruct Ht as [t' [z' [Hz_ [Ht' Htt']]]].
+        apply mint_add with (te := te) (t := t') in Hz_; trivial.
+        destruct Hz_ as [t'' [z'' [Hz'' [Ht'' Ht't'']]]].
+        exists t''. exists z''. repeat split; auto.
+        - eapply zipper_of_trans; eauto.
+        - apply permut_cons with (a := te) in Htt'.
+          eapply permut_trans; eauto.
+      }
+      { apply mint_prune0 with (traces := Z.to_list (l, clean rest, r)) in Ht.
+        2:{ now apply right_of_self. }
+        destruct Ht as [t' [z' [Hz_ [Ht' Htt']]]].
+        apply mint_add with (te := te) (t := t') in Hz_; trivial.
+        destruct Hz_ as [t'' [z'' [Hz'' [Ht'' Ht't'']]]].
+        exists t''. exists z''. repeat split; auto.
+        - eapply zipper_of_trans; eauto.
+        - apply permut_cons with (a := te) in Htt'.
+          eapply permut_trans; eauto.
+      }
+    Qed.
+
+    Lemma mint_prune traces t
+             (Ht : MInt alwaysCommRel traces t) :
       exists t',
         MInt nonCommRel traces t' /\
         Permutation trace_elems_commute t t'.
-    Proof.
+    Proof with trivial.
       destruct Ht as [zipper t Hz Ht].
-      destruct Ht as [
-                     |te ret l r t Ht
-                     |te rest l r zipper' t
-                     |te rest l r zipper' t
-                     ].
-      { exists []. sauto. }
-      { apply mint with (tt := Z.to_list (l, clean ret, r)) in Ht.
-        2:{ admit. }
-        apply mint_prune in Ht.
-        destruct Ht as [t' [Ht' Htt']].
-        (* destruct Ht as [t' [z' [Hz [Ht Hperm]]]]. specialize (mint_add l r ret te t') as H. *)
-    Admitted.
+      eapply mint_prune0 in Ht; eauto.
+      destruct Ht as [t' [z' [Hz' [Ht Htt']]]].
+      exists t'. split.
+      - apply mint with (z := z'); auto.
+      - assumption.
+    Qed.
 
     Theorem mint_noncomm_sufficient : forall traces,
         sufficient_replacement_p (MInt alwaysCommRel traces) (MInt nonCommRel traces).

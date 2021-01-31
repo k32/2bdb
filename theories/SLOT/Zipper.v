@@ -230,6 +230,9 @@ Section defn.
     intros H. unfold to_list in H.
     destruct z1 as [[l1 m1] r1]. destruct z2 as [[l2 m2] r2].
   Admitted.
+
+  Lemma left_eq_self z : zipper_of z (to_list z).
+  Admitted.
 End defn.
 
 Declare Scope zipper_scope.
