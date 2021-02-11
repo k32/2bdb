@@ -225,7 +225,7 @@ Section defn.
 
   Lemma left_of_dec z1 z2 :
     to_list z1 = to_list z2 ->
-     z1 = z2 \/ left_of z1 z2 \/ left_of z2 z1.
+     z1 = z2 \/ left_of z1 z2 \/ right_of z1 z2.
   Proof.
     intros H. unfold to_list in H.
     destruct z1 as [[l1 m1] r1]. destruct z2 as [[l2 m2] r2].

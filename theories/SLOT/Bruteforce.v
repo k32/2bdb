@@ -183,25 +183,80 @@ Module ZipIlv.
             Z.zipper_of z1 (Z.to_list z2).
     Admitted.
 
-    Fixpoint mint_add z l m r te t
-             (Hz : Z.zipper_of z (Z.to_list (l, clean m, r)))
-             (Ht : MInt_ nonCommRel z t) {struct Ht} :
-      exists t', exists z',
-          Z.zipper_of z'(Z.to_list (l, Some (te :: m), r)) /\
-          MInt_ nonCommRel z' t' /\
-          Permutation trace_elems_commute (te :: t) t'.
-    Proof.
-      inversion_ Ht; clear Ht.
-      { exists []. exists ([], None, []). sauto. }
-      { apply mint_add with (l := l0) (m := rest) (r := r0) (te := te) in H.
-        2:{ apply Z.left_eq_self. }
-    Admitted.
-
     Lemma zipper_of_trans {A} (l : list A) z1 z2 :
         Z.zipper_of z1 l ->
         Z.zipper_of z2 (Z.to_list z1) ->
         Z.zipper_of z2 l.
     Admitted.
+
+    Lemma zipper_of_to_list {A} (z1 z2 : Z.t A) :
+      Z.zipper_of z1 (Z.to_list z2) ->
+      Z.to_list z1 = Z.to_list z2.
+    Admitted.
+
+    Lemma zipper_of_dec {A} (z1 z2 : Z.t A) :
+      Z.zipper_of z1 (Z.to_list z2) ->
+      z1 = z2 \/ (z1 <z z2) \/ (z1 >z z2).
+    Admitted.
+
+    Definition z_push {A} (z : Z.t (list A)) a :=
+      match z with
+      | (l, None, r) => (l, Some [a], r)
+      | (l, Some m, r) => (l, Some (a :: m), r)
+      end.
+
+    Fixpoint mint_add1 z l m r te t
+             (Hz : Z.zipper_of z (Z.to_list (l, clean m, r)))
+             (Ht : MInt_ nonCommRel z t) {struct Ht} :
+      exists t', exists z',
+          Z.zipper_of z' (Z.to_list (l, Some (te :: m), r)) /\
+          MInt_ nonCommRel z' t' /\
+          Permutation trace_elems_commute (te :: t) t'.
+    Proof.
+      specialize (zipper_of_to_list z (l, clean m, r) Hz) as H.
+      apply Z.left_of_dec in H.
+      destruct H as [Heq | [Hleft | Hright]].
+      { subst z. inversion_ Ht; clear Ht.
+        - exists [te]. exists ([], Some [te], []). repeat split.
+          + sauto.
+          + repeat constructor.
+          + constructor.
+        - apply mint_add1 with (l := l) (m := rest) (r := r) (te := te0) in H3.
+          2:{ apply Z.left_eq_self. }
+          destruct H3 as [t' [z' [Hz' [Ht' Hperm]]]].
+          unfold clean in H1. destruct m; try discriminate. inversion_ H1. clear H1.
+          exists (te :: t'). exists (l, Some (te :: t :: m), r). repeat split.
+          + apply Z.left_eq_self.
+          + constructor. cbn.
+    Admitted.
+
+    Lemma mint_add0 l m r te t
+             (Ht : MInt_ nonCommRel (l, clean m, r) t) :
+      exists t', exists z',
+          Z.zipper_of z' (Z.to_list (l, Some (te :: m), r)) /\
+          MInt_ nonCommRel z' t' /\
+          Permutation trace_elems_commute (te :: t) t'.
+    Admitted.
+
+    Lemma mint_add z l m r te t
+             (Hz : Z.zipper_of z (Z.to_list (l, Some m, r)))
+             (Ht : MInt_ nonCommRel z t) :
+      exists t', exists z',
+          Z.zipper_of z' (Z.to_list (l, Some (te :: m), r)) /\
+          MInt_ nonCommRel z' t' /\
+          Permutation trace_elems_commute (te :: t) t'.
+    Proof.
+      induction Hz.
+      { apply mint_add0 in Ht.
+
+      destruct m as [|te0 m].
+      { simpl in *. induction Hz.
+        - apply mint_add0 with (te := te) in Ht.
+          destruct Ht as [t' [z' [Hz' [Ht' Hperm]]]].
+          exists t'. exists z'. repeat split.
+          +
+      induction Hz.
+      - apply mint_add0 in Ht.
 
     Fixpoint mint_prune0 traces zipper t
              (Hz : Z.zipper_of zipper traces)
