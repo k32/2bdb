@@ -140,6 +140,7 @@ Module KV.
     | read : K -> kv_req_t
     | delete : K -> kv_req_t
     | write : K -> V -> kv_req_t
+    | keys
     | snapshot.
 
     (** *** Syscall return types: *)
@@ -148,6 +149,7 @@ Module KV.
       | read _ => option V
       | delete _ => True
       | write _ _ => True
+      | keys => list K
       | snapshot => S
       end.
 
@@ -158,6 +160,7 @@ Module KV.
       | read k => (s, get k s)
       | write k v => (put k v s, I)
       | delete k => (Storage.delete k s, I)
+      | keys => (s, Storage.keys s)
       | snapshot => (s, s)
       end.
 
@@ -243,7 +246,10 @@ Module KV.
   End Properties.
 End KV.
 
-Module History.
+Check KV.t.
+Global Arguments KV.t _ {_} {_} _ {_}.
+
+Module Log.
   Section defs.
     Context {PID Event : Type}.
 
@@ -260,7 +266,9 @@ Module History.
   End defs.
 
   Definition t {PID} Event := deterministicHandler (@historyDetHandler PID Event).
-End History.
+End Log.
+
+Global Arguments Log.t : clear implicits.
 
 Module ProcessDictionary.
   Section defs.

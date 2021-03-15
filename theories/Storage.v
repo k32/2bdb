@@ -387,6 +387,18 @@ Section WriteLog.
     - repeat rewrite Wlog_ignore_cons; auto.
     - repeat rewrite Wlog_ignore_cons_del; auto.
   Qed.
+
+  (* Dump a consistent snapshot to a wlog: *)
+  Definition snap2ops (s : T) : Wlog :=
+    map' (keys s) (fun k Hk => wl_write k (getT k s Hk)).
+
+  Lemma snapshot_replicate_as_wlog : forall (s : T),
+      Wlog_apply (snap2ops s) new =s= s.
+  Proof.
+    intros s.
+    unfold snap2ops.
+    set (l := keys s).
+  Abort.
 End WriteLog.
 
 Module ListStorage.

@@ -245,6 +245,22 @@ Infix ">=z" := (right_eq)(at level 90) : zipper_scope.
 Global Arguments t : clear implicits.
 Hint Constructors left_eq : slot.
 
+Ltac left_right_eq_all_cases H :=
+  let l := fresh "l" in
+  let l' := fresh "l'" in
+  let r := fresh "r" in
+  let r' := fresh "r'" in
+  let m := fresh "m" in
+  let m' := fresh "m'" in
+  let e := fresh "e" in
+  let H' := fresh "H'" in
+  inversion H as [l m r
+                 |l m r e l' m' r' H'
+                 |l m r l' m' r' H'
+                 ];
+  subst;
+  clear H; try rename H' into H.
+
 Section tests.
   Open Scope zipper_scope.
 
@@ -264,27 +280,22 @@ Section tests.
             get z = Some 1.
   Proof with subst; cbn in *.
     intros z Hz. subst foo.
-    inversion Hz...
+    repeat left_right_eq_all_cases Hz.
     - auto.
-    - inversion H1...
-      + auto.
-      + inversion H0...
-        auto.
+    - auto.
+    - auto.
   Qed.
 
   Goal forall z, z <=z ([3; 2; 1], None, [4]) ->
             get z = Some 3 \/
             get z = Some 2 \/
             get z = Some 1.
-  Proof with subst; cbn in *.
-    intros z Hz. subst foo.
-    inversion Hz...
-    inversion H1...
+  Proof.
+    intros z Hz.
+    repeat left_right_eq_all_cases Hz.
     - auto.
-    - inversion H0...
-      + auto.
-      + inversion H2...
-        auto.
+    - auto.
+    - auto.
   Qed.
 
   Goal forall z, z >z foo -> get z = Some 4.

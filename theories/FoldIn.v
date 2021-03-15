@@ -45,6 +45,18 @@ Proof.
     reflexivity.
 Qed.
 
+Definition map' {A B} : forall (l : list A) (f : forall (a : A), In a l -> B), list B.
+  refine (fix map' (l : list A) f :=
+            match l as l0 return (l = l0 -> list B) with
+            | [] => fun _ => []
+            | a :: t => fun Hl => (f a _) :: (map' t _)
+            end (eq_refl l)).
+  - subst. now constructor.
+  - intros a' Ha't. subst.
+    apply (in_cons a a' t) in Ha't.
+    now apply (f a').
+Defined.
+
 (** Version of [forallb] that preserves the evidence that each element
 passed into the predicate function [p] is a member of the list [l] *)
 Definition forallb' {T} (l : list T) (p : forall k, In k l -> bool) :=

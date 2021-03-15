@@ -75,10 +75,17 @@ Module ZipIlv.
 
     Definition Traces := Z.t T.
 
-    Definition clean (l : T) := match l with
-                                | [] => None
-                                | _  => Some l
-                                end.
+    Definition clean (l : T) :=
+      match l with
+      | [] => None
+      | _  => Some l
+      end.
+
+    Definition z_push {A} (z : Z.t (list A)) a :=
+      match z with
+      | (l, Some m, r) => (l, Some (a :: m), r)
+      | (l, None, r) => (l, Some [a], r)
+      end.
 
     Inductive MInt_ : Traces -> @TraceEnsemble TE :=
     | mint_nil :
@@ -173,6 +180,15 @@ Module ZipIlv.
   Section prune_interleavings.
     Context `{Hssp : StateSpace}.
 
+    (* Lemma rot_r l (te_m : TE) m te_r1 r1 r t : *)
+    (*   MInt_ nonCommRel (l, Some (te_m :: m), (te_r1 :: r1) :: r) (te_m :: te_r1 :: t) -> *)
+    (*   MInt_ nonCommRel ((te_m :: m) :: l, Some (te_r1 :: r1), r) (te_r1 :: te_m :: t) /\ *)
+    (*   (not (trace_elems_commute te_m te_r1)). *)
+    (* Proof. *)
+    (*   intros H. *)
+    (*   inversion_ H. *)
+    (*   - inversion_ H1. *)
+
     Lemma left_of_self {A} (z1 z2 : Z.t A) :
             z1 >z z2 ->
             Z.zipper_of z1 (Z.to_list z2).
@@ -199,13 +215,7 @@ Module ZipIlv.
       z1 = z2 \/ (z1 <z z2) \/ (z1 >z z2).
     Admitted.
 
-    Definition z_push {A} (z : Z.t (list A)) a :=
-      match z with
-      | (l, None, r) => (l, Some [a], r)
-      | (l, Some m, r) => (l, Some (a :: m), r)
-      end.
-
-    Fixpoint mint_add1 z l m r te t
+    Fixpoint mint_add z l m r te t
              (Hz : Z.zipper_of z (Z.to_list (l, clean m, r)))
              (Ht : MInt_ nonCommRel z t) {struct Ht} :
       exists t', exists z',
@@ -221,7 +231,7 @@ Module ZipIlv.
           + sauto.
           + repeat constructor.
           + constructor.
-        - apply mint_add1 with (l := l) (m := rest) (r := r) (te := te0) in H3.
+        - apply mint_add with (l := l) (m := rest) (r := r) (te := te0) in H3.
           2:{ apply Z.left_eq_self. }
           destruct H3 as [t' [z' [Hz' [Ht' Hperm]]]].
           unfold clean in H1. destruct m; try discriminate. inversion_ H1. clear H1.
@@ -229,34 +239,6 @@ Module ZipIlv.
           + apply Z.left_eq_self.
           + constructor. cbn.
     Admitted.
-
-    Lemma mint_add0 l m r te t
-             (Ht : MInt_ nonCommRel (l, clean m, r) t) :
-      exists t', exists z',
-          Z.zipper_of z' (Z.to_list (l, Some (te :: m), r)) /\
-          MInt_ nonCommRel z' t' /\
-          Permutation trace_elems_commute (te :: t) t'.
-    Admitted.
-
-    Lemma mint_add z l m r te t
-             (Hz : Z.zipper_of z (Z.to_list (l, Some m, r)))
-             (Ht : MInt_ nonCommRel z t) :
-      exists t', exists z',
-          Z.zipper_of z' (Z.to_list (l, Some (te :: m), r)) /\
-          MInt_ nonCommRel z' t' /\
-          Permutation trace_elems_commute (te :: t) t'.
-    Proof.
-      induction Hz.
-      { apply mint_add0 in Ht.
-
-      destruct m as [|te0 m].
-      { simpl in *. induction Hz.
-        - apply mint_add0 with (te := te) in Ht.
-          destruct Ht as [t' [z' [Hz' [Ht' Hperm]]]].
-          exists t'. exists z'. repeat split.
-          +
-      induction Hz.
-      - apply mint_add0 in Ht.
 
     Fixpoint mint_prune0 traces zipper t
              (Hz : Z.zipper_of zipper traces)
@@ -325,6 +307,67 @@ Module ZipIlv.
       now apply mint_prune in Ht.
     Qed.
   End prune_interleavings.
+
+  Ltac destruct_mint H t :=
+    lazymatch goal with
+      |- ?GOAL =>
+      refine (match H in (MInt _ _ t0) return (t = t0 -> GOAL) with
+              | mint _ _ z t Hz Ht => fun Heq_tt_ => _
+              end (eq_refl t));
+      subst
+    end.
+
+  Ltac destruct_mint_ t :=
+    lazymatch goal with
+      H : MInt_ _ ?z t |- ?GOAL =>
+      refine (match H in (MInt_ _ z0 t0) return (z = z0 -> t = t0 -> GOAL) with
+              | mint_nil    _  =>
+                fun Heq_zz_ Heq_tt_ =>
+                  ltac:(inversion Heq_zz_; inversion Heq_tt_)
+              | mint_cons   _ te rest l r t Ht =>
+                fun Heq_zz_ Heq_tt_ =>
+                  ltac:(inversion Heq_zz_; inversion Heq_tt_)
+              | mint_cons_l _ te rest l r z t Hz Ht =>
+                fun Heq_zz_ Heq_tt_ =>
+                  ltac:(inversion Heq_zz_; inversion Heq_tt_)
+              | mint_cons_r _ te te' rest l r z t Hz Hcomm Ht =>
+                fun Heq_zz_ Heq_tt_ => _
+                  (* ltac:(inversion Heq_zz_; inversion Heq_tt) *)
+              end (eq_refl z) (eq_refl t));
+      subst
+    end.
+
+  Section ltac_tests.
+    Context {S} `{Hssp : StateSpace S nat}.
+
+    Definition foo traces t (H : MInt_ nonCommRel traces t) : t = t.
+      inversion H; reflexivity.
+    Defined. Print foo.
+
+    Goal forall (t : list nat), MInt nonCommRel [[1; 2]; [3; 4]; [5; 6]] t -> const True t -> False.
+    Proof.
+      intros *. intros Ht Hprop.
+      destruct_mint Ht t.
+      unfold Z.zipper_of in Hz.
+      repeat left_right_eq_all_cases Hz.
+      { destruct_mint_ t.
+        4:{
+        2:{ inversion Heq_zz_. subst. simpl in *.
+          repeat left_right_eq_all_cases Hz.
+        + discriminate.
+        + inversion_clear Heq_zz_.
+
+      inversion_ Hz; clear Hz.
+      - destruct_mint_ t; inversion_ Heq_zz_; clear Heq_zz_.
+        + destruct_mint_ t; inversion_ Heq_zz_; clear Heq_zz_.
+          * give_up.
+          * give_up.
+          * exfalso. inversion Hz.
+        + destruct_mint_ t; try (inversion_ Heq_zz_; clear Heq_zz_).
+          * exfalso. inversion Hz.
+          * give_up.
+    Abort.
+  End ltac_tests.
 End ZipIlv.
 
 Module VecIlv.
@@ -697,7 +740,14 @@ Section tests.
   Proof.
     subst vec.
     intros *. intros H Ht.
+    inversion_ H; clear H.
+    - fin_all_cases i; intros.
+      + unfold VecIlv.vec_append in *.
+
+
     destruct_mint H.
-    - (* Hvec : VecIlv.vec_append Fin.F1 te vec0 = [[1; 2]%list; [3; 4]%list] *)
+    - unfold VecIlv.vec_append in *.
+
+      (* Hvec : VecIlv.vec_append Fin.F1 te vec0 = [[1; 2]%list; [3; 4]%list] *)
   Abort.
 End tests.
