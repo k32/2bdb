@@ -22,6 +22,8 @@ Definition get_handler_ret_pid {PID Req Ret} `(_ : @Handler PID Req Ret) := Ret.
 Global Instance handlerStateSpace `{Handler} : StateSpace h_state TraceElem :=
   {| state_transition := h_state_transition |}.
 
+Require Import Program.
+
 Section ComposeHandlers.
   Context {PID Q_l Q_r R_l R_r}
           (h_l : @Handler PID Q_l R_l)
@@ -56,18 +58,11 @@ Section ComposeHandlers.
         compose_state_transition_i (l, r) (l, r') (trace_elem pid (inr req) ret).
 
   Definition compose_state_transition (s s' : S) (te : TE) : Prop.
+    destruct s as [l r]. destruct s' as [l' r'].
     destruct te as [pid req ret].
-    destruct s as [l r].
-    destruct s' as [l' r'].
-    remember req as req0.
-    destruct req;
-      [ refine (r = r' /\ h_state_transition l l' _)
-      | refine (l = l' /\ h_state_transition r r' _)
-      ];
-      apply trace_elem with (te_req := q);
-      try apply pid;
-      subst;
-      unfold compose_ret in ret; easy.
+    destruct req as [req|req].
+    - refine (r = r' /\ h_state_transition l l' (pid @ ret <~ req)).
+    - refine (l = l' /\ h_state_transition r r' (pid @ ret <~ req)).
   Defined.
 
   Inductive ComposeChainRule s s' te :=

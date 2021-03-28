@@ -17,6 +17,8 @@ depends: [
   "coq" {(>= "8.11" & < "8.13~") | (= "dev")}
   "coq-record-update" {(>= "0.2" & < "0.3~")}
   "coq-stdpp"
+  "coq-equations"
+  "coq-hammer"
 ]
 
 tags: [

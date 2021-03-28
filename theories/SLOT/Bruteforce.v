@@ -308,14 +308,35 @@ Module ZipIlv.
     Qed.
   End prune_interleavings.
 
-  Ltac destruct_mint H t :=
+  Ltac destruct_mint t :=
     lazymatch goal with
-      |- ?GOAL =>
+      H : MInt _ _ t |- ?GOAL =>
       refine (match H in (MInt _ _ t0) return (t = t0 -> GOAL) with
               | mint _ _ z t Hz Ht => fun Heq_tt_ => _
               end (eq_refl t));
       subst
     end.
+
+  (* Ltac destruct_mint_ Ht := *)
+  (*   let te := fresh "te" in *)
+  (*   let te' := fresh "te'" in *)
+  (*   let rest := fresh "rest" in *)
+  (*   let l := fresh "l" in *)
+  (*   let r := fresh "r" in *)
+  (*   let t := fresh "t" in *)
+  (*   let z := fresh "z" in *)
+  (*   let Ht := fresh "Ht" in *)
+  (*   let Hz := fresh "Hz" in *)
+  (*   let Hcopmm := fresh "Hcomm" in *)
+  (*   inversion Ht as [ *)
+  (*                   |te rest l r t Ht *)
+  (*                   |te rest l r z t Hz Ht *)
+  (*                   |te te' rest l r z t Hz Hcomm Ht *)
+  (*                  ] *)
+
+  Ltac aftermath :=
+    idtac.
+    (* inversion_clear Heq_zz_; inversion_clear Heq_tt_. *)
 
   Ltac destruct_mint_ t :=
     lazymatch goal with
@@ -323,13 +344,17 @@ Module ZipIlv.
       refine (match H in (MInt_ _ z0 t0) return (z = z0 -> t = t0 -> GOAL) with
               | mint_nil    _  =>
                 fun Heq_zz_ Heq_tt_ =>
-                  ltac:(inversion Heq_zz_; inversion Heq_tt_)
-              | mint_cons   _ te rest l r t Ht =>
+                  ltac:(aftermath)
+              (* | mint_cons   _ _  []   (_::_) _    _ Ht => *)
+              (*   ltac:(now inversion Ht) *)
+              (* | mint_cons   _ _  []   _    (_::_) _ Ht => *)
+              (*   ltac:(now inversion Ht) *)
+              | mint_cons   _ te rest l      r   t Ht =>
                 fun Heq_zz_ Heq_tt_ =>
-                  ltac:(inversion Heq_zz_; inversion Heq_tt_)
+                  ltac:(aftermath)
               | mint_cons_l _ te rest l r z t Hz Ht =>
                 fun Heq_zz_ Heq_tt_ =>
-                  ltac:(inversion Heq_zz_; inversion Heq_tt_)
+                  ltac:(aftermath)
               | mint_cons_r _ te te' rest l r z t Hz Hcomm Ht =>
                 fun Heq_zz_ Heq_tt_ => _
                   (* ltac:(inversion Heq_zz_; inversion Heq_tt) *)
@@ -340,9 +365,19 @@ Module ZipIlv.
   Section ltac_tests.
     Context {S} `{Hssp : StateSpace S nat}.
 
-    Definition foo traces t (H : MInt_ nonCommRel traces t) : t = t.
-      inversion H; reflexivity.
-    Defined. Print foo.
+    Goal forall (t : list nat), MInt nonCommRel [[1]; [2]] t -> const True t -> False.
+    Proof.
+      intros *. intros Ht Hprop.
+      destruct_mint t.
+      unfold Z.zipper_of in Hz.
+      repeat left_right_eq_all_cases Hz.
+      { destruct_mint_ t.
+        -
+
+        { destruct_mint_ Ht1.
+        }
+        {
+
 
     Goal forall (t : list nat), MInt nonCommRel [[1; 2]; [3; 4]; [5; 6]] t -> const True t -> False.
     Proof.

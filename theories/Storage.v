@@ -101,6 +101,21 @@ Section props.
       easy.
   Qed.
 
+  Lemma empty_keys_eq_new s :
+    Storage.keys s = [] ->
+    s =s= new.
+  Proof.
+    intros H. constructor. intros k.
+    rewrite new_empty.
+    specialize (keys_some s k) as nonsense. rewrite H in nonsense.
+    destruct (get k s).
+    2:{ reflexivity. }
+    exfalso.
+    assert (H2 : exists v0 : V, Some v = Some v0) by now exists v.
+    apply nonsense in H2.
+    inversion H2.
+  Qed.
+
   Lemma put_eq_eq : forall (s1 s2 : T) k v,
       s1 =s= s2 ->
       put k v s1 =s= put k v s2.

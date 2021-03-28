@@ -8,7 +8,7 @@ From Coq Require Import
 Import ListNotations.
 
 Section defn.
-  Context K V DB `{@Storage K V DB}.
+  Context {K V DB} `{@Storage K V DB}.
 
   (* We have only two processes in the system: [writer] that creates
   local transactions and [agent] that is used to bootstrap the remote
@@ -41,9 +41,17 @@ Section defn.
     Definition forward_op (w : @Wlog_elem K V) : req_t.
       lift (fun (_ : Pid) => w).
     Defined.
+
+    Definition s_log (s : h_state Handler) : list (@Wlog_elem K V).
+      simpl in s. now decompose_state.
+    Defined.
+
+    Definition s_db (s : h_state Handler) : DB.
+      simpl in s. now decompose_state.
+    Defined.
   End boilerplate.
 
-  Definition wlog_apply (w : @Wlog_elem K V) :=
+  Definition apply_op (w : @Wlog_elem K V) :=
     match w with
     | wl_write k v => write k v
     | wl_delete k => delete k
@@ -55,7 +63,7 @@ Section defn.
     match ops with
     | [] => t_dead
     | op :: tail =>
-      do _ <- wlog_apply op;
+      do _ <- apply_op op;
       writer_loop tail
     end.
 
@@ -90,3 +98,60 @@ Section defn.
   Definition dirty_bootstrapper ops := (ThreadGenerator writer (writer_loop ops))
                                    -|| (ThreadGenerator agent (exporter ops)).
 End defn.
+
+From Coq Require Import Logic.Classical.
+
+Require Import Program.
+
+Section props.
+  Context K V DB `{@Storage K V DB}.
+
+  Lemma no_op_apply : -{{ fun s => (s_log s) = [] }}
+                         dirty_bootstrapper []
+                       {{ fun s => s_db s =s= Wlog_apply (s_log s) new }}.
+  Proof.
+    intros t Ht. unfold_ht.
+    unfold dirty_bootstrapper in Ht.
+    destruct Ht as [t1 t2 t Hwriter Hagent Ht].
+    thread_step Hwriter. apply interleaving_nil in Ht. subst.
+    destruct s_begin as [s_db_begin s_log_begin]. destruct s_end as [s_db_end s_log_end]. simpl in *.
+    thread_step Hagent.
+    clear Heqt0. simpl in *.
+    long_step Hls handler_step. destruct Hcr as [? ?]. subst.
+    remember (Storage.keys s_db_begin) as kk.
+    induction kk as [|k rest].
+    - thread_step Hagent.
+      long_step Hls. subst.
+      simpl.
+      apply empty_keys_eq_new. auto.
+    -
+
+    cbv in s. destruct s as [s_l s_r]. inversion Hcr.
+    simpl in H0. destruct H0 as [? [? ?]].
+
+
+    long_step Hls handler_step.
+    destruct Hcr as [Hl Hr]. subst.
+    dependent destruction Hr.
+
+    dependent destruction s. Locate "~=".
+
+    remember (Storage.keys s_db_begin) as kk.
+
+
+    remember (Storage.keys (s_db s_begin)) as kk.
+
+    thread_step Hagent. simpl in *.
+
+    induction ret as [|k rest].
+    -
+      thread_step Hagent.
+
+
+
+    apply canonicalize_ilv with (s := s_begin) (s' := s_end) in Ht.
+    2:{ intros. apply classic. }
+    2:{ assumption. }
+    clear Hls.
+    destruct Ht as [t' [Ht' Hls']].
+    cbn in Hwriter.
