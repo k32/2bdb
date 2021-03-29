@@ -119,12 +119,19 @@ Section props.
     clear Heqt0. simpl in *.
     long_step Hls handler_step. destruct Hcr as [? ?]. subst.
     remember (Storage.keys s_db_begin) as kk.
+    generalize dependent s_db_begin.
     induction kk as [|k rest].
-    - thread_step Hagent.
+    - intros.
+      thread_step Hagent.
       long_step Hls. subst.
       simpl.
       apply empty_keys_eq_new. auto.
-    -
+    - intros.
+      thread_step Hagent.
+      simpl in Heqt.
+      long_step Hls handler_step.
+      destruct Hcr as [? ?]. subst.
+
 
     cbv in s. destruct s as [s_l s_r]. inversion Hcr.
     simpl in H0. destruct H0 as [? [? ?]].
