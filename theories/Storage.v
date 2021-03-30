@@ -56,13 +56,6 @@ Section defns.
           In k (keys s) <-> exists v, get k s = Some v;
     }.
 
-  Section Equality.
-    Context {T} `{HT_Storage : Storage T}.
-
-    Inductive s_eq (s1 s2 : T) :=
-    | s_eq_ : (forall k, get k s1 = get k s2) -> s_eq s1 s2.
-  End Equality.
-
   Section Operations.
     Context {T} `{HT_Storage : Storage T}.
 
@@ -90,6 +83,13 @@ Section defns.
       in foldl' (keys s) f True.
   End Operations.
 End defns.
+
+Section Equality.
+  Context {K V} {T1 T2} `{@Storage K V T1, Storage K V T2}.
+
+  Inductive s_eq (s1 : T1) (s2 : T2) :=
+  | s_eq_ : (forall k, get k s1 = get k s2) -> s_eq s1 s2.
+End Equality.
 
 Notation "s1 =s= s2" := (s_eq s1 s2) (at level 50).
 Hint Constructors s_eq : storage.

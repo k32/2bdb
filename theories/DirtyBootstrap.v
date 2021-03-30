@@ -134,6 +134,7 @@ Section props.
     clear Heqt0. simpl in *.
     long_step Hls handler_step. destruct Hcr as [? ?]. subst.
     remember (Storage.keys s_db_begin) as kk.
+    generalize dependent trace.
     generalize dependent s_db_begin.
     induction kk as [|k rest].
     - intros.
@@ -146,7 +147,14 @@ Section props.
       simpl in Heqt.
       long_step Hls handler_step.
       destruct Hcr as [? ?]. subst.
-
+      (* Ensure that reading the key now produces result *)
+      assert (In k (Storage.keys s_db_begin)).
+      { rewrite <-Heqkk. apply in_eq. }
+      remember (get k s_db_begin) as val.
+      destruct val.
+      2:{ apply keys_some in H0. destruct H0. rewrite <-Heqval in H0. discriminate. }
+      subst. simpl in *.
+      specialize (IHrest rest).
 
     cbv in s. destruct s as [s_l s_r]. inversion Hcr.
     simpl in H0. destruct H0 as [? [? ?]].
